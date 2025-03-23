@@ -32,6 +32,11 @@ export class TicketController {
         return this.ticketService.findBy({ requesterId: requesterId });
     }
 
+    @Get('target-user/:userId')
+    findByTargetUser(@Param('userId') userId: number) {
+        return this.ticketService.findBy({ targetUserId: userId });
+    }
+
     @Patch(':id')
     update(@Param('id') id: number, @Body() updateTicketDto: UpdateTicketDto) {
         return this.ticketService.update(id, updateTicketDto);
