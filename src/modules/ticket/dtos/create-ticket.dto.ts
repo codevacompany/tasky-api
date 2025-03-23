@@ -16,9 +16,17 @@ export class CreateTicketDto {
 
     @IsOptional()
     @IsDateString()
-    completionDate: string | null;
+    completionDate?: string | null;
 
     @IsNotEmpty()
     @IsInt()
     departmentId: number;
+
+    @IsNotEmpty()
+    @IsInt()
+    requesterId: number;
+
+    @IsOptional()
+    @IsInt()
+    targetUserId?: number;
 }
