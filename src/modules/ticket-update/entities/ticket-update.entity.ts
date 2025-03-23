@@ -15,9 +15,6 @@ export class TicketUpdate extends IdTimestampBaseEntity {
     @ManyToOne(() => User)
     user: User;
 
-    @Column('timestamp')
-    dateTime: Date;
-
     @Column('text')
     comment: string;
 }

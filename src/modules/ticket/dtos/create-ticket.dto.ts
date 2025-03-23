@@ -14,20 +14,9 @@ export class CreateTicketDto {
     @IsString()
     description: string;
 
-    @IsNotEmpty()
-    @IsString()
-    status: string;
-
-    @IsDateString()
-    creationDate: string;
-
     @IsOptional()
     @IsDateString()
     completionDate: string | null;
-
-    @IsNotEmpty()
-    @IsString()
-    disapprovalReason: string;
 
     @IsNotEmpty()
     @IsInt()

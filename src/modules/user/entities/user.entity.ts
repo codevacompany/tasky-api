@@ -27,9 +27,12 @@ export class User extends IdTimestampBaseEntity {
     departmentId: number;
 
     @ManyToOne(() => Department, (department) => department.users)
-    @JoinColumn({ name: 'departmentId' }) 
+    @JoinColumn({ name: 'departmentId' })
     department: Department;
 
     @OneToMany(() => Ticket, (ticket) => ticket.requester)
-    tickets: Ticket[];
+    createdTickets: Ticket[];
+
+    @OneToMany(() => Ticket, (ticket) => ticket.targetUser)
+    assignedTickets: Ticket[];
 }

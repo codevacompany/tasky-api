@@ -45,9 +45,16 @@ export class Ticket extends IdTimestampBaseEntity {
     @Column()
     requesterId: number;
 
-    @ManyToOne(() => User, (user) => user.tickets)
+    @ManyToOne(() => User, (user) => user.createdTickets)
     @JoinColumn({ name: 'requesterId' })
     requester: User;
+
+    @Column({ nullable: true })
+    targetUserId: number;
+
+    @ManyToOne(() => User, (user) => user.assignedTickets, { nullable: true })
+    @JoinColumn({ name: 'targetUserId' })
+    targetUser: User;
 
     @Column({
         type: 'enum',
@@ -55,9 +62,6 @@ export class Ticket extends IdTimestampBaseEntity {
         default: TicketStatus.Pending,
     })
     status: string;
-
-    @Column('timestamp')
-    creationDate: Date;
 
     @Column('timestamp', { nullable: true })
     completionDate: Date | null;
@@ -68,6 +72,6 @@ export class Ticket extends IdTimestampBaseEntity {
     @OneToMany(() => TicketUpdate, (ticketUpdate) => ticketUpdate.ticket)
     updates: TicketUpdate[];
 
-    @Column('text')
+    @Column('text', { nullable: true })
     disapprovalReason: string;
 }

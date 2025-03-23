@@ -18,6 +18,7 @@ export class TicketService {
             where: {
                 id,
             },
+            relations: ['requester', 'targetUser']
         });
     }
 
