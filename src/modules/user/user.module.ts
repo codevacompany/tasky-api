@@ -15,7 +15,7 @@ import { UserService } from './user.service';
         EmailModule,
         forwardRef(() => AuthModule),
     ],
-    exports: [UserService],
+    exports: [UserService, UserRepository],
     controllers: [UserController],
     providers: [UserService, UserRepository],
 })
