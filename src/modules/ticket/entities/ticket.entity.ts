@@ -66,6 +66,9 @@ export class Ticket extends IdTimestampBaseEntity {
     @Column('timestamp', { nullable: true })
     completionDate: Date | null;
 
+    @Column('timestamp', { nullable: true })
+    acceptanceDate: Date | null;
+
     @ManyToOne(() => Category, (category) => category.tickets)
     category: Category;
 
