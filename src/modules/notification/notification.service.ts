@@ -39,4 +39,12 @@ export class NotificationService {
             message: 'Notification marked as read',
         };
     }
+
+    async markAllAsRead(): Promise<{ message: string }> {
+        await this.notificationRepository.update({}, { read: true });
+
+        return {
+            message: 'All notifications marked as read',
+        };
+    }
 }

@@ -22,6 +22,11 @@ export class NotificationController {
         return this.notificationService.update(id, updateNotificationDto);
     }
 
+    @Post('mark-as-read')
+    async markAllAsRead() {
+        return this.notificationService.markAllAsRead();
+    }
+
     @Post(':id/mark-as-read')
     async markAsRead(@Param('id') id: number) {
         return this.notificationService.markAsRead(id);
