@@ -12,6 +12,13 @@ export class NotificationService {
         return await this.notificationRepository.find();
     }
 
+    async findBy(where: Partial<Notification>): Promise<Notification[]> {
+        return await this.notificationRepository.find({
+            where,
+            relations: ['createdBy', 'targetUser'],
+        });
+    }
+
     async create(notification: CreateNotificationDto) {
         await this.notificationRepository.save(notification);
     }

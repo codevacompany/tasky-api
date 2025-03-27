@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
 import { CreateNotificationDto } from './dtos/create-notification.dto';
 import { UpdateNotificationDto } from './dtos/update-notification.dto';
 import { NotificationService } from './notification.service';
@@ -12,13 +12,18 @@ export class NotificationController {
         return this.notificationService.findAll();
     }
 
+    @Get('target-user/:id')
+    async findByTargetUser(@Param('id', ParseIntPipe) id: number) {
+        return this.notificationService.findBy({ targetUserId: id });
+    }
+
     @Post()
     async create(@Body() createNotificationDto: CreateNotificationDto) {
         return this.notificationService.create(createNotificationDto);
     }
 
     @Put(':id')
-    async update(@Param('id') id: number, @Body() updateNotificationDto: UpdateNotificationDto) {
+    async update(@Param('id', ParseIntPipe) id: number, @Body() updateNotificationDto: UpdateNotificationDto) {
         return this.notificationService.update(id, updateNotificationDto);
     }
 
@@ -28,7 +33,7 @@ export class NotificationController {
     }
 
     @Post(':id/mark-as-read')
-    async markAsRead(@Param('id') id: number) {
+    async markAsRead(@Param('id', ParseIntPipe) id: number) {
         return this.notificationService.markAsRead(id);
     }
 }
