@@ -18,7 +18,7 @@ export class TicketService {
 
     async findAll(): Promise<Ticket[]> {
         return await this.ticketRepository.find({
-            relations: ['requester', 'targetUser', 'deparment'],
+            relations: ['requester', 'targetUser', 'department'],
         });
     }
 
@@ -27,14 +27,14 @@ export class TicketService {
             where: {
                 id,
             },
-            relations: ['requester', 'targetUser', 'deparment'],
+            relations: ['requester', 'targetUser', 'department'],
         });
     }
 
     async findBy(where: Partial<Ticket>): Promise<Ticket[]> {
         return await this.ticketRepository.find({
             where,
-            relations: ['requester', 'targetUser', 'deparment'],
+            relations: ['requester', 'targetUser', 'department'],
         });
     }
 
