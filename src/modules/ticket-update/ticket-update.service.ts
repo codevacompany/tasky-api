@@ -9,12 +9,13 @@ export class TicketUpdateService {
     constructor(private ticketUpdateRepository: TicketUpdateRepository) {}
 
     async findAll(): Promise<TicketUpdate[]> {
-        return await this.ticketUpdateRepository.find();
+        return await this.ticketUpdateRepository.find({ relations: ['user'] });
     }
 
     async findById(id: number): Promise<TicketUpdate> {
         return await this.ticketUpdateRepository.findOne({
             where: { id },
+            relations: ['user'],
         });
     }
 
