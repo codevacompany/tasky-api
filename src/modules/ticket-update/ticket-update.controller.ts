@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
 import { CreateTicketUpdateDto } from './dtos/create-ticket-update.dto';
 import { UpdateTicketUpdateDto } from './dtos/update-ticket-update.dto';
 import { TicketUpdateService } from './ticket-update.service';
@@ -13,12 +13,12 @@ export class TicketUpdateController {
     }
 
     @Get(':id')
-    async findById(@Param('id') id: number) {
+    async findById(@Param('id', ParseIntPipe) id: number) {
         return this.ticketUpdateService.findById(id);
     }
 
     @Get('ticket/:ticketId')
-    findByTicket(@Param('ticketId') ticketId: number) {
+    findByTicket(@Param('ticketId', ParseIntPipe) ticketId: number) {
         return this.ticketUpdateService.findBy({ ticketId: ticketId });
     }
 
@@ -28,7 +28,7 @@ export class TicketUpdateController {
     }
 
     @Put(':id')
-    async update(@Param('id') id: number, @Body() updateTicketUpdateDto: UpdateTicketUpdateDto) {
+    async update(@Param('id', ParseIntPipe) id: number, @Body() updateTicketUpdateDto: UpdateTicketUpdateDto) {
         return this.ticketUpdateService.update(id, updateTicketUpdateDto);
     }
 }

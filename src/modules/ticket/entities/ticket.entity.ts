@@ -15,6 +15,7 @@ export enum TicketStatus {
     Pending = 'Pendente',
     InProgress = 'Em andamento',
     AwaitingVerification = 'Aguardando verificação',
+    Overdue = 'Atrasado',
     Completed = 'Finalizado',
     Returned = 'Devolvido',
     Rejected = 'Reprovado',

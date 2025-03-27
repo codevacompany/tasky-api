@@ -18,23 +18,24 @@ export class TicketService {
 
     async findAll(): Promise<Ticket[]> {
         return await this.ticketRepository.find({
-            relations: ['requester', 'targetUser', 'deparment'],
+            relations: ['requester', 'targetUser', 'department'],
         });
     }
 
     async findById(id: number): Promise<Ticket> {
+        console.log(typeof id);
         return await this.ticketRepository.findOne({
             where: {
                 id,
             },
-            relations: ['requester', 'targetUser', 'deparment'],
+            relations: ['requester', 'targetUser', 'department'],
         });
     }
 
     async findBy(where: Partial<Ticket>): Promise<Ticket[]> {
         return await this.ticketRepository.find({
             where,
-            relations: ['requester', 'targetUser', 'deparment'],
+            relations: ['requester', 'targetUser', 'department'],
         });
     }
 
@@ -60,12 +61,14 @@ export class TicketService {
             },
         });
 
-        await this.notificationRepository.save({
-            type: 'Abertura' as NotificationType,
-            message: `Novo ticket criado por ${requester.firstName} ${requester.lastName}`,
-        });
+        const ticketResponse = await this.ticketRepository.save(ticket);
 
-        await this.ticketRepository.save(ticket);
+        await this.notificationRepository.save({
+            type: NotificationType.Open,
+            message: `Novo ticket criado por ${requester.firstName} ${requester.lastName}`,
+            targetUserId: ticket.targetUserId,
+            resourceId: ticketResponse.id,
+        });
     }
 
     async update(id: number, ticket: UpdateTicketDto) {
