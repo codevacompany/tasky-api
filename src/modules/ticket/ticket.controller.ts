@@ -42,6 +42,11 @@ export class TicketController {
         return this.ticketService.update(id, updateTicketDto);
     }
 
+    @Post(':id/accept')
+    accept(@Param('id', ParseIntPipe) id: number) {
+        return this.ticketService.accept(id);
+    }
+
     // @Delete(':id')
     // delete(@Param('id', ParseIntPipe) id: number) {
     //     return this.ticketService.delete(id);
