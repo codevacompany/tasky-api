@@ -5,7 +5,7 @@ import { NotificationRepository } from '../notification/notification.repository'
 import { UserRepository } from '../user/user.repository';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketDto } from './dtos/update-department.dto';
-import { Ticket } from './entities/ticket.entity';
+import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketRepository } from './ticket.repository';
 
 @Injectable()
@@ -76,6 +76,15 @@ export class TicketService {
 
         return {
             message: 'Successfully updated!',
+            ticketId: id,
+        };
+    }
+
+    async accept(id: number) {
+        await this.ticketRepository.update(id, {status: TicketStatus.InProgress, acceptanceDate: new Date().toISOString()});
+
+        return {
+            message: 'Ticket accepted!',
             ticketId: id,
         };
     }
