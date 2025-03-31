@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { CreateNotificationDto } from './dtos/create-notification.dto';
 import { UpdateNotificationDto } from './dtos/update-notification.dto';
 import { NotificationService } from './notification.service';
@@ -22,8 +22,11 @@ export class NotificationController {
         return this.notificationService.create(createNotificationDto);
     }
 
-    @Put(':id')
-    async update(@Param('id', ParseIntPipe) id: number, @Body() updateNotificationDto: UpdateNotificationDto) {
+    @Patch(':id')
+    async update(
+        @Param('id', ParseIntPipe) id: number,
+        @Body() updateNotificationDto: UpdateNotificationDto,
+    ) {
         return this.notificationService.update(id, updateNotificationDto);
     }
 

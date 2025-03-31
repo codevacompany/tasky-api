@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Put } from '@nestjs/common';
 import { CreateTicketUpdateDto } from './dtos/create-ticket-update.dto';
 import { UpdateTicketUpdateDto } from './dtos/update-ticket-update.dto';
 import { TicketUpdateService } from './ticket-update.service';
@@ -27,7 +27,7 @@ export class TicketUpdateController {
         return this.ticketUpdateService.create(createTicketUpdateDto);
     }
 
-    @Put(':id')
+    @Patch(':id')
     async update(@Param('id', ParseIntPipe) id: number, @Body() updateTicketUpdateDto: UpdateTicketUpdateDto) {
         return this.ticketUpdateService.update(id, updateTicketUpdateDto);
     }

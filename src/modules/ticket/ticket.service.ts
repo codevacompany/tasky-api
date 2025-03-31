@@ -23,7 +23,6 @@ export class TicketService {
     }
 
     async findById(id: number): Promise<Ticket> {
-        console.log(typeof id);
         return await this.ticketRepository.findOne({
             where: {
                 id,

@@ -19,7 +19,7 @@ export class UserService {
     ) {}
 
     async findAll(): Promise<User[]> {
-        return await this.userRepository.find();
+        return await this.userRepository.find({ relations: ['department'] });
     }
 
     async findByEmail(email: string): Promise<User> {
@@ -27,6 +27,7 @@ export class UserService {
             where: {
                 email,
             },
+            relations: ['department'],
         });
     }
 
@@ -42,7 +43,7 @@ export class UserService {
         if (userExists) {
             throw new CustomConflictException({
                 code: 'email-already-registered',
-                message: 'This email is already registered', 
+                message: 'This email is already registered',
             });
         }
 
@@ -51,7 +52,7 @@ export class UserService {
         const hashedPassword = this.encryptionService.hashSync(password);
         user.password = hashedPassword;
 
-        console.log(user)
+        console.log(user);
         await this.userRepository.save(user);
 
         return this.authService.login({
