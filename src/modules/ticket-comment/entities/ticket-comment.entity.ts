@@ -4,11 +4,11 @@ import { Ticket } from '../../ticket/entities/ticket.entity';
 import { User } from '../../user/entities/user.entity';
 
 @Entity()
-export class TicketUpdate extends IdTimestampBaseEntity {
+export class TicketComment extends IdTimestampBaseEntity {
     @Column()
     ticketId: number;
 
-    @ManyToOne(() => Ticket, (ticket) => ticket.updates)
+    @ManyToOne(() => Ticket, (ticket) => ticket.comments)
     @JoinColumn({ name: 'ticketId' })
     ticket: Ticket;
 
@@ -16,5 +16,5 @@ export class TicketUpdate extends IdTimestampBaseEntity {
     user: User;
 
     @Column('text')
-    comment: string;
+    content: string;
 }

@@ -17,6 +17,11 @@ export class UserController {
         return this.userService.findByEmail(email);
     }
 
+    @Get('department/:departmentId')
+    async findByDeparment(@Param('departmentId', ParseIntPipe) departmentId: number) {
+        return this.userService.findBy({ departmentId });
+    }
+
     @Post()
     async create(@Body() createUserDto: CreateUserDto) {
         return this.userService.create(createUserDto);

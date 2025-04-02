@@ -31,6 +31,10 @@ export class UserService {
         });
     }
 
+    async findBy(where: Partial<User>): Promise<User[]> {
+        return await this.userRepository.find({ where, relations: ['department'] });
+    }
+
     async create(user: CreateUserDto) {
         user.email = user.email.toLowerCase();
 
@@ -52,7 +56,6 @@ export class UserService {
         const hashedPassword = this.encryptionService.hashSync(password);
         user.password = hashedPassword;
 
-        console.log(user);
         await this.userRepository.save(user);
 
         return this.authService.login({

@@ -2,7 +2,7 @@ import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
 import { Category } from '../../category/entities/category.entity';
 import { Department } from '../../department/entities/department.entity';
-import { TicketUpdate } from '../../ticket-update/entities/ticket-update.entity';
+import { TicketComment } from '../../ticket-comment/entities/ticket-comment.entity';
 import { User } from '../../user/entities/user.entity';
 
 export enum TicketPriority {
@@ -73,9 +73,9 @@ export class Ticket extends IdTimestampBaseEntity {
     @ManyToOne(() => Category, (category) => category.tickets)
     category: Category;
 
-    @OneToMany(() => TicketUpdate, (ticketUpdate) => ticketUpdate.ticket)
-    updates: TicketUpdate[];
+    @OneToMany(() => TicketComment, (ticketcomment) => ticketcomment.ticket)
+    comments: TicketComment[];
 
-    @Column('text', { nullable: true })
-    disapprovalReason: string;
+    // @Column('text', { nullable: true })
+    // disapprovalReason: string;
 }
