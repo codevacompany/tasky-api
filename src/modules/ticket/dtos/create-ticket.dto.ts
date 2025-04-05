@@ -29,4 +29,8 @@ export class CreateTicketDto {
     @IsOptional()
     @IsInt()
     targetUserId?: number;
+
+    @IsOptional()
+    @IsInt()
+    categoryId?: number;
 }

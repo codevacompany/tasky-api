@@ -42,4 +42,8 @@ export class UpdateTicketDto {
     @IsOptional()
     @IsInt()
     targetUserId?: number;
+
+    @IsOptional()
+    @IsInt()
+    categoryId?: number;
 }

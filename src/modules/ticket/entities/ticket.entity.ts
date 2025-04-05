@@ -70,7 +70,11 @@ export class Ticket extends IdTimestampBaseEntity {
     @Column('timestamp', { nullable: true })
     acceptanceDate: Date | null;
 
+    @Column()
+    categoryId: number;
+
     @ManyToOne(() => Category, (category) => category.tickets)
+    @JoinColumn({ name: 'categoryId' })
     category: Category;
 
     @OneToMany(() => TicketComment, (ticketcomment) => ticketcomment.ticket)
