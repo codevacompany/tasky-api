@@ -3,7 +3,7 @@ import { CreateTicketCommentDto } from './dtos/create-ticket-comment.dto';
 import { UpdateTicketCommentDto } from './dtos/update-ticket-comment.dto';
 import { TicketCommentService } from './ticket-comment.service';
 
-@Controller('ticket-updates')
+@Controller('ticket-comments')
 export class TicketCommentController {
     constructor(private readonly ticketCommentService: TicketCommentService) {}
 

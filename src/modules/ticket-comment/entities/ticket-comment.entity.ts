@@ -12,7 +12,11 @@ export class TicketComment extends IdTimestampBaseEntity {
     @JoinColumn({ name: 'ticketId' })
     ticket: Ticket;
 
+    @Column()
+    userId: number;
+
     @ManyToOne(() => User)
+    @JoinColumn({ name: 'userId' })
     user: User;
 
     @Column('text')
