@@ -87,4 +87,22 @@ export class TicketService {
             ticketId: id,
         };
     }
+
+    async delete(id: number) {
+        const ticket = await this.ticketRepository.findOne({ where: { id } });
+
+        if (!ticket) {
+            throw new CustomConflictException({
+                code: 'ticket-not-found',
+                message: 'Ticket not found or already deleted',
+            });
+        }
+
+        await this.ticketRepository.delete(id);
+
+        return {
+            message: 'Ticket deleted successfully!',
+            ticketId: id,
+        };
+    }
 }
