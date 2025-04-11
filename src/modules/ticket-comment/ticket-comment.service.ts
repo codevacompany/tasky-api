@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
+import { NotificationService } from '../notification/notification.service';
 import { UserRepository } from '../user/user.repository';
 import { CreateTicketCommentDto } from './dtos/create-ticket-comment.dto';
 import { UpdateTicketCommentDto } from './dtos/update-ticket-comment.dto';
@@ -10,9 +11,10 @@ import { TicketCommentRepository } from './ticket-comment.repository';
 @Injectable()
 export class TicketCommentService {
     constructor(
-        private ticketCommentRepository: TicketCommentRepository,
-        private userRepository: UserRepository,
-        private notificationRepository: NotificationRepository,
+        private readonly ticketCommentRepository: TicketCommentRepository,
+        private readonly userRepository: UserRepository,
+        private readonly notificationService: NotificationService,
+        private readonly notificationRepository: NotificationRepository,
     ) {}
 
     async findAll(): Promise<TicketComment[]> {
@@ -55,7 +57,7 @@ export class TicketCommentService {
             notifications.push(
                 this.notificationRepository.save({
                     type: NotificationType.Comment,
-                    message: `Novo comentário de ${user.firstName} ${user.lastName}`,
+                    message: `${user.firstName} ${user.lastName} comentou no ticket #${commentWithTicket.ticketId}`,
                     targetUserId: commentWithTicket.ticket.requesterId,
                     resourceId: commentWithTicket.ticketId,
                 }),
@@ -77,6 +79,25 @@ export class TicketCommentService {
         }
 
         await Promise.all(notifications);
+
+        if (ticketComment.userId !== commentWithTicket.ticket.requesterId) {
+            this.notificationService.sendNotification(commentWithTicket.ticket.requesterId, {
+                type: NotificationType.Comment,
+                message: `Novo comentário de ${user.firstName} ${user.lastName}`,
+                resourceId: commentWithTicket.ticketId,
+            });
+        }
+
+        if (
+            commentWithTicket.ticket.targetUserId &&
+            ticketComment.userId !== commentWithTicket.ticket.targetUserId
+        ) {
+            this.notificationService.sendNotification(commentWithTicket.ticket.targetUserId, {
+                type: NotificationType.Comment,
+                message: `${user.firstName} ${user.lastName} comentou no ticket #${commentWithTicket.ticketId}`,
+                resourceId: commentWithTicket.ticketId,
+            });
+        }
 
         return commentWithTicket;
     }

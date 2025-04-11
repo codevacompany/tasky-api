@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
+import { NotificationService } from '../notification/notification.service';
 import { UserRepository } from '../user/user.repository';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
@@ -13,6 +14,7 @@ import { TicketRepository } from './ticket.repository';
 export class TicketService {
     constructor(
         private readonly ticketRepository: TicketRepository,
+        private readonly notificationService: NotificationService,
         private readonly notificationRepository: NotificationRepository,
         private readonly userRepository: UserRepository,
     ) {}
@@ -36,6 +38,7 @@ export class TicketService {
         return await this.ticketRepository.find({
             where,
             relations: ['requester', 'targetUser', 'department'],
+            order: { createdAt: 'DESC' },
         });
     }
 
@@ -69,6 +72,12 @@ export class TicketService {
             targetUserId: ticket.targetUserId,
             resourceId: ticketResponse.id,
         });
+
+        this.notificationService.sendNotification(ticket.targetUserId, {
+            type: NotificationType.StatusUpdated,
+            message: `Novo ticket criado por ${requester.firstName} ${requester.lastName}.`,
+            resourceId: ticketResponse.id,
+        });
     }
 
     async update(id: number, ticket: UpdateTicketDto) {
@@ -92,6 +101,12 @@ export class TicketService {
                 targetUserId: requester.id,
                 resourceId: ticketResponse.id,
             });
+
+            this.notificationService.sendNotification(requester.id, {
+                type: NotificationType.StatusUpdated,
+                message: `${targetUser.firstName} ${targetUser.lastName} enviou o ticket #${ticketResponse.id} para verificação.`,
+                resourceId: ticketResponse.id,
+            });
         } else if (ticket.status === TicketStatus.Returned) {
             await this.notificationRepository.save({
                 type: NotificationType.StatusUpdated,
@@ -99,8 +114,14 @@ export class TicketService {
                 targetUserId: targetUser.id,
                 resourceId: ticketResponse.id,
             });
+
+            this.notificationService.sendNotification(targetUser.id, {
+                type: NotificationType.StatusUpdated,
+                message: `${requester.firstName} ${requester.lastName} solicitou uma correção no ticket #${ticketResponse.id}.`,
+                resourceId: ticketResponse.id,
+            });
         }
-        
+
         return {
             message: 'Successfully updated!',
             ticketId: id,
@@ -122,6 +143,12 @@ export class TicketService {
             resourceId: ticketResponse.id,
         });
 
+        this.notificationService.sendNotification(requester.id, {
+            type: NotificationType.StatusUpdated,
+            message: `${targetUser.firstName} ${targetUser.lastName} aceitou o ticket #${ticketResponse.id}.`,
+            resourceId: ticketResponse.id,
+        });
+
         return {
             message: 'Ticket accepted!',
             ticketId: id,
@@ -140,6 +167,12 @@ export class TicketService {
             type: NotificationType.StatusUpdated,
             message: `${requester.firstName} ${requester.lastName} aprovou o ticket #${ticketResponse.id}.`,
             targetUserId: targetUser.id,
+            resourceId: ticketResponse.id,
+        });
+
+        this.notificationService.sendNotification(targetUser.id, {
+            type: NotificationType.StatusUpdated,
+            message: `${requester.firstName} ${requester.lastName} aprovou o ticket #${ticketResponse.id}.`,
             resourceId: ticketResponse.id,
         });
 
