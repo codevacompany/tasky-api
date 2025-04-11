@@ -1,10 +1,27 @@
 import { Injectable } from '@nestjs/common';
+import { Observable, Subject } from 'rxjs';
 import { Notification } from './entities/notification.entity';
 import { NotificationRepository } from './notification.repository';
 
 @Injectable()
 export class NotificationService {
     constructor(private notificationRepository: NotificationRepository) {}
+
+    private notificationStreams = new Map<number, Subject<MessageEvent>>();
+
+    getNotificationStream(userId: number): Observable<MessageEvent> {
+        if (!this.notificationStreams.has(userId)) {
+            this.notificationStreams.set(userId, new Subject<MessageEvent>());
+        }
+        return this.notificationStreams.get(userId).asObservable();
+    }
+
+    sendNotification(userId: number, notification: any) {
+        const stream = this.notificationStreams.get(userId);
+        if (stream) {
+            stream.next({ data: notification } as MessageEvent);
+        }
+    }
 
     async findAll(): Promise<Notification[]> {
         return await this.notificationRepository.find();
@@ -38,5 +55,9 @@ export class NotificationService {
         return {
             message: 'All notifications marked as read',
         };
+    }
+
+    async countUnreadByUserId(userId: number): Promise<number> {
+        return await this.notificationRepository.count({ where: { targetUserId: userId, read: false } });
     }
 }
