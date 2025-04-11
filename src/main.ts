@@ -7,7 +7,7 @@ async function bootstrap() {
     dotenv.config();
 
     const app = await NestFactory.create(AppModule, { cors: true });
-    app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(new ValidationPipe({whitelist: true, forbidNonWhitelisted: true}));
 
     await app.listen(4443);
 }

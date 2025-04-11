@@ -5,6 +5,7 @@ import { User } from '../../user/entities/user.entity';
 export enum NotificationType {
     Open = 'Abertura',
     Comment = 'Comentário',
+    StatusUpdated = 'Atualização de Status',
 }
 
 @Entity()

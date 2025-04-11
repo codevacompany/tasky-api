@@ -1,6 +1,5 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
-import { CreateNotificationDto } from './dtos/create-notification.dto';
-import { UpdateNotificationDto } from './dtos/update-notification.dto';
+import { Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { NotificationService } from './notification.service';
 
 @Controller('notifications')
@@ -8,26 +7,15 @@ export class NotificationController {
     constructor(private readonly notificationService: NotificationService) {}
 
     @Get()
+    @UseGuards(AuthGuard('jwt'))
     async findAll() {
         return this.notificationService.findAll();
     }
 
     @Get('target-user/:id')
+    @UseGuards(AuthGuard('jwt'))
     async findByTargetUser(@Param('id', ParseIntPipe) id: number) {
         return this.notificationService.findBy({ targetUserId: id });
-    }
-
-    @Post()
-    async create(@Body() createNotificationDto: CreateNotificationDto) {
-        return this.notificationService.create(createNotificationDto);
-    }
-
-    @Patch(':id')
-    async update(
-        @Param('id', ParseIntPipe) id: number,
-        @Body() updateNotificationDto: UpdateNotificationDto,
-    ) {
-        return this.notificationService.update(id, updateNotificationDto);
     }
 
     @Post('mark-as-read')

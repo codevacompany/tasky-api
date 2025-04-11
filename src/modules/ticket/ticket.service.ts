@@ -4,7 +4,8 @@ import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { UserRepository } from '../user/user.repository';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
-import { UpdateTicketDto } from './dtos/update-department.dto';
+import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
+import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketRepository } from './ticket.repository';
 
@@ -64,7 +65,7 @@ export class TicketService {
 
         await this.notificationRepository.save({
             type: NotificationType.Open,
-            message: `Novo ticket criado por ${requester.firstName} ${requester.lastName}`,
+            message: `Novo ticket criado por ${requester.firstName} ${requester.lastName}.`,
             targetUserId: ticket.targetUserId,
             resourceId: ticketResponse.id,
         });
@@ -79,11 +80,71 @@ export class TicketService {
         };
     }
 
+    async updateStatus(id: number, ticket: UpdateTicketStatusDto) {
+        await this.ticketRepository.update(id, ticket);
+
+        const { targetUser, requester, ...ticketResponse } = await this.findById(id);
+
+        if (ticket.status === TicketStatus.AwaitingVerification) {
+            await this.notificationRepository.save({
+                type: NotificationType.StatusUpdated,
+                message: `${targetUser.firstName} ${targetUser.lastName} enviou o ticket #${ticketResponse.id} para verificação.`,
+                targetUserId: requester.id,
+                resourceId: ticketResponse.id,
+            });
+        } else if (ticket.status === TicketStatus.Returned) {
+            await this.notificationRepository.save({
+                type: NotificationType.StatusUpdated,
+                message: `${requester.firstName} ${requester.lastName} solicitou uma correção no ticket #${ticketResponse.id}.`,
+                targetUserId: targetUser.id,
+                resourceId: ticketResponse.id,
+            });
+        }
+        
+        return {
+            message: 'Successfully updated!',
+            ticketId: id,
+        };
+    }
+
     async accept(id: number) {
-        await this.ticketRepository.update(id, {status: TicketStatus.InProgress, acceptanceDate: new Date().toISOString()});
+        await this.ticketRepository.update(id, {
+            status: TicketStatus.InProgress,
+            acceptedAt: new Date().toISOString(),
+        });
+
+        const { targetUser, requester, ...ticketResponse } = await this.findById(id);
+
+        await this.notificationRepository.save({
+            type: NotificationType.StatusUpdated,
+            message: `${targetUser.firstName} ${targetUser.lastName} aceitou o ticket #${ticketResponse.id}.`,
+            targetUserId: requester.id,
+            resourceId: ticketResponse.id,
+        });
 
         return {
             message: 'Ticket accepted!',
+            ticketId: id,
+        };
+    }
+
+    async approve(id: number) {
+        await this.ticketRepository.update(id, {
+            status: TicketStatus.Completed,
+            completedAt: new Date().toISOString(),
+        });
+
+        const { targetUser, requester, ...ticketResponse } = await this.findById(id);
+
+        await this.notificationRepository.save({
+            type: NotificationType.StatusUpdated,
+            message: `${requester.firstName} ${requester.lastName} aprovou o ticket #${ticketResponse.id}.`,
+            targetUserId: targetUser.id,
+            resourceId: ticketResponse.id,
+        });
+
+        return {
+            message: 'Ticket approved!',
             ticketId: id,
         };
     }

@@ -1,6 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { CreateNotificationDto } from './dtos/create-notification.dto';
-import { UpdateNotificationDto } from './dtos/update-notification.dto';
 import { Notification } from './entities/notification.entity';
 import { NotificationRepository } from './notification.repository';
 
@@ -17,19 +15,6 @@ export class NotificationService {
             where,
             relations: ['createdBy', 'targetUser'],
         });
-    }
-
-    async create(notification: CreateNotificationDto) {
-        await this.notificationRepository.save(notification);
-    }
-
-    async update(id: number, notification: UpdateNotificationDto) {
-        await this.notificationRepository.update(id, notification);
-
-        return {
-            message: 'Successfully updated!',
-            notificationId: id,
-        };
     }
 
     async markAsRead(id: number): Promise<{ message: string }> {

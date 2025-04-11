@@ -69,7 +69,7 @@ export class TicketCommentService {
             notifications.push(
                 this.notificationRepository.save({
                     type: NotificationType.Comment,
-                    message: `Novo comentário de ${user.firstName} ${user.lastName}`,
+                    message: `${user.firstName} ${user.lastName} comentou no ticket #${commentWithTicket.ticketId}`,
                     targetUserId: commentWithTicket.ticket.targetUserId,
                     resourceId: commentWithTicket.ticketId,
                 }),

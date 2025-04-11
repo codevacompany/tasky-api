@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dtos/create-category.dto';
 import { UpdateCategoryDto } from './dtos/update-category.dto';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('categories')
 export class CategoryController {
@@ -23,6 +24,7 @@ export class CategoryController {
     }
 
     @Patch(':id')
+    @UseGuards(AuthGuard('jwt'))
     async update(
         @Param('id', ParseIntPipe) id: number,
         @Body() updateCategoryDto: UpdateCategoryDto,

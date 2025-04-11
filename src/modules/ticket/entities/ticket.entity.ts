@@ -15,7 +15,7 @@ export enum TicketStatus {
     Pending = 'Pendente',
     InProgress = 'Em andamento',
     AwaitingVerification = 'Aguardando verificação',
-    Overdue = 'Atrasado',
+    UnderVerification = 'Em verificação',
     Completed = 'Finalizado',
     Returned = 'Devolvido',
     Rejected = 'Reprovado',
@@ -65,12 +65,15 @@ export class Ticket extends IdTimestampBaseEntity {
     status: string;
 
     @Column('timestamp', { nullable: true })
-    completionDate: Date | null;
+    acceptedAt: Date | null;
 
     @Column('timestamp', { nullable: true })
-    acceptanceDate: Date | null;
+    dueAt: Date | null;
 
-    @Column()
+    @Column('timestamp', { nullable: true })
+    completedAt: Date | null;
+
+    @Column({ nullable: true })
     categoryId: number;
 
     @ManyToOne(() => Category, (category) => category.tickets)
@@ -79,6 +82,9 @@ export class Ticket extends IdTimestampBaseEntity {
 
     @OneToMany(() => TicketComment, (ticketcomment) => ticketcomment.ticket)
     comments: TicketComment[];
+
+    @Column({ default: false })
+    isPrivate: boolean;
 
     // @Column('text', { nullable: true })
     // disapprovalReason: string;
