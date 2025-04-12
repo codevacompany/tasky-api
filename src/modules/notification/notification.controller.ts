@@ -1,6 +1,5 @@
-import { Controller, Get, Param, ParseIntPipe, Post, Sse, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Observable } from 'rxjs';
 import { NotificationService } from './notification.service';
 
 @Controller('notifications')
@@ -35,8 +34,8 @@ export class NotificationController {
         return { count: await this.notificationService.countUnreadByUserId(userId) };
     }
 
-    @Sse('stream/:userId')
-    stream(@Param('userId', ParseIntPipe) userId: number): Observable<MessageEvent> {
-        return this.notificationService.getNotificationStream(userId);
-    }
+    // @Sse('stream/:userId')
+    // stream(@Param('userId', ParseIntPipe) userId: number): Observable<MessageEvent> {
+    //     return this.notificationService.getNotificationStream(userId);
+    // }
 }
