@@ -1,9 +1,20 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Param,
+    ParseIntPipe,
+    Patch,
+    Post,
+    Query,
+    UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
+import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { TicketService } from './ticket.service';
-import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
-import { AuthGuard } from '@nestjs/passport';
 
 @Controller('tickets')
 export class TicketController {
@@ -29,20 +40,20 @@ export class TicketController {
 
     @Get('department/:departmentId')
     @UseGuards(AuthGuard('jwt'))
-    findByDepartment(@Param('departmentId', ParseIntPipe) departmentId: number) {
-        return this.ticketService.findBy({ departmentId: departmentId });
+    findByDepartment(@Param('departmentId', ParseIntPipe) departmentId: number, @Query('name') name?: string) {
+        return this.ticketService.findBy({ departmentId, name });
     }
 
     @Get('requester/:requesterId')
     @UseGuards(AuthGuard('jwt'))
-    findByRequester(@Param('requesterId', ParseIntPipe) requesterId: number) {
-        return this.ticketService.findBy({ requesterId: requesterId });
+    findByRequester(@Param('requesterId', ParseIntPipe) requesterId: number, @Query('name') name?: string) {
+        return this.ticketService.findBy({ requesterId, name });
     }
 
     @Get('target-user/:userId')
     @UseGuards(AuthGuard('jwt'))
-    findByTargetUser(@Param('userId', ParseIntPipe) userId: number) {
-        return this.ticketService.findBy({ targetUserId: userId });
+    findByTargetUser(@Param('userId', ParseIntPipe) userId: number, @Query('name') name?: string) {
+        return this.ticketService.findBy({ targetUserId: userId, name });
     }
 
     @Patch(':id')
@@ -57,7 +68,7 @@ export class TicketController {
         @Param('id', ParseIntPipe) id: number,
         @Body() updateTicketStatusDto: UpdateTicketStatusDto,
     ) {
-         this.ticketService.updateStatus(id, updateTicketStatusDto);
+        this.ticketService.updateStatus(id, updateTicketStatusDto);
     }
 
     @Post(':id/accept')
