@@ -1,4 +1,5 @@
 import {
+    IsBoolean,
     IsDateString,
     IsEnum,
     IsInt,
@@ -31,12 +32,12 @@ export class UpdateTicketDto {
 
     @IsOptional()
     @IsDateString()
-    completionDate?: string | null;
+    dueAt?: string | null;
 
-    @IsOptional()
-    @IsNotEmpty()
-    @IsString()
-    disapprovalReason?: string;
+    // @IsOptional()
+    // @IsNotEmpty()
+    // @IsString()
+    // disapprovalReason?: string;
 
     @IsOptional()
     @IsInt()
@@ -49,4 +50,8 @@ export class UpdateTicketDto {
     @IsOptional()
     @IsInt()
     categoryId?: number;
+
+    @IsOptional()
+    @IsBoolean()
+    isPrivate?: boolean;
 }
