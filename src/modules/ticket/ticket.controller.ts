@@ -15,6 +15,7 @@ import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { TicketService } from './ticket.service';
+import { TicketPriority } from './entities/ticket.entity';
 
 @Controller('tickets')
 export class TicketController {
@@ -40,20 +41,35 @@ export class TicketController {
 
     @Get('department/:departmentId')
     @UseGuards(AuthGuard('jwt'))
-    findByDepartment(@Param('departmentId', ParseIntPipe) departmentId: number, @Query('name') name?: string) {
-        return this.ticketService.findBy({ departmentId, name, isPrivate: false });
+    findByDepartment(
+        @Param('departmentId', ParseIntPipe) departmentId: number,
+        @Query('name') name?: string,
+        @Query('status') status?: string,
+        @Query('priority') priority?: TicketPriority,
+    ) {
+        return this.ticketService.findBy({ departmentId, name, status, priority, isPrivate: false });
     }
 
     @Get('requester/:requesterId')
     @UseGuards(AuthGuard('jwt'))
-    findByRequester(@Param('requesterId', ParseIntPipe) requesterId: number, @Query('name') name?: string) {
-        return this.ticketService.findBy({ requesterId, name });
+    findByRequester(
+        @Param('requesterId', ParseIntPipe) requesterId: number,
+        @Query('name') name?: string,
+        @Query('status') status?: string,
+        @Query('priority') priority?: TicketPriority,
+    ) {
+        return this.ticketService.findBy({ requesterId, name, status, priority });
     }
 
     @Get('target-user/:userId')
     @UseGuards(AuthGuard('jwt'))
-    findByTargetUser(@Param('userId', ParseIntPipe) userId: number, @Query('name') name?: string) {
-        return this.ticketService.findBy({ targetUserId: userId, name });
+    findByTargetUser(
+        @Param('userId', ParseIntPipe) userId: number,
+        @Query('name') name?: string,
+        @Query('status') status?: string,
+        @Query('priority') priority?: TicketPriority,
+    ) {
+        return this.ticketService.findBy({ targetUserId: userId, name, status, priority });
     }
 
     @Patch(':id')
