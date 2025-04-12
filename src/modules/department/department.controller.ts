@@ -13,6 +13,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { DepartmentService } from './department.service';
 import { CreateDepartmentDto } from './dtos/create-department.dto';
 import { UpdateDepartmentDto } from './dtos/update-department.dto';
+import { GetQueryOptions } from '../../shared/decorators/get-query-options';
+import { QueryOptions } from '../../shared/types/http';
 
 @Controller('departments')
 export class DepartmentController {
@@ -20,8 +22,8 @@ export class DepartmentController {
 
     @Get()
     @UseGuards(AuthGuard('jwt'))
-    async findAll(@Query('name') name?: string) {
-        return this.departmentService.findAll({ name });
+    async findAll(@GetQueryOptions() options: QueryOptions, @Query('name') name?: string) {
+        return this.departmentService.findAll({ name }, options);
     }
 
     @Get(':name')

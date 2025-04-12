@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ILike } from 'typeorm';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
+import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dtos/create-department.dto';
 import { UpdateDepartmentDto } from './dtos/update-department.dto';
@@ -10,10 +11,25 @@ import { Department } from './entities/department.entity';
 export class DepartmentService {
     constructor(private departmentRepository: DepartmentRepository) {}
 
-    async findAll(where?: { name: string }): Promise<Department[]> {
+    async findAll(
+        where?: { name: string },
+        options?: QueryOptions,
+    ): Promise<PaginatedResponse<Department>> {
         const query = this.buildQuery(where);
 
-        return await this.departmentRepository.find({ where: query.where });
+        const [items, total] = await this.departmentRepository.findAndCount({
+            where: query.where,
+            skip: (options.page - 1) * options.limit,
+            take: options.limit,
+        });
+
+        return {
+            items,
+            total,
+            page: options.page,
+            limit: options.limit,
+            totalPages: Math.ceil(total / options.limit),
+        };
     }
 
     async findByName(name: string): Promise<Department> {
