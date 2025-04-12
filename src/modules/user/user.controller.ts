@@ -13,6 +13,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { UserService } from './user.service';
+import { GetQueryOptions } from '../../shared/decorators/get-query-options';
+import { QueryOptions } from '../../shared/types/http';
 
 @Controller('users')
 export class UserController {
@@ -20,8 +22,8 @@ export class UserController {
 
     @Get()
     @UseGuards(AuthGuard('jwt'))
-    async findAll(@Query('name') name?: string) {
-        return this.userService.findAll({ name });
+    async findAll(@GetQueryOptions() options: QueryOptions, @Query('name') name?: string) {
+        return this.userService.findAll({ name }, options);
     }
 
     @Get(':email')

@@ -37,8 +37,8 @@ export class TicketService {
     }
 
     async findBy(
-        where: Partial<Ticket>,
-        options: QueryOptions,
+        where?: Partial<Ticket>,
+        options?: QueryOptions,
       ): Promise<PaginatedResponse<Ticket>> {
         const query = this.buildQuery(where);
 
