@@ -105,39 +105,39 @@ export class TicketService {
     async updateStatus(id: number, ticket: UpdateTicketStatusDto) {
         await this.ticketRepository.update(id, ticket);
 
-        const { targetUser, requester, ...ticketResponse } = await this.findById(id);
+        const ticketResponse = await this.findById(id);
 
         if (ticket.status === TicketStatus.AwaitingVerification) {
             await this.notificationRepository.save({
                 type: NotificationType.StatusUpdated,
-                message: `${targetUser.firstName} ${targetUser.lastName} enviou o ticket #${ticketResponse.id} para verificação.`,
-                targetUserId: requester.id,
+                message: `${ticketResponse.targetUser.firstName} ${ticketResponse.targetUser.lastName} enviou o ticket #${ticketResponse.id} para verificação.`,
+                targetUserId: ticketResponse.requester.id,
                 resourceId: ticketResponse.id,
             });
 
-            this.notificationService.sendNotification(requester.id, {
+            this.notificationService.sendNotification(ticketResponse.requester.id, {
                 type: NotificationType.StatusUpdated,
-                message: `${targetUser.firstName} ${targetUser.lastName} enviou o ticket #${ticketResponse.id} para verificação.`,
+                message: `${ticketResponse.targetUser.firstName} ${ticketResponse.targetUser.lastName} enviou o ticket #${ticketResponse.id} para verificação.`,
                 resourceId: ticketResponse.id,
             });
         } else if (ticket.status === TicketStatus.Returned) {
             await this.notificationRepository.save({
                 type: NotificationType.StatusUpdated,
-                message: `${requester.firstName} ${requester.lastName} solicitou uma correção no ticket #${ticketResponse.id}.`,
-                targetUserId: targetUser.id,
+                message: `${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName} solicitou uma correção no ticket #${ticketResponse.id}.`,
+                targetUserId: ticketResponse.targetUser.id,
                 resourceId: ticketResponse.id,
             });
 
-            this.notificationService.sendNotification(targetUser.id, {
+            this.notificationService.sendNotification(ticketResponse.targetUser.id, {
                 type: NotificationType.StatusUpdated,
-                message: `${requester.firstName} ${requester.lastName} solicitou uma correção no ticket #${ticketResponse.id}.`,
+                message: `${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName} solicitou uma correção no ticket #${ticketResponse.id}.`,
                 resourceId: ticketResponse.id,
             });
         }
 
         return {
             message: 'Successfully updated!',
-            ticketId: id,
+            ticketData: ticketResponse,
         };
     }
 

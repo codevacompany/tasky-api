@@ -68,7 +68,7 @@ export class TicketController {
         @Param('id', ParseIntPipe) id: number,
         @Body() updateTicketStatusDto: UpdateTicketStatusDto,
     ) {
-        this.ticketService.updateStatus(id, updateTicketStatusDto);
+        return this.ticketService.updateStatus(id, updateTicketStatusDto);
     }
 
     @Post(':id/accept')
