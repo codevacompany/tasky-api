@@ -57,7 +57,7 @@ export class AuthService {
         return { token, user };
     }
 
-    refreshToken(refreshToken: string) {
+    async refreshToken(refreshToken: string) {
         const { sub: accessToken } = this.tokenService.verify(refreshToken) as JwtPayload;
 
         if (!accessToken) {
@@ -82,6 +82,15 @@ export class AuthService {
             throw new CustomForbiddenException({
                 code: 'invalid-refresh-token',
                 message: 'Invalid refresh token',
+            });
+        }
+
+        const user = await this.userService.findById(userId);
+
+        if(!user) {
+            throw new CustomForbiddenException({
+                code: 'invalid-user',
+                message: 'Invalid user',
             });
         }
 

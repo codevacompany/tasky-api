@@ -31,6 +31,15 @@ export class UserService {
         });
     }
 
+    async findById(userId: number): Promise<User> {
+        return await this.userRepository.findOne({
+            where: {
+                id: userId,
+            },
+            relations: ['department'],
+        });
+    }
+
     async findBy(where: Partial<User>): Promise<User[]> {
         return await this.userRepository.find({ where, relations: ['department'] });
     }
