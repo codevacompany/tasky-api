@@ -9,6 +9,7 @@ import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketRepository } from './ticket.repository';
+import { ILike } from 'typeorm';
 
 @Injectable()
 export class TicketService {
@@ -35,11 +36,23 @@ export class TicketService {
     }
 
     async findBy(where: Partial<Ticket>): Promise<Ticket[]> {
+        const query = this.buildQuery(where);
+
         return await this.ticketRepository.find({
-            where,
+            where: query.where,
             relations: ['requester', 'targetUser', 'department'],
             order: { createdAt: 'DESC' },
         });
+    }
+
+    private buildQuery(where: Partial<Ticket>) {
+        const queryWhere: any = { ...where };
+
+        if (where.name) {
+            queryWhere.name = ILike(`%${where.name}%`);
+        }
+
+        return { where: queryWhere };
     }
 
     async create(ticket: CreateTicketDto) {
