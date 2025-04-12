@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ILike } from 'typeorm';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
@@ -9,7 +10,7 @@ import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketRepository } from './ticket.repository';
-import { ILike } from 'typeorm';
+import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 
 @Injectable()
 export class TicketService {
@@ -35,15 +36,28 @@ export class TicketService {
         });
     }
 
-    async findBy(where: Partial<Ticket>): Promise<Ticket[]> {
+    async findBy(
+        where?: Partial<Ticket>,
+        options?: QueryOptions,
+      ): Promise<PaginatedResponse<Ticket>> {
         const query = this.buildQuery(where);
 
-        return await this.ticketRepository.find({
-            where: query.where,
-            relations: ['requester', 'targetUser', 'department'],
-            order: { createdAt: 'DESC' },
+        const [items, total] = await this.ticketRepository.findAndCount({
+          where: query.where,
+          relations: ['requester', 'targetUser', 'department'],
+          order: { createdAt: 'DESC' },
+          skip: (options.page - 1) * options.limit,
+          take: options.limit,
         });
-    }
+
+        return {
+          items,
+          total,
+          page: options.page,
+          limit: options.limit,
+          totalPages: Math.ceil(total / options.limit),
+        };
+      }
 
     private buildQuery(where: Partial<Ticket>) {
         const queryWhere: any = { ...where };

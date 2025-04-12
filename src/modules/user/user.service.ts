@@ -3,6 +3,7 @@ import { ILike } from 'typeorm';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
+import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { AuthService } from '../auth/auth.service';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { UpdateUserDto } from './dtos/update-user.dto';
@@ -19,10 +20,26 @@ export class UserService {
         private emailService: EmailService,
     ) {}
 
-    async findAll(where?: { name: string }): Promise<User[]> {
+    async findAll(
+        where?: { name: string },
+        options?: QueryOptions,
+    ): Promise<PaginatedResponse<User>> {
         const query = this.buildQuery(where);
 
-        return await this.userRepository.find({ where: query.where, relations: ['department'] });
+        const [items, total] = await this.userRepository.findAndCount({
+            where: query.where,
+            relations: ['department'],
+            skip: (options.page - 1) * options.limit,
+            take: options.limit,
+        });
+
+        return {
+            items,
+            total,
+            page: options.page,
+            limit: options.limit,
+            totalPages: Math.ceil(total / options.limit),
+        };
     }
 
     async findByEmail(email: string): Promise<User> {

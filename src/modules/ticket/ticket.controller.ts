@@ -11,11 +11,13 @@ import {
     UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { GetQueryOptions } from '../../shared/decorators/get-query-options';
+import { QueryOptions } from '../../shared/types/http';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
-import { TicketService } from './ticket.service';
 import { TicketPriority } from './entities/ticket.entity';
+import { TicketService } from './ticket.service';
 
 @Controller('tickets')
 export class TicketController {
@@ -43,33 +45,45 @@ export class TicketController {
     @UseGuards(AuthGuard('jwt'))
     findByDepartment(
         @Param('departmentId', ParseIntPipe) departmentId: number,
+        @GetQueryOptions() options: QueryOptions,
         @Query('name') name?: string,
         @Query('status') status?: string,
         @Query('priority') priority?: TicketPriority,
     ) {
-        return this.ticketService.findBy({ departmentId, name, status, priority, isPrivate: false });
+        return this.ticketService.findBy(
+            {
+                departmentId,
+                name,
+                status,
+                priority,
+                isPrivate: false,
+            },
+            options,
+        );
     }
 
     @Get('requester/:requesterId')
     @UseGuards(AuthGuard('jwt'))
     findByRequester(
         @Param('requesterId', ParseIntPipe) requesterId: number,
+        @GetQueryOptions() options: QueryOptions,
         @Query('name') name?: string,
         @Query('status') status?: string,
         @Query('priority') priority?: TicketPriority,
     ) {
-        return this.ticketService.findBy({ requesterId, name, status, priority });
+        return this.ticketService.findBy({ requesterId, name, status, priority }, options);
     }
 
     @Get('target-user/:userId')
     @UseGuards(AuthGuard('jwt'))
     findByTargetUser(
         @Param('userId', ParseIntPipe) userId: number,
+        @GetQueryOptions() options: QueryOptions,
         @Query('name') name?: string,
         @Query('status') status?: string,
         @Query('priority') priority?: TicketPriority,
     ) {
-        return this.ticketService.findBy({ targetUserId: userId, name, status, priority });
+        return this.ticketService.findBy({ targetUserId: userId, name, status, priority }, options);
     }
 
     @Patch(':id')

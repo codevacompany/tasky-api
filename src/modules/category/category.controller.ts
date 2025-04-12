@@ -3,14 +3,16 @@ import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dtos/create-category.dto';
 import { UpdateCategoryDto } from './dtos/update-category.dto';
 import { AuthGuard } from '@nestjs/passport';
+import { GetQueryOptions } from '../../shared/decorators/get-query-options';
+import { QueryOptions } from '../../shared/types/http';
 
 @Controller('categories')
 export class CategoryController {
     constructor(private readonly categoryService: CategoryService) {}
 
     @Get()
-    async findAll(@Query('name') name?: string) {
-        return this.categoryService.findAll({ name });
+    async findAll(@GetQueryOptions() options: QueryOptions, @Query('name') name?: string) {
+        return this.categoryService.findAll({ name }, options);
     }
 
     @Get(':name')

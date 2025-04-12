@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ILike } from 'typeorm';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
+import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { CategoryRepository } from './category.repository';
 import { CreateCategoryDto } from './dtos/create-category.dto';
 import { UpdateCategoryDto } from './dtos/update-category.dto';
@@ -10,10 +11,25 @@ import { Category } from './entities/category.entity';
 export class CategoryService {
     constructor(private categoryRepository: CategoryRepository) {}
 
-    async findAll(where?: { name: string }): Promise<Category[]> {
+    async findAll(
+        where?: { name: string },
+        options?: QueryOptions,
+    ): Promise<PaginatedResponse<Category>> {
         const query = this.buildQuery(where);
 
-        return await this.categoryRepository.find({ where: query.where });
+        const [items, total] = await this.categoryRepository.findAndCount({
+            where: query.where,
+            skip: (options.page - 1) * options.limit,
+            take: options.limit,
+        });
+
+        return {
+            items,
+            total,
+            page: options.page,
+            limit: options.limit,
+            totalPages: Math.ceil(total / options.limit),
+        };
     }
 
     async findByName(name: string): Promise<Category> {
