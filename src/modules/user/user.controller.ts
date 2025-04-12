@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Get,
+    Param,
+    ParseIntPipe,
+    Patch,
+    Post,
+    Query,
+    UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { UserService } from './user.service';
-import { AuthGuard } from '@nestjs/passport';
 
 @Controller('users')
 export class UserController {
@@ -10,8 +20,8 @@ export class UserController {
 
     @Get()
     @UseGuards(AuthGuard('jwt'))
-    async findAll() {
-        return this.userService.findAll();
+    async findAll(@Query('name') name?: string) {
+        return this.userService.findAll({ name });
     }
 
     @Get(':email')

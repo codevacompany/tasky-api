@@ -1,4 +1,5 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { ILike } from 'typeorm';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
@@ -18,8 +19,10 @@ export class UserService {
         private emailService: EmailService,
     ) {}
 
-    async findAll(): Promise<User[]> {
-        return await this.userRepository.find({ relations: ['department'] });
+    async findAll(where?: { name: string }): Promise<User[]> {
+        const query = this.buildQuery(where);
+
+        return await this.userRepository.find({ where: query.where, relations: ['department'] });
     }
 
     async findByEmail(email: string): Promise<User> {
@@ -42,6 +45,19 @@ export class UserService {
 
     async findBy(where: Partial<User>): Promise<User[]> {
         return await this.userRepository.find({ where, relations: ['department'] });
+    }
+
+    private buildQuery(where: { name: string }) {
+        if (!where.name) {
+            return { where: {} };
+        }
+
+        return {
+            where: [
+                { firstName: ILike(`%${where.name}%`) },
+                { lastName: ILike(`%${where.name}%`) },
+            ],
+        };
     }
 
     async create(user: CreateUserDto) {

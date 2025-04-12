@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Get,
+    Param,
+    ParseIntPipe,
+    Patch,
+    Post,
+    Query,
+    UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { DepartmentService } from './department.service';
 import { CreateDepartmentDto } from './dtos/create-department.dto';
 import { UpdateDepartmentDto } from './dtos/update-department.dto';
-import { AuthGuard } from '@nestjs/passport';
 
 @Controller('departments')
 export class DepartmentController {
@@ -10,8 +20,8 @@ export class DepartmentController {
 
     @Get()
     @UseGuards(AuthGuard('jwt'))
-    async findAll() {
-        return this.departmentService.findAll();
+    async findAll(@Query('name') name?: string) {
+        return this.departmentService.findAll({ name });
     }
 
     @Get(':name')

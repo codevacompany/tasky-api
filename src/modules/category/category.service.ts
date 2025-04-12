@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ILike } from 'typeorm';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { CategoryRepository } from './category.repository';
 import { CreateCategoryDto } from './dtos/create-category.dto';
@@ -9,8 +10,10 @@ import { Category } from './entities/category.entity';
 export class CategoryService {
     constructor(private categoryRepository: CategoryRepository) {}
 
-    async findAll(): Promise<Category[]> {
-        return await this.categoryRepository.find();
+    async findAll(where?: { name: string }): Promise<Category[]> {
+        const query = this.buildQuery(where);
+
+        return await this.categoryRepository.find({ where: query.where });
     }
 
     async findByName(name: string): Promise<Category> {
@@ -47,5 +50,15 @@ export class CategoryService {
             message: 'Successfully updated!',
             categoryId: id,
         };
+    }
+
+    private buildQuery(where: { name: string }) {
+        const queryWhere: any = { ...where };
+
+        if (where.name) {
+            queryWhere.name = ILike(`%${where.name}%`);
+        }
+
+        return { where: queryWhere };
     }
 }
