@@ -41,7 +41,7 @@ export class TicketController {
     @Get('department/:departmentId')
     @UseGuards(AuthGuard('jwt'))
     findByDepartment(@Param('departmentId', ParseIntPipe) departmentId: number, @Query('name') name?: string) {
-        return this.ticketService.findBy({ departmentId, name });
+        return this.ticketService.findBy({ departmentId, name, isPrivate: false });
     }
 
     @Get('requester/:requesterId')
