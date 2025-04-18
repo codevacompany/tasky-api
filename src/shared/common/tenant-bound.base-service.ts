@@ -15,6 +15,7 @@ export abstract class TenantBoundBaseService<T extends TenantBoundBaseEntity> {
             ...options,
             skip: (options.page - 1) * options.limit,
             take: options.limit,
+            order: { createdAt: 'DESC' } as any,
         });
 
         return {

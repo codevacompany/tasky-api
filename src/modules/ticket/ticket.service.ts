@@ -48,6 +48,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         return this.findOne(user, {
             where: { customId },
             relations: ['requester', 'targetUser', 'department'],
+            order: { createdAt: 'DESC' } as any,
         });
     }
 
@@ -56,6 +57,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             ...options,
             where: this.buildQueryWhere(options.where),
             relations: ['requester', 'targetUser', 'department'],
+            order: { createdAt: 'DESC' } as any,
         };
 
         return super.findMany(user, queryOptions);
