@@ -72,8 +72,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     }
 
     async create(user: User, ticketDto: CreateTicketDto) {
-        ticketDto.name = ticketDto.name.toLowerCase();
-
         const requester = await this.userRepository.findOne({
             where: { id: ticketDto.requesterId, tenantId: user.tenantId },
         });
@@ -95,7 +93,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 .setLock('pessimistic_write')
                 .getOne();
 
-            // Get tenant
             const tenant = await this.tenantRepository.findOne({
                 where: { id: user.tenantId },
             });
