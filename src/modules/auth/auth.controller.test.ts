@@ -9,6 +9,7 @@ import { AuthModule } from '../auth/auth.module';
 import { User } from '../user/entities/user.entity';
 import { VerificationCodeModule } from '../verification-code/verification-code.module';
 import { VerificationCodeService } from '../verification-code/verification-code.service';
+import { Tenant } from '../tenant/entities/tenant.entity';
 
 describe('AuthController', () => {
     let app: INestApplication;
@@ -21,6 +22,8 @@ describe('AuthController', () => {
         email: 'teste@gmail.com',
         birthday: '25/12/1995',
     };
+
+    let tenantId;
 
     const cleanDatabase = async () => {
         const queryRunner = dataSource.createQueryRunner();
@@ -44,8 +47,15 @@ describe('AuthController', () => {
         try {
             const hashedPassword = await hash(testUser.password, 10);
 
+            const tenant =await queryRunner.manager.save(Tenant, {
+                name: 'Codeva'
+            });
+
+            tenantId = tenant.id;
+
             await queryRunner.manager.save(User, {
                 ...testUser,
+                tenantId: tenant.id,
                 password: hashedPassword,
             });
 
@@ -270,7 +280,7 @@ describe('AuthController', () => {
             .expect(HttpStatus.CREATED)
             .then(async () => {
                 const verificationCode = await verificationCodeService.generate();
-                await verificationCodeService.insert(verificationCode, testUser.email);
+                await verificationCodeService.insert(verificationCode, testUser.email, tenantId);
 
                 await request(app.getHttpServer())
                     .post('/auth/reset-password/validate')
@@ -291,7 +301,7 @@ describe('AuthController', () => {
             .expect(HttpStatus.CREATED)
             .then(async () => {
                 const verificationCode = await verificationCodeService.generate();
-                await verificationCodeService.insert(verificationCode, testUser.email);
+                await verificationCodeService.insert(verificationCode, testUser.email, tenantId);
 
                 await request(app.getHttpServer())
                     .post('/auth/reset-password/validate')
@@ -312,7 +322,7 @@ describe('AuthController', () => {
             .expect(HttpStatus.CREATED)
             .then(async () => {
                 const verificationCode = await verificationCodeService.generate();
-                await verificationCodeService.insert(verificationCode, testUser.email);
+                await verificationCodeService.insert(verificationCode, testUser.email, tenantId);
 
                 await request(app.getHttpServer())
                     .post('/auth/reset-password/validate')

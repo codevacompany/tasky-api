@@ -47,7 +47,7 @@ export class AuthService {
 
         const tokenSub: Record<string, unknown> = {
             userId: user.id,
-            email: user.email,
+            tenantId: user.tenantId,
         };
 
         const token = this.tokenService.createPair(tokenSub);
@@ -111,7 +111,7 @@ export class AuthService {
         if (process.env.NODE_ENV !== 'test') {
             await this.emailService.sendVerificationCode(user, verificationCode);
         }
-        await this.verificationCodeService.insert(verificationCode, email);
+        await this.verificationCodeService.insert(verificationCode, email, user.tenantId);
 
         return { message: `Verification code sent to ${email}` };
     }
@@ -149,22 +149,22 @@ export class AuthService {
         };
     }
 
-    async resetPassword(bearerToken: string, password: string) {
-        const token = bearerToken.split(' ')[1];
+    // async resetPassword(bearerToken: string, password: string) {
+    //     const token = bearerToken.split(' ')[1];
 
-        const { sub } = this.tokenService.decode(token);
+    //     const { sub } = this.tokenService.decode(token);
 
-        const validCode = await this.verificationCodeService.validate(sub.code, sub.email);
+    //     const validCode = await this.verificationCodeService.validate(sub.code, sub.email);
 
-        if (!validCode.valid) {
-            throw new CustomUnauthorizedException({
-                code: 'invalid-token',
-                message: 'This token is invalid or has already been used',
-            });
-        }
+    //     if (!validCode.valid) {
+    //         throw new CustomUnauthorizedException({
+    //             code: 'invalid-token',
+    //             message: 'This token is invalid or has already been used',
+    //         });
+    //     }
 
-        await this.verificationCodeService.delete(validCode.id);
+    //     await this.verificationCodeService.delete(validCode.id);
 
-        return this.userService.update(sub.userId, { password });
-    }
+    //     return this.userService.update(sub.userId, { password });
+    // }
 }

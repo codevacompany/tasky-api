@@ -10,6 +10,9 @@ import { TicketCommentModule } from './modules/ticket-comment/ticket-comment.mod
 import { TicketModule } from './modules/ticket/ticket.module';
 import { UserModule } from './modules/user/user.module';
 import { VerificationCodeModule } from './modules/verification-code/verification-code.module';
+import { TicketUpdateModule } from './modules/ticket-updates/ticket-update.module';
+import { TenantModule } from './modules/tenant/tenant.module';
+import { RoleModule } from './modules/role/role.module';
 
 @Module({
     imports: [
@@ -25,6 +28,9 @@ import { VerificationCodeModule } from './modules/verification-code/verification
         NotificationModule,
         TicketModule,
         TicketCommentModule,
+        TicketUpdateModule,
+        TenantModule,
+        RoleModule,
     ],
     controllers: [],
     providers: [DatabaseSeederService],

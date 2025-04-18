@@ -1,78 +1,59 @@
 import { Injectable } from '@nestjs/common';
 import { ILike } from 'typeorm';
+import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dtos/create-department.dto';
 import { UpdateDepartmentDto } from './dtos/update-department.dto';
 import { Department } from './entities/department.entity';
+import { User } from '../user/entities/user.entity';
 
 @Injectable()
-export class DepartmentService {
-    constructor(private departmentRepository: DepartmentRepository) {}
-
-    async findAll(
-        where?: { name: string },
-        options?: QueryOptions,
-    ): Promise<PaginatedResponse<Department>> {
-        const query = this.buildQuery(where);
-
-        const [items, total] = await this.departmentRepository.findAndCount({
-            where: query.where,
-            skip: (options.page - 1) * options.limit,
-            take: options.limit,
-        });
-
-        return {
-            items,
-            total,
-            page: options.page,
-            limit: options.limit,
-            totalPages: Math.ceil(total / options.limit),
-        };
+export class DepartmentService extends TenantBoundBaseService<Department> {
+    constructor(private departmentRepository: DepartmentRepository) {
+        super(departmentRepository);
     }
 
-    async findByName(name: string): Promise<Department> {
-        return await this.departmentRepository.findOne({
+    async findMany(
+        user: User,
+        options?: QueryOptions<Department>,
+    ): Promise<PaginatedResponse<Department>> {
+        if (options.where?.name) {
+            options.where.name = ILike(`%${options.where.name}%`);
+        }
+
+        return super.findMany(user, options);
+    }
+
+    async findByName(user: User, name: string): Promise<Department> {
+        return this.findOne(user, {
             where: {
                 name,
             },
         });
     }
 
-    async create(department: CreateDepartmentDto) {
-        const departmentExists = await this.departmentRepository.findOne({
-            where: {
-                name: department.name,
-            },
+    async create(user: User, dto: CreateDepartmentDto) {
+        const exists = await this.findOne(user, {
+            where: { name: dto.name },
         });
 
-        if (departmentExists) {
+        if (exists) {
             throw new CustomConflictException({
                 code: 'name-already-registered',
                 message: 'This name is already registered',
             });
         }
 
-        await this.departmentRepository.save(department);
+        return this.save(user, dto);
     }
 
-    async update(id: number, department: UpdateDepartmentDto) {
-        await this.departmentRepository.update(id, department);
-
-        return {
-            message: 'Successfully updated!',
-            departmentId: id,
-        };
+    async update(user: User, id: number, dto: UpdateDepartmentDto) {
+        return super.update(user, id, dto);
     }
 
-    private buildQuery(where: { name: string }) {
-        const queryWhere: any = { ...where };
-
-        if (where.name) {
-            queryWhere.name = ILike(`%${where.name}%`);
-        }
-
-        return { where: queryWhere };
+    async delete(user: User, id: number): Promise<void> {
+        return this.delete(user, id);
     }
 }

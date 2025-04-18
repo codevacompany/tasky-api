@@ -1,80 +1,54 @@
 import { Injectable } from '@nestjs/common';
 import { ILike } from 'typeorm';
+import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
+import { User } from '../user/entities/user.entity';
 import { CategoryRepository } from './category.repository';
 import { CreateCategoryDto } from './dtos/create-category.dto';
 import { UpdateCategoryDto } from './dtos/update-category.dto';
 import { Category } from './entities/category.entity';
 
 @Injectable()
-export class CategoryService {
-    constructor(private categoryRepository: CategoryRepository) {}
-
-    async findAll(
-        where?: { name: string },
-        options?: QueryOptions,
-    ): Promise<PaginatedResponse<Category>> {
-        const query = this.buildQuery(where);
-
-        const [items, total] = await this.categoryRepository.findAndCount({
-            where: query.where,
-            skip: (options.page - 1) * options.limit,
-            take: options.limit,
-        });
-
-        return {
-            items,
-            total,
-            page: options.page,
-            limit: options.limit,
-            totalPages: Math.ceil(total / options.limit),
-        };
+export class CategoryService extends TenantBoundBaseService<Category> {
+    constructor(private categoryRepository: CategoryRepository) {
+        super(categoryRepository);
     }
 
-    async findByName(name: string): Promise<Category> {
-        return await this.categoryRepository.findOne({
+    async findMany(
+        user: User,
+        options?: QueryOptions<Category>,
+    ): Promise<PaginatedResponse<Category>> {
+        if (options.where?.name) {
+            options.where.name = ILike(`%${options.where.name}%`);
+        }
+
+        return super.findMany(user, options);
+    }
+
+    async findByName(user: User,name: string): Promise<Category> {
+        return await this.findOne(user,{
             where: {
                 name,
             },
         });
     }
 
-    async create(category: CreateCategoryDto) {
-        category.name = category.name.toLowerCase();
-
-        const categoryExists = await this.categoryRepository.findOne({
-            where: {
-                name: category.name,
-            },
+    async create(user: User, categoryDto: CreateCategoryDto) {
+        const exists = await this.findOne(user, {
+            where: { name: categoryDto.name },
         });
-
-        if (categoryExists) {
+        if (exists) {
             throw new CustomConflictException({
                 code: 'name-already-registered',
                 message: 'This name is already registered',
             });
         }
 
-        await this.categoryRepository.save(category);
+        return this.save(user, categoryDto);
     }
 
-    async update(id: number, category: UpdateCategoryDto) {
-        await this.categoryRepository.update(id, category);
-
-        return {
-            message: 'Successfully updated!',
-            categoryId: id,
-        };
-    }
-
-    private buildQuery(where: { name: string }) {
-        const queryWhere: any = { ...where };
-
-        if (where.name) {
-            queryWhere.name = ILike(`%${where.name}%`);
-        }
-
-        return { where: queryWhere };
+    async update(user: User, id: number, updateDto: UpdateCategoryDto) {
+        return await super.update(user, id, updateDto);
     }
 }

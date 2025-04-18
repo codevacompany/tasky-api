@@ -13,10 +13,10 @@ export class VerificationCodeService {
         private readonly userService: UserService,
     ) {}
 
-    insert(code: string, email: string) {
+    insert(code: string, email: string, tenantId: number) {
         const expiresAt = DateTime.now().plus({ hours: 1 }).toJSDate().toISOString();
 
-        return this.verificationCodeRepository.save({ code, email, expiresAt });
+        return this.verificationCodeRepository.save({ code, email, expiresAt, tenantId });
     }
 
     async find(code: string, email: string) {
