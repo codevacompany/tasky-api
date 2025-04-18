@@ -8,4 +8,7 @@ export class Tenant extends IdTimestampBaseEntity {
 
     @Column()
     customKey: string;
+
+    @Column({ default: false })
+    isInternal: boolean;
 }

@@ -19,7 +19,7 @@ export class DatabaseSeederService implements OnModuleInit {
     }
 
     async seedTenant() {
-        const newTenant = { name: 'Codeva', customKey: 'CDV' };
+        const newTenant = { name: 'Codeva', customKey: 'CDV', isInternal: true };
 
         const existingTenant = await this.tenantService.findByName(newTenant.name);
 

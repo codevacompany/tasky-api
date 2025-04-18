@@ -97,7 +97,4 @@ export class Ticket extends TenantBoundBaseEntity {
 
     @OneToMany(() => TicketUpdate, (update) => update.ticket)
     updates: TicketUpdate[];
-
-    @Column({ default: false })
-    isInternal: boolean;
 }
