@@ -5,6 +5,10 @@ export class CreateTicketCommentDto {
     @IsNotEmpty()
     ticketId: number;
 
+    @IsString()
+    @IsNotEmpty()
+    ticketCustomId: string;
+
     @IsInt()
     @IsNotEmpty()
     userId: number;

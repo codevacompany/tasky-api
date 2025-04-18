@@ -1,10 +1,11 @@
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
-import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
+import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { Department } from '../../department/entities/department.entity';
 import { Ticket } from '../../ticket/entities/ticket.entity';
+import { Role } from '../../role/entities/role.entity';
 
 @Entity()
-export class User extends IdTimestampBaseEntity {
+export class User extends TenantBoundBaseEntity {
     @Column()
     firstName: string;
 
@@ -16,9 +17,6 @@ export class User extends IdTimestampBaseEntity {
 
     @Column()
     password: string;
-
-    @Column({ default: false })
-    isAdmin: boolean;
 
     @Column({ default: true })
     isActive: boolean;
@@ -35,4 +33,11 @@ export class User extends IdTimestampBaseEntity {
 
     @OneToMany(() => Ticket, (ticket) => ticket.targetUser)
     assignedTickets: Ticket[];
+
+    @Column()
+    roleId: number;
+
+    @ManyToOne(() => Role)
+    @JoinColumn({ name: 'roleId' })
+    role: Role;
 }

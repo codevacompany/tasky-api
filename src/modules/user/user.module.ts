@@ -7,12 +7,14 @@ import { User } from './entities/user.entity';
 import { UserController } from './user.controller';
 import { UserRepository } from './user.repository';
 import { UserService } from './user.service';
+import { RoleModule } from '../role/role.module';
 
 @Module({
     imports: [
         TypeOrmModule.forFeature([User]),
         EncryptionModule,
         EmailModule,
+        RoleModule,
         forwardRef(() => AuthModule),
     ],
     exports: [UserService, UserRepository],

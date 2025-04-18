@@ -1,15 +1,17 @@
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
-import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
+import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { User } from '../../user/entities/user.entity';
 
 export enum NotificationType {
-    Open = 'Abertura',
-    Comment = 'Comentário',
-    StatusUpdated = 'Atualização de Status',
+    Open = 'abertura',
+    Comment = 'comentário',
+    StatusUpdate = 'atualização_de_status',
+    TicketUpdate = 'atualização',
+    Cancellation = 'cancelamento',
 }
 
 @Entity()
-export class Notification extends IdTimestampBaseEntity {
+export class Notification extends TenantBoundBaseEntity {
     @Column({ type: 'enum', enum: NotificationType })
     type: NotificationType;
 
@@ -35,4 +37,7 @@ export class Notification extends IdTimestampBaseEntity {
 
     @Column({ nullable: true })
     resourceId: number;
+
+    @Column({ nullable: true })
+    resourceCustomId: string;
 }

@@ -1,9 +1,9 @@
 import { Column, Entity, OneToMany } from 'typeorm';
-import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
+import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { Ticket } from '../../ticket/entities/ticket.entity';
 
 @Entity()
-export class Category extends IdTimestampBaseEntity {
+export class Category extends TenantBoundBaseEntity {
     @Column()
     name: string;
 

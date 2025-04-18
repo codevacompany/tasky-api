@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
+import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
+import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
+import { User } from '../user/entities/user.entity';
 import { Notification } from './entities/notification.entity';
 import { NotificationRepository } from './notification.repository';
 
 @Injectable()
-export class NotificationService {
-    constructor(private notificationRepository: NotificationRepository) {}
+export class NotificationService extends TenantBoundBaseService<Notification> {
+    constructor(private readonly notificationRepository: NotificationRepository) {
+        super(notificationRepository);
+    }
 
     private notificationStreams = new Map<number, Subject<MessageEvent>>();
 
@@ -23,19 +28,28 @@ export class NotificationService {
         }
     }
 
-    async findAll(): Promise<Notification[]> {
-        return await this.notificationRepository.find();
-    }
-
-    async findBy(where: Partial<Notification>): Promise<Notification[]> {
-        return await this.notificationRepository.find({
-            where,
+    async findMany(
+        user: User,
+        options?: QueryOptions<Notification>,
+    ): Promise<PaginatedResponse<Notification>> {
+        return super.findMany(user, {
+            ...options,
             relations: ['createdBy', 'targetUser'],
         });
     }
 
-    async markAsRead(id: number): Promise<{ message: string }> {
-        const notification = await this.notificationRepository.findOne({ where: { id } });
+    async findByTargetUser(
+        user: User,
+        options?: QueryOptions<Notification>,
+    ): Promise<PaginatedResponse<Notification>> {
+        return super.findMany(user, {
+            ...options,
+            relations: ['createdBy', 'targetUser'],
+        });
+    }
+
+    async markAsRead(user: User, id: number): Promise<{ message: string }> {
+        const notification = await this.findOne(user, { where: { id } });
 
         if (!notification) {
             throw new Error('Notification not found');
@@ -44,20 +58,25 @@ export class NotificationService {
         notification.read = true;
         await this.notificationRepository.save(notification);
 
-        return {
-            message: 'Notification marked as read',
-        };
+        return { message: 'Notification marked as read' };
     }
 
-    async markAllAsRead(): Promise<{ message: string }> {
-        await this.notificationRepository.update({}, { read: true });
+    async markAllAsRead(user: User): Promise<{ message: string }> {
+        await this.notificationRepository.update(
+            { tenantId: user.tenantId, targetUserId: user.id },
+            { read: true },
+        );
 
-        return {
-            message: 'All notifications marked as read',
-        };
+        return { message: 'All notifications marked as read' };
     }
 
-    async countUnreadByUserId(userId: number): Promise<number> {
-        return await this.notificationRepository.count({ where: { targetUserId: userId, read: false } });
+    async countUnreadByUser(user: User): Promise<number> {
+        return await this.notificationRepository.count({
+            where: { tenantId: user.tenantId, targetUserId: user.id, read: false },
+        });
+    }
+
+    async delete(user: User, id: number): Promise<void> {
+        return super.delete(user, id);
     }
 }

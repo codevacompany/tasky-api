@@ -1,28 +1,34 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
-import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { Category } from '../../category/entities/category.entity';
 import { Department } from '../../department/entities/department.entity';
 import { TicketComment } from '../../ticket-comment/entities/ticket-comment.entity';
+import { TicketUpdate } from '../../ticket-updates/entities/ticket-update.entity';
 import { User } from '../../user/entities/user.entity';
 
 export enum TicketPriority {
-    Low = 'Baixa',
-    Medium = 'Média',
-    High = 'Alta',
+    Low = 'baixa',
+    Medium = 'média',
+    High = 'alta',
 }
 
 export enum TicketStatus {
-    Pending = 'Pendente',
-    InProgress = 'Em andamento',
-    AwaitingVerification = 'Aguardando verificação',
-    UnderVerification = 'Em verificação',
-    Completed = 'Finalizado',
-    Returned = 'Devolvido',
-    Rejected = 'Reprovado',
+    Pending = 'pendente',
+    InProgress = 'em_andamento',
+    AwaitingVerification = 'aguardando_verificação',
+    UnderVerification = 'em_verificação',
+    Completed = 'finalizado',
+    Canceled = 'cancelado',
+    Returned = 'devolvido',
+    Rejected = 'reprovado',
 }
 
 @Entity()
-export class Ticket extends IdTimestampBaseEntity {
+@Index(['tenantId', 'customId'], { unique: true })
+export class Ticket extends TenantBoundBaseEntity {
+    @Column()
+    customId: string;
+
     @Column()
     name: string;
 
@@ -73,6 +79,9 @@ export class Ticket extends IdTimestampBaseEntity {
     @Column('timestamp', { nullable: true })
     completedAt: Date | null;
 
+    @Column('timestamp', { nullable: true })
+    canceledAt: Date | null;
+
     @Column({ nullable: true })
     categoryId: number;
 
@@ -86,6 +95,9 @@ export class Ticket extends IdTimestampBaseEntity {
     @Column({ default: false })
     isPrivate: boolean;
 
-    // @Column('text', { nullable: true })
-    // disapprovalReason: string;
+    @OneToMany(() => TicketUpdate, (update) => update.ticket)
+    updates: TicketUpdate[];
+
+    @Column({ default: false })
+    isInternal: boolean;
 }

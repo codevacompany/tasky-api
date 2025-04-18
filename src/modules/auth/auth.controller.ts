@@ -27,13 +27,13 @@ export class AuthController {
         return user;
     }
 
-    @Patch('reset-password')
-    @UseGuards(AuthGuard('jwt'))
-    async resetPassword(@Request() req, @Body() { password }: ResetPasswordDto) {
-        const bearerToken = req.headers['authorization'];
+    // @Patch('reset-password')
+    // @UseGuards(AuthGuard('jwt'))
+    // async resetPassword(@Request() req, @Body() { password }: ResetPasswordDto) {
+    //     const bearerToken = req.headers['authorization'];
 
-        return await this.authService.resetPassword(bearerToken, password);
-    }
+    //     return await this.authService.resetPassword(bearerToken, password);
+    // }
 
     @Post('reset-password/request')
     async requestPasswordReset(@Body() { email }: ResetPasswordRequestDto) {
