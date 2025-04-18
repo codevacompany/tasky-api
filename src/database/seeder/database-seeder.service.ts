@@ -15,7 +15,7 @@ export class DatabaseSeederService implements OnModuleInit {
     ) {}
 
     async onModuleInit() {
-        await this.seedUser();
+        await this.seedUsers();
     }
 
     async seedTenant() {
@@ -69,10 +69,10 @@ export class DatabaseSeederService implements OnModuleInit {
         return { department, mockAdminUser };
     }
 
-    async seedUser() {
+    async seedUsers() {
         const { department, mockAdminUser } = await this.seedDepartment();
 
-        const newUser = {
+        const newUser1 = {
             firstName: 'Isaac',
             lastName: 'Silva',
             email: 'isaacensilva@gmail.com',
@@ -82,10 +82,28 @@ export class DatabaseSeederService implements OnModuleInit {
             roleId: mockAdminUser.roleId,
         };
 
-        const existingUser = await this.userService.findByEmail(newUser.email);
+        const existingUser1 = await this.userService.findByEmail(newUser1.email);
 
-        if (!existingUser) {
-            await this.userService.create(mockAdminUser, newUser, department.tenantId);
+        if (!existingUser1) {
+            await this.userService.create(mockAdminUser, newUser1, department.tenantId);
+        }
+
+        const userRole = await this.roleRepository.findOneBy({ name: RoleName.User });
+
+        const newUser2 = {
+            firstName: 'Rayandson',
+            lastName: 'Silva',
+            email: 'rayandson.silva321@gmail.com',
+            password: 'User1234',
+            isAdmin: true,
+            departmentId: department.id,
+            roleId: userRole.id,
+        };
+
+        const existingUser2 = await this.userService.findByEmail(newUser2.email);
+
+        if (!existingUser2) {
+            await this.userService.create(mockAdminUser, newUser2, department.tenantId);
         }
     }
 }
