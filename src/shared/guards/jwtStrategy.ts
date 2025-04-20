@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { UserService } from '../../modules/user/user.service';
 import { CustomUnauthorizedException } from '../exceptions/http-exception';
+import { AccessProfile } from '../common/access-profile';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -15,7 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     async validate(payload: any): Promise<any> {
-        if (!payload.sub.tenantId) {
+        if (!payload.sub.tenantId || !payload.sub.userId) {
             throw new CustomUnauthorizedException({
                 code: 'authorization-header-required',
                 message: 'An authorization header is required',
@@ -28,6 +29,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             throw new UnauthorizedException('Invalid token');
         }
 
-        return user;
+        return new AccessProfile({
+            userId: payload.sub.userId,
+            tenantId: payload.sub.tenantId,
+            roleId: user.roleId
+        })
     }
 }

@@ -7,6 +7,7 @@ import { RefreshTokenDto } from './dtos/refresh-token.dto';
 import { ResetPasswordRequestDto } from './dtos/reset-password-request.dto';
 import { ResetPasswordDto } from './dtos/reset-password.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
+import { AccessProfile } from '../../shared/common/access-profile';
 
 @Controller('auth')
 export class AuthController {
@@ -37,12 +38,15 @@ export class AuthController {
 
     @Post('reset-password/request')
     async requestPasswordReset(@Body() { email }: ResetPasswordRequestDto) {
-        return await this.authService.requestPasswordReset(email);
+        const accessProfile = new AccessProfile();
+
+        return await this.authService.requestPasswordReset(accessProfile, email);
     }
 
     @Post('reset-password/validate')
     async validateVerificationCode(@Body() body: VerificationCodeValidationDto) {
-        return await this.authService.validateVerificationCode(body);
+        const accessProfile = new AccessProfile()
+        return await this.authService.validateVerificationCode(accessProfile, body);
     }
 
     @Post('refresh-token')

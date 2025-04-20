@@ -1,6 +1,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from 'jsonwebtoken';
+import { AccessProfile } from '../../shared/common/access-profile';
 import {
     CustomForbiddenException,
     CustomNotFoundException,
@@ -26,8 +27,11 @@ export class AuthService {
         private readonly jwtService: JwtService,
     ) {}
     async login(body: LoginDto) {
+        const accessProfile = new AccessProfile();
         const email = body.email.toLowerCase();
-        const user = await this.userService.findByEmail(email);
+        const user = await this.userService.findByEmail(accessProfile, email, {
+            tenantAware: false,
+        });
 
         if (!user) {
             throw new CustomUnauthorizedException({
@@ -87,7 +91,7 @@ export class AuthService {
 
         const user = await this.userService.findById(userId);
 
-        if(!user) {
+        if (!user) {
             throw new CustomForbiddenException({
                 code: 'invalid-user',
                 message: 'Invalid user',
@@ -97,8 +101,10 @@ export class AuthService {
         return this.tokenService.createPair({ userId, email });
     }
 
-    async requestPasswordReset(email: string) {
-        const user = await this.userService.findByEmail(email);
+    async requestPasswordReset(accessProfile: AccessProfile, email: string) {
+        const user = await this.userService.findByEmail(accessProfile, email, {
+            tenantAware: false,
+        });
 
         if (!user) {
             throw new CustomNotFoundException({
@@ -116,8 +122,13 @@ export class AuthService {
         return { message: `Verification code sent to ${email}` };
     }
 
-    async validateVerificationCode({ code, email }: VerificationCodeValidationDto) {
-        const user = await this.userService.findByEmail(email);
+    async validateVerificationCode(
+        accessProfile: AccessProfile,
+        { code, email }: VerificationCodeValidationDto,
+    ) {
+        const user = await this.userService.findByEmail(accessProfile, email, {
+            tenantAware: false,
+        });
 
         if (!user) {
             throw new CustomUnauthorizedException({
@@ -126,7 +137,7 @@ export class AuthService {
             });
         }
 
-        const validCode = await this.verificationCodeService.validate(code, email);
+        const validCode = await this.verificationCodeService.validate(accessProfile, code, email);
 
         if (!validCode.valid) {
             throw new CustomNotFoundException({

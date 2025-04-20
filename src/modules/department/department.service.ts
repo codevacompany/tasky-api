@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ILike } from 'typeorm';
+import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
@@ -7,7 +8,6 @@ import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dtos/create-department.dto';
 import { UpdateDepartmentDto } from './dtos/update-department.dto';
 import { Department } from './entities/department.entity';
-import { User } from '../user/entities/user.entity';
 
 @Injectable()
 export class DepartmentService extends TenantBoundBaseService<Department> {
@@ -16,26 +16,26 @@ export class DepartmentService extends TenantBoundBaseService<Department> {
     }
 
     async findMany(
-        user: User,
+        acessProfile: AccessProfile,
         options?: QueryOptions<Department>,
     ): Promise<PaginatedResponse<Department>> {
         if (options.where?.name) {
             options.where.name = ILike(`%${options.where.name}%`);
         }
 
-        return super.findMany(user, options);
+        return super.findMany(acessProfile, options);
     }
 
-    async findByName(user: User, name: string): Promise<Department> {
-        return this.findOne(user, {
+    async findByName(acessProfile: AccessProfile, name: string): Promise<Department> {
+        return this.findOne(acessProfile, {
             where: {
                 name,
             },
         });
     }
 
-    async create(user: User, dto: CreateDepartmentDto) {
-        const exists = await this.findOne(user, {
+    async create(acessProfile: AccessProfile, dto: CreateDepartmentDto) {
+        const exists = await this.findOne(acessProfile, {
             where: { name: dto.name },
         });
 
@@ -46,14 +46,14 @@ export class DepartmentService extends TenantBoundBaseService<Department> {
             });
         }
 
-        return this.save(user, dto);
+        return this.save(acessProfile, dto);
     }
 
-    async update(user: User, id: number, dto: UpdateDepartmentDto) {
-        return super.update(user, id, dto);
+    async update(acessProfile: AccessProfile, id: number, dto: UpdateDepartmentDto) {
+        return super.update(acessProfile, id, dto);
     }
 
-    async delete(user: User, id: number): Promise<void> {
-        return this.delete(user, id);
+    async delete(acessProfile: AccessProfile, id: number): Promise<void> {
+        return this.delete(acessProfile, id);
     }
 }

@@ -4,6 +4,7 @@ import { MoreThanOrEqual } from 'typeorm';
 import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
 import { UserService } from '../user/user.service';
 import { VerificationCodeRepository } from './verification-code.repository';
+import { AccessProfile } from '../../shared/common/access-profile';
 
 @Injectable()
 export class VerificationCodeService {
@@ -19,8 +20,8 @@ export class VerificationCodeService {
         return this.verificationCodeRepository.save({ code, email, expiresAt, tenantId });
     }
 
-    async find(code: string, email: string) {
-        const user = await this.userService.findByEmail(email);
+    async find(accessProfile: AccessProfile, code: string, email: string) {
+        const user = await this.userService.findByEmail(accessProfile, email);
 
         if (!user) {
             throw new CustomNotFoundException({
@@ -37,8 +38,8 @@ export class VerificationCodeService {
         });
     }
 
-    async validate(code: string, email: string) {
-        const user = await this.userService.findByEmail(email);
+    async validate(accessProfile: AccessProfile, code: string, email: string) {
+        const user = await this.userService.findByEmail(accessProfile, email);
 
         if (!user) {
             throw new CustomNotFoundException({

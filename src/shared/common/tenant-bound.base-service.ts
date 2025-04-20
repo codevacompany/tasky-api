@@ -1,15 +1,23 @@
-import { DeepPartial, FindOneOptions, FindOptionsWhere, Repository } from 'typeorm';
+import { DeepPartial, Equal, Repository } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
-import { User } from '../../modules/user/entities/user.entity';
-import { PaginatedResponse, QueryOptions } from '../types/http';
+import { CustomBadRequestException, CustomNotFoundException } from '../exceptions/http-exception';
+import { FindOneQueryOptions, PaginatedResponse, QueryOptions } from '../types/http';
+import { AccessProfile } from './access-profile';
 import { TenantBoundBaseEntity } from './tenant-bound.base-entity';
 
 export abstract class TenantBoundBaseService<T extends TenantBoundBaseEntity> {
     constructor(protected readonly repository: Repository<T>) {}
 
-    async findMany(user: User, options: QueryOptions<T>): Promise<PaginatedResponse<T>> {
-        // const tenantCondition = user.isAdmin ? {} : { tenantId: user.tenantId };
-        // const fullWhere = { ...options.where, ...tenantCondition };
+    async findMany(
+        accessProfile: AccessProfile,
+        options: QueryOptions<T>,
+    ): Promise<PaginatedResponse<T>> {
+        if (options.tenantAware !== false) {
+            options.where = {
+                ...options.where,
+                tenantId: Equal(accessProfile.tenantId),
+            };
+        }
 
         const [items, total] = await this.repository.findAndCount({
             ...options,
@@ -27,53 +35,87 @@ export abstract class TenantBoundBaseService<T extends TenantBoundBaseEntity> {
         };
     }
 
-    protected async findOne(user: User, options?: FindOneOptions<T>): Promise<T | null> {
-        // if (!user.isAdmin && options.where) {
-        //     options.where = {
-        //         ...options.where,
-        //         tenantId: user.tenantId,
-        //     } as FindOptionsWhere<T>;
-        // }
-        const filters = { ...options };
-        filters.where = {
-            ...options.where,
-            tenantId: user.tenantId,
-        } as FindOptionsWhere<T>;
+    protected async findOne(
+        accessProfile: AccessProfile,
+        options?: FindOneQueryOptions<T>,
+    ): Promise<T | null> {
+        if (options.tenantAware !== false) {
+            options.where = {
+                ...options.where,
+                tenantId: Equal(accessProfile.tenantId),
+            };
+        }
 
-        return this.repository.findOne(filters);
+        return this.repository.findOne(options);
     }
 
-    protected async save(user: User, entity: DeepPartial<T>): Promise<T> {
-        // if (!user.isAdmin) {
-        //     entity.tenantId = user.tenantId;
-        // }
+    protected async save(
+        accessProfile: AccessProfile,
+        entity: DeepPartial<T>,
+        tenantAware = true,
+    ): Promise<T> {
+        if (tenantAware) {
+            entity.tenantId = accessProfile.tenantId;
+        }
 
-        entity.tenantId = user.tenantId;
+        if (!entity.tenantId) {
+            throw new CustomBadRequestException({
+                code: 'tenant-is-missing',
+                message: 'Tenant id is missing',
+            });
+        }
 
-        return this.repository.save(entity);
+        return this.repository.save({
+            ...entity,
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
+        });
     }
 
-    protected async update(user: User, id: number, data: QueryDeepPartialEntity<T>) {
-        // if (!user.isAdmin) {
-        //   const existing = await this.repository.findOne({ where: { id, tenantId: user.tenantId } as any });
-        //   if (!existing) throw new Error('Unauthorized or not found');
-        // }
+    protected async update(
+        accessProfile: AccessProfile,
+        id: number,
+        data: QueryDeepPartialEntity<T>,
+        tenantAware = true,
+    ) {
+        const where = { id } as any;
+
+        if (tenantAware) {
+            where.tenantId = accessProfile.tenantId;
+        }
 
         const existing = await this.repository.findOne({
-            where: { id, tenantId: user.tenantId } as any,
+            where,
         });
-        if (!existing) throw new Error('Unauthorized or not found');
 
-        return this.repository.update(id, data);
+        if (!existing) {
+            throw new CustomNotFoundException({
+                code: 'not-found',
+                message: 'Entity not found.',
+            });
+        }
+
+        return this.repository.update(id, { ...data, updatedById: accessProfile.userId });
     }
 
-    protected async delete(user: User, id: number): Promise<void> {
-        const entity = await this.repository.findOne({
-            where: { id, tenantId: user.tenantId } as any,
-        });
+    protected async delete(
+        accessProfile: AccessProfile,
+        id: number,
+        tenantAware = true,
+    ): Promise<void> {
+        const where = { id } as any;
+
+        if (tenantAware) {
+            where.tenantId = accessProfile.tenantId;
+        }
+
+        const entity = await this.repository.findOne({ where });
 
         if (!entity) {
-            throw new Error('Unauthorized or not found');
+            throw new CustomNotFoundException({
+                code: 'not-found',
+                message: 'Entity not found.',
+            });
         }
 
         await this.repository.remove(entity);

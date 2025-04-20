@@ -13,6 +13,7 @@ import { VerificationCodeModule } from './modules/verification-code/verification
 import { TicketUpdateModule } from './modules/ticket-updates/ticket-update.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { RoleModule } from './modules/role/role.module';
+import { AwsModule } from './modules/aws/aws.module';
 
 @Module({
     imports: [
@@ -31,6 +32,7 @@ import { RoleModule } from './modules/role/role.module';
         TicketUpdateModule,
         TenantModule,
         RoleModule,
+        AwsModule
     ],
     controllers: [],
     providers: [DatabaseSeederService],

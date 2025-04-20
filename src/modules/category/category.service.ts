@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ILike } from 'typeorm';
+import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
-import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
-import { User } from '../user/entities/user.entity';
+import { FindOneQueryOptions, PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { CategoryRepository } from './category.repository';
 import { CreateCategoryDto } from './dtos/create-category.dto';
 import { UpdateCategoryDto } from './dtos/update-category.dto';
@@ -16,26 +16,22 @@ export class CategoryService extends TenantBoundBaseService<Category> {
     }
 
     async findMany(
-        user: User,
+        acessProfile: AccessProfile,
         options?: QueryOptions<Category>,
     ): Promise<PaginatedResponse<Category>> {
         if (options.where?.name) {
             options.where.name = ILike(`%${options.where.name}%`);
         }
 
-        return super.findMany(user, options);
+        return super.findMany(acessProfile, options);
     }
 
-    async findByName(user: User,name: string): Promise<Category> {
-        return await this.findOne(user,{
-            where: {
-                name,
-            },
-        });
+    async findByName(acessProfile: AccessProfile, options: FindOneQueryOptions<Category>): Promise<Category> {
+        return await this.findOne(acessProfile, options);
     }
 
-    async create(user: User, categoryDto: CreateCategoryDto) {
-        const exists = await this.findOne(user, {
+    async create(acessProfile: AccessProfile, categoryDto: CreateCategoryDto) {
+        const exists = await this.findOne(acessProfile, {
             where: { name: categoryDto.name },
         });
         if (exists) {
@@ -45,10 +41,10 @@ export class CategoryService extends TenantBoundBaseService<Category> {
             });
         }
 
-        return this.save(user, categoryDto);
+        return this.save(acessProfile, categoryDto);
     }
 
-    async update(user: User, id: number, updateDto: UpdateCategoryDto) {
-        return await super.update(user, id, updateDto);
+    async update(acessProfile: AccessProfile, id: number, updateDto: UpdateCategoryDto) {
+        return await super.update(acessProfile, id, updateDto);
     }
 }

@@ -1,4 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
+import { AccessProfile } from '../../shared/common/access-profile';
+import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
+import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
+import { QueryOptions } from '../../shared/types/http';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { NotificationService } from '../notification/notification.service';
@@ -7,11 +12,6 @@ import { CreateTicketCommentDto } from './dtos/create-ticket-comment.dto';
 import { UpdateTicketCommentDto } from './dtos/update-ticket-comment.dto';
 import { TicketComment } from './entities/ticket-comment.entity';
 import { TicketCommentRepository } from './ticket-comment.repository';
-import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
-import { User } from '../user/entities/user.entity';
-import { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
-import { QueryOptions } from '../../shared/types/http';
-import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
 
 @Injectable()
 export class TicketCommentService extends TenantBoundBaseService<TicketComment> {
@@ -24,39 +24,42 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         super(ticketCommentRepository);
     }
 
-    async findAll(user: User): Promise<TicketComment[]> {
+    async findAll(accessProfile: AccessProfile): Promise<TicketComment[]> {
         const options = {
-            where: { tenantId: user.tenantId } as FindOptionsWhere<TicketComment>,
+            where: { tenantId: accessProfile.tenantId } as FindOptionsWhere<TicketComment>,
             relations: ['user'],
             order: { createdAt: 'DESC' } as FindOptionsOrder<TicketComment>,
         };
         return this.ticketCommentRepository.find(options);
     }
 
-    async findById(user: User, id: number): Promise<TicketComment> {
-        return this.findOne(user, {
+    async findById(accessProfile: AccessProfile, id: number): Promise<TicketComment> {
+        return this.findOne(accessProfile, {
             where: { id },
             relations: ['user'],
         });
     }
 
     async findBy(
-        user: User,
+        accessProfile: AccessProfile,
         where: Partial<TicketComment>,
-        options?: QueryOptions<TicketComment>
+        options?: QueryOptions<TicketComment>,
     ): Promise<TicketComment[]> {
         const filters = {
-            where: { ...where, tenantId: user.tenantId } as FindOptionsWhere<TicketComment>,
+            where: {
+                ...where,
+                tenantId: accessProfile.tenantId,
+            } as FindOptionsWhere<TicketComment>,
             relations: options?.relations || ['user'],
-            order: options?.order || { createdAt: 'DESC' } as FindOptionsOrder<TicketComment>,
+            order: options?.order || ({ createdAt: 'DESC' } as FindOptionsOrder<TicketComment>),
         };
 
         return this.ticketCommentRepository.find(filters);
     }
 
-    async create(user: User, ticketCommentDto: CreateTicketCommentDto) {
+    async create(accessProfile: AccessProfile, ticketCommentDto: CreateTicketCommentDto) {
         const commentUser = await this.userRepository.findOne({
-            where: { id: ticketCommentDto.userId, tenantId: user.tenantId },
+            where: { id: ticketCommentDto.userId, tenantId: accessProfile.tenantId },
         });
 
         if (!commentUser) {
@@ -69,13 +72,13 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         // Set the tenant ID from the user object
         const commentToSave = {
             ...ticketCommentDto,
-            tenantId: user.tenantId
+            tenantId: accessProfile.tenantId,
         };
 
-        const savedComment = await this.save(user, commentToSave);
+        const savedComment = await this.save(accessProfile, commentToSave);
 
         const commentWithTicket = await this.ticketCommentRepository.findOne({
-            where: { id: savedComment.id, tenantId: user.tenantId },
+            where: { id: savedComment.id, tenantId: accessProfile.tenantId },
             relations: {
                 ticket: true,
             },
@@ -93,7 +96,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         if (ticketCommentDto.userId !== commentWithTicket.ticket.requesterId) {
             notifications.push(
                 this.notificationRepository.save({
-                    tenantId: user.tenantId,
+                    tenantId: accessProfile.tenantId,
                     type: NotificationType.Comment,
                     message: '<p><span>user</span> comentou no ticket <span>resource</span>.</p>',
                     createdById: ticketCommentDto.userId,
@@ -109,7 +112,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         ) {
             notifications.push(
                 this.notificationRepository.save({
-                    tenantId: user.tenantId,
+                    tenantId: accessProfile.tenantId,
                     type: NotificationType.Comment,
                     message: '<p><span>user</span> comentou no ticket <span>resource</span>.</p>',
                     createdById: ticketCommentDto.userId,
@@ -145,11 +148,15 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         return commentWithTicket;
     }
 
-    async update(user: User, id: number, ticketCommentDto: UpdateTicketCommentDto) {
-        return super.update(user, id, ticketCommentDto);
+    async update(
+        accessProfile: AccessProfile,
+        id: number,
+        ticketCommentDto: UpdateTicketCommentDto,
+    ) {
+        return super.update(accessProfile, id, ticketCommentDto);
     }
 
-    async delete(user: User, id: number) {
-        return super.delete(user, id);
+    async delete(accessProfile: AccessProfile, id: number) {
+        return super.delete(accessProfile, id);
     }
 }

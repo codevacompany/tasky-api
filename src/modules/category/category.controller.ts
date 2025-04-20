@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
+import { GetFindOneQueryOptions } from '../../shared/decorators/get-find-one-query-options.decorator';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
-import { GetUser } from '../../shared/decorators/get-user.decorator';
-import { QueryOptions } from '../../shared/types/http';
-import { User } from '../user/entities/user.entity';
+import { FindOneQueryOptions, QueryOptions } from '../../shared/types/http';
 import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dtos/create-category.dto';
 import { UpdateCategoryDto } from './dtos/update-category.dto';
@@ -15,29 +15,38 @@ export class CategoryController {
 
     @Get()
     @UseGuards(AuthGuard('jwt'))
-    async findAll(@GetUser() user: User, @GetQueryOptions() options: QueryOptions<Category>) {
-        return this.categoryService.findMany(user, options);
+    async findAll(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetQueryOptions() options: QueryOptions<Category>,
+    ) {
+        return this.categoryService.findMany(accessProfile, options);
     }
 
     @Get(':name')
     @UseGuards(AuthGuard('jwt'))
-    async findByName(@GetUser() user: User, @Param('name') name: string) {
-        return this.categoryService.findByName(user, name);
+    async findByName(
+        @GetAccessProfile() acessProfile: AccessProfile,
+        @GetFindOneQueryOptions() options: FindOneQueryOptions<Category>,
+    ) {
+        return this.categoryService.findByName(acessProfile, options);
     }
 
     @Post()
     @UseGuards(AuthGuard('jwt'))
-    async create(@GetUser() user: User, @Body() createCategoryDto: CreateCategoryDto) {
-        return this.categoryService.create(user, createCategoryDto);
+    async create(
+        @GetAccessProfile() acessProfile: AccessProfile,
+        @Body() createCategoryDto: CreateCategoryDto,
+    ) {
+        return this.categoryService.create(acessProfile, createCategoryDto);
     }
 
     @Patch(':id')
     @UseGuards(AuthGuard('jwt'))
     async update(
-        @GetUser() user: User,
+        @GetAccessProfile() acessProfile: AccessProfile,
         @Param('id', ParseIntPipe) id: number,
         @Body() updateCategoryDto: UpdateCategoryDto,
     ) {
-        return this.categoryService.update(user, id, updateCategoryDto);
+        return this.categoryService.update(acessProfile, id, updateCategoryDto);
     }
 }

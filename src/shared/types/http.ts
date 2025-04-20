@@ -6,6 +6,7 @@ export type QueryOptions<T> = {
     limit: number;
     relations?: string[];
     order?: FindOptionsOrder<T>;
+    tenantAware?: boolean;
 };
 
 export type PaginatedResponse<T> = {
@@ -15,3 +16,9 @@ export type PaginatedResponse<T> = {
     limit: number;
     totalPages: number;
   };
+
+  export type FindOneQueryOptions<T> = {
+    where?: FindOptionsWhere<T>;
+    relations?: string[];
+    tenantAware?: boolean;
+};

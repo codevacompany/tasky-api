@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
+import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
-import { User } from '../user/entities/user.entity';
 import { Notification } from './entities/notification.entity';
 import { NotificationRepository } from './notification.repository';
 
@@ -29,27 +29,27 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
     }
 
     async findMany(
-        user: User,
+        accessProfile: AccessProfile,
         options?: QueryOptions<Notification>,
     ): Promise<PaginatedResponse<Notification>> {
-        return super.findMany(user, {
+        return super.findMany(accessProfile, {
             ...options,
             relations: ['createdBy', 'targetUser'],
         });
     }
 
     async findByTargetUser(
-        user: User,
+        accessProfile: AccessProfile,
         options?: QueryOptions<Notification>,
     ): Promise<PaginatedResponse<Notification>> {
-        return super.findMany(user, {
+        return super.findMany(accessProfile, {
             ...options,
             relations: ['createdBy', 'targetUser'],
         });
     }
 
-    async markAsRead(user: User, id: number): Promise<{ message: string }> {
-        const notification = await this.findOne(user, { where: { id } });
+    async markAsRead(accessProfile: AccessProfile, id: number): Promise<{ message: string }> {
+        const notification = await this.findOne(accessProfile, { where: { id } });
 
         if (!notification) {
             throw new Error('Notification not found');
@@ -61,22 +61,26 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
         return { message: 'Notification marked as read' };
     }
 
-    async markAllAsRead(user: User): Promise<{ message: string }> {
+    async markAllAsRead(accessProfile: AccessProfile): Promise<{ message: string }> {
         await this.notificationRepository.update(
-            { tenantId: user.tenantId, targetUserId: user.id },
+            { tenantId: accessProfile.tenantId, targetUserId: accessProfile.userId },
             { read: true },
         );
 
         return { message: 'All notifications marked as read' };
     }
 
-    async countUnreadByUser(user: User): Promise<number> {
+    async countUnreadByUser(accessProfile: AccessProfile): Promise<number> {
         return await this.notificationRepository.count({
-            where: { tenantId: user.tenantId, targetUserId: user.id, read: false },
+            where: {
+                tenantId: accessProfile.tenantId,
+                targetUserId: accessProfile.userId,
+                read: false,
+            },
         });
     }
 
-    async delete(user: User, id: number): Promise<void> {
-        return super.delete(user, id);
+    async delete(accessProfile: AccessProfile, id: number): Promise<void> {
+        return super.delete(accessProfile, id);
     }
 }
