@@ -1,18 +1,18 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
-import { ILike } from 'typeorm';
+import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
-import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
+import { FindOneQueryOptions, PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { AuthService } from '../auth/auth.service';
+import { RoleName } from '../role/entities/role.entity';
+import { RoleRepository } from '../role/role.repository';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { User } from './entities/user.entity';
 import { UserRepository } from './user.repository';
-import { RoleName } from '../role/entities/role.entity';
-import { RoleRepository } from '../role/role.repository';
 
 @Injectable()
 export class UserService extends TenantBoundBaseService<User> {
@@ -28,8 +28,7 @@ export class UserService extends TenantBoundBaseService<User> {
     }
 
     async findAll(
-        user: User,
-        where?: { name: string },
+        additionalFilter?: { name: string },
         options?: QueryOptions<User>,
     ): Promise<PaginatedResponse<User>> {
         const qb = this.userRepository.createQueryBuilder('user');
@@ -37,13 +36,10 @@ export class UserService extends TenantBoundBaseService<User> {
         qb.leftJoinAndSelect('user.department', 'department');
         qb.leftJoinAndSelect('user.role', 'role');
 
-        qb.where('user.tenantId = :tenantId', { tenantId: user.tenantId });
-
-        if (where?.name) {
-            qb.andWhere(
-                '(user.firstName ILIKE :name OR user.lastName ILIKE :name)',
-                { name: `%${where.name}%` },
-            );
+        if (additionalFilter?.name) {
+            qb.andWhere('(user.firstName ILIKE :name OR user.lastName ILIKE :name)', {
+                name: `%${additionalFilter.name}%`,
+            });
         }
 
         const page = options.page;
@@ -62,11 +58,48 @@ export class UserService extends TenantBoundBaseService<User> {
         };
     }
 
-    async findByEmail(email: string): Promise<User> {
-        return await this.userRepository.findOne({
-            where: {
-                email,
-            },
+    async findManyUsers(
+        accessProfile: AccessProfile,
+        additionalFilter?: { name: string },
+        options?: QueryOptions<User>,
+    ): Promise<PaginatedResponse<User>> {
+        const qb = this.userRepository.createQueryBuilder('user');
+
+        qb.leftJoinAndSelect('user.department', 'department');
+        qb.leftJoinAndSelect('user.role', 'role');
+
+        qb.where('user.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+
+        if (additionalFilter?.name) {
+            qb.andWhere('(user.firstName ILIKE :name OR user.lastName ILIKE :name)', {
+                name: `%${additionalFilter.name}%`,
+            });
+        }
+
+        const page = options.page;
+        const limit = options.limit;
+
+        qb.skip((page - 1) * limit).take(limit);
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
+    }
+
+    async findByEmail(
+        accessProfile: AccessProfile,
+        email: string,
+        options?: FindOneQueryOptions<User>,
+    ): Promise<User> {
+        return await this.findOne(accessProfile, {
+            ...options,
+            where: { ...options?.where, email },
             relations: ['department', 'role'],
         });
     }
@@ -80,27 +113,14 @@ export class UserService extends TenantBoundBaseService<User> {
         });
     }
 
-    async findBy(where: Partial<User>): Promise<User[]> {
-        return await this.userRepository.find({ where, relations: ['department', 'role'] });
+    async findBy(accessProfile: AccessProfile, options: QueryOptions<User>) {
+        return this.findManyUsers(accessProfile, undefined, {
+            ...options,
+            relations: ['department', 'role'],
+        });
     }
 
-    private buildQuery(where: { name: string }, tenantId: number) {
-        if (!where.name) {
-            return { where: { tenantId } };
-        }
-
-        return {
-            where: {
-                tenantId,
-                $or: [
-                    { firstName: ILike(`%${where.name}%`) },
-                    { lastName: ILike(`%${where.name}%`) },
-                ],
-            },
-        };
-    }
-
-    async create(user: User, data: CreateUserDto, tenantId: number) {
+    async create(accessProfile: AccessProfile, data: CreateUserDto) {
         data.email = data.email.toLowerCase();
 
         const userExists = await this.userRepository.findOne({
@@ -123,7 +143,7 @@ export class UserService extends TenantBoundBaseService<User> {
 
         const userRole = await this.roleRepository.findOneBy({ name: RoleName.User });
 
-        await this.userRepository.save({ ...data, roleId: userRole.id, tenantId });
+        await this.save(accessProfile, { ...data, roleId: userRole.id });
 
         return this.authService.login({
             email: data.email,
@@ -131,7 +151,7 @@ export class UserService extends TenantBoundBaseService<User> {
         });
     }
 
-    async superAdminCreate(user: SuperAdminCreateUserDto) {
+    async superAdminCreate(accessProfile: AccessProfile, user: SuperAdminCreateUserDto) {
         user.email = user.email.toLowerCase();
 
         const userExists = await this.userRepository.findOne({
@@ -152,7 +172,7 @@ export class UserService extends TenantBoundBaseService<User> {
         const hashedPassword = this.encryptionService.hashSync(password);
         user.password = hashedPassword;
 
-        await this.userRepository.save(user);
+        await this.save(accessProfile, user, false);
 
         return this.authService.login({
             email: user.email,
@@ -160,12 +180,21 @@ export class UserService extends TenantBoundBaseService<User> {
         });
     }
 
-    async update(user: User, id: number, data: UpdateUserDto) {
-        if (user.password) {
-            const hashedPassword = this.encryptionService.hashSync(user.password);
-            user.password = hashedPassword;
+    async update(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
+        if (data.password) {
+            const hashedPassword = this.encryptionService.hashSync(data.password);
+            data.password = hashedPassword;
         }
 
-        return super.update(user, id, data);
+        return super.update(accessProfile, id, data);
+    }
+
+    async superAdminUpdate(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
+        if (data.password) {
+            const hashedPassword = this.encryptionService.hashSync(data.password);
+            data.password = hashedPassword;
+        }
+
+        return super.update(accessProfile, id, data, false);
     }
 }

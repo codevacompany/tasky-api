@@ -10,10 +10,9 @@ import {
     UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
-import { GetUser } from '../../shared/decorators/get-user.decorator';
 import { QueryOptions } from '../../shared/types/http';
-import { User } from '../user/entities/user.entity';
 import { DepartmentService } from './department.service';
 import { CreateDepartmentDto } from './dtos/create-department.dto';
 import { UpdateDepartmentDto } from './dtos/update-department.dto';
@@ -25,32 +24,41 @@ export class DepartmentController {
     constructor(private readonly departmentService: DepartmentService) {}
 
     @Get()
-    async findAll(@GetUser() user: User, @GetQueryOptions() options: QueryOptions<Department>) {
-        return this.departmentService.findMany(user, options);
+    async findAll(
+        @GetAccessProfile() acessProfile: AccessProfile,
+        @GetQueryOptions() options: QueryOptions<Department>,
+    ) {
+        return this.departmentService.findMany(acessProfile, options);
     }
 
     @Get(':name')
-    async findByName(@GetUser() user: User, @Param('name') name: string) {
-        return this.departmentService.findByName(user, name);
+    async findByName(@GetAccessProfile() acessProfile: AccessProfile, @Param('name') name: string) {
+        return this.departmentService.findByName(acessProfile, name);
     }
 
     @Post()
-    async create(@GetUser() user: User, @Body() dto: CreateDepartmentDto) {
-        return this.departmentService.create(user, dto);
+    async create(
+        @GetAccessProfile() acessProfile: AccessProfile,
+        @Body() dto: CreateDepartmentDto,
+    ) {
+        return this.departmentService.create(acessProfile, dto);
     }
 
     @Patch(':id')
     async update(
-        @GetUser() user: User,
+        @GetAccessProfile() acessProfile: AccessProfile,
         @Param('id', ParseIntPipe) id: number,
         @Body() dto: UpdateDepartmentDto,
     ) {
-        return this.departmentService.update(user, id, dto);
+        return this.departmentService.update(acessProfile, id, dto);
     }
 
     @Delete(':id')
-    async delete(@GetUser() user: User, @Param('id', ParseIntPipe) id: number) {
-        await this.departmentService.delete(user, id);
+    async delete(
+        @GetAccessProfile() acessProfile: AccessProfile,
+        @Param('id', ParseIntPipe) id: number,
+    ) {
+        await this.departmentService.delete(acessProfile, id);
         return { message: 'Successfully deleted!' };
     }
 }
