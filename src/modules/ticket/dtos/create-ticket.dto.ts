@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsDateString, IsInt, IsBoolean } from 'class-validator';
+import { IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsDateString, IsInt, IsBoolean, IsArray } from 'class-validator';
 import { TicketPriority } from '../entities/ticket.entity';
 
 export class CreateTicketDto {
@@ -37,4 +37,8 @@ export class CreateTicketDto {
     @IsOptional()
     @IsBoolean()
     isPrivate?: boolean;
+
+    @IsArray()
+    @IsOptional()
+    files?: string[];
 }

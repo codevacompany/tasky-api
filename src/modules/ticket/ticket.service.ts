@@ -12,6 +12,7 @@ import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { NotificationService } from '../notification/notification.service';
 import { TenantRepository } from '../tenant/tenant.repository';
+import { TicketFileRepository } from '../ticket-file/ticket-file.repository';
 import { TicketActionType } from '../ticket-updates/entities/ticket-update.entity';
 import { TicketUpdateRepository } from '../ticket-updates/ticket-update.repository';
 import { UserRepository } from '../user/user.repository';
@@ -20,6 +21,7 @@ import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketRepository } from './ticket.repository';
+import { extractFileName, extractMimeTypeFromUrl } from '../../shared/utils/file-helper';
 
 @Injectable()
 export class TicketService extends TenantBoundBaseService<Ticket> {
@@ -31,6 +33,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly userRepository: UserRepository,
         private readonly ticketUpdateRepository: TicketUpdateRepository,
         private readonly tenantRepository: TenantRepository,
+        private readonly ticketFileRepository: TicketFileRepository,
     ) {
         super(ticketRepository);
     }
@@ -38,7 +41,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
         const filters = {
             ...options,
-            relations: ['requester', 'targetUser', 'department'],
+            relations: ['requester', 'targetUser', 'department', 'files'],
             order: { createdAt: 'DESC' } as any,
         };
         return super.findMany(accessProfile, filters);
@@ -47,7 +50,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async findById(accessProfile: AccessProfile, customId: string): Promise<Ticket> {
         return this.findOne(accessProfile, {
             where: { customId },
-            relations: ['requester', 'targetUser', 'department'],
+            relations: ['requester', 'targetUser', 'department', 'files'],
         });
     }
 
@@ -58,7 +61,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const queryOptions = {
             ...options,
             where: this.buildQueryWhere(options.where),
-            relations: ['requester', 'targetUser', 'department'],
+            relations: ['requester', 'targetUser', 'department', 'files'],
             order: { createdAt: 'DESC' } as any,
         };
 
@@ -76,6 +79,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     }
 
     async create(accessProfile: AccessProfile, ticketDto: CreateTicketDto) {
+        const { files, ...ticketData } = ticketDto;
+
         const requester = await this.userRepository.findOne({
             where: { id: ticketDto.requesterId, tenantId: accessProfile.tenantId },
         });
@@ -112,12 +117,26 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             const customId = `${tenant.customKey}-${nextNumber}`;
 
             const ticket = manager.create(Ticket, {
-                ...ticketDto,
+                ...ticketData,
                 customId,
                 tenantId: accessProfile.tenantId,
             });
 
             createdTicket = await manager.save(ticket);
+
+            if (files?.length) {
+                const ticketFiles = files.map((url: string) => ({
+                    tenantId: accessProfile.tenantId,
+                    url,
+                    name: extractFileName(url),
+                    mimeType: extractMimeTypeFromUrl(url),
+                    ticketId: ticket.id,
+                    createdById: requester.id,
+                    updatedById: requester.id,
+                }));
+
+                await manager.save(this.ticketFileRepository.create(ticketFiles));
+            }
 
             await manager.save(
                 this.ticketUpdateRepository.create({
@@ -125,6 +144,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     ticketId: createdTicket.id,
                     ticketCustomId: createdTicket.customId,
                     performedById: requester.id,
+                    createdById: requester.id,
+                    updatedById: requester.id,
                     action: TicketActionType.Creation,
                     toStatus: TicketStatus.Pending,
                     description: '<p><span>user</span> criou este ticket.</p>',
@@ -137,6 +158,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     type: NotificationType.Open,
                     message: `<p>Novo ticket criado por <span>user</span>.</p>`,
                     createdById: requester.id,
+                    updatedById: requester.id,
                     targetUserId: ticketDto.targetUserId,
                     resourceId: createdTicket.id,
                     resourceCustomId: createdTicket.customId,
@@ -178,6 +200,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             ticketId: ticketResponse.id,
             ticketCustomId: ticketResponse.customId,
             performedById: accessProfile.userId,
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
             action: TicketActionType.Update,
             fromStatus: ticketResponse.status as TicketStatus,
             toStatus: ticketResponse.status as TicketStatus,
@@ -189,6 +213,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             type: NotificationType.TicketUpdate,
             message: '<p><span>user</span> atualizou o ticket <span>resource</span>.</p>',
             createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
             targetUserId: ticketResponse.requester.id,
             resourceId: ticketResponse.id,
             resourceCustomId: ticketResponse.customId,
@@ -220,6 +245,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 ticketId: ticketResponse.id,
                 ticketCustomId: ticketResponse.customId,
                 performedById: ticketResponse.targetUser.id,
+                createdById: ticketResponse.targetUser.id,
+                updatedById: ticketResponse.targetUser.id,
                 action: TicketActionType.StatusUpdate,
                 fromStatus: TicketStatus.InProgress,
                 toStatus: TicketStatus.AwaitingVerification,
@@ -232,6 +259,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 message:
                     '<p><span>user</span> enviou o ticket <span>resource</span> para verificação.</p>',
                 createdById: ticketResponse.targetUser.id,
+                updatedById: ticketResponse.targetUser.id,
                 targetUserId: ticketResponse.requester.id,
                 resourceId: ticketResponse.id,
                 resourceCustomId: ticketResponse.customId,
@@ -248,6 +276,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 ticketId: ticketResponse.id,
                 ticketCustomId: ticketResponse.customId,
                 performedById: ticketResponse.requester.id,
+                createdById: ticketResponse.requester.id,
+                updatedById: ticketResponse.requester.id,
                 action: TicketActionType.StatusUpdate,
                 fromStatus: TicketStatus.UnderVerification,
                 toStatus: TicketStatus.Returned,
@@ -260,6 +290,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 message:
                     '<p><span>user</span> solicitou uma correção no ticket <span>resource</span>.</p>',
                 createdById: ticketResponse.requester.id,
+                updatedById: ticketResponse.requester.id,
                 targetUserId: ticketResponse.targetUser.id,
                 resourceId: ticketResponse.id,
                 resourceCustomId: ticketResponse.customId,
@@ -321,6 +352,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             ticketId: ticketResponse.id,
             ticketCustomId: ticketResponse.customId,
             performedById: targetUser.id,
+            createdById: targetUser.id,
+            updatedById: targetUser.id,
             action: TicketActionType.StatusUpdate,
             fromStatus: TicketStatus.Pending,
             toStatus: TicketStatus.InProgress,
@@ -332,6 +365,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             type: NotificationType.StatusUpdate,
             message: '<p><span>user</span> aceitou o ticket <span>resource</span>.</p>',
             createdById: targetUser.id,
+            updatedById: targetUser.id,
             targetUserId: requester.id,
             resourceId: ticketResponse.id,
             resourceCustomId: ticketResponse.customId,
@@ -369,6 +403,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             ticketId: ticketResponse.id,
             ticketCustomId: ticketResponse.customId,
             performedById: requester.id,
+            createdById: requester.id,
+            updatedById: requester.id,
             action: TicketActionType.Completion,
             fromStatus: TicketStatus.UnderVerification,
             toStatus: TicketStatus.Completed,
@@ -380,6 +416,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             type: NotificationType.StatusUpdate,
             message: '<p><span>user</span> aprovou o ticket <span>resource</span>.</p>',
             createdById: requester.id,
+            updatedById: requester.id,
             targetUserId: targetUser.id,
             resourceId: ticketResponse.id,
             resourceCustomId: ticketResponse.customId,
@@ -418,6 +455,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             ticketId: ticketResponse.id,
             ticketCustomId: ticketResponse.customId,
             performedById: requester.id,
+            createdById: requester.id,
+            updatedById: requester.id,
             action: TicketActionType.Cancellation,
             fromStatus: ticketResponse.status as TicketStatus,
             toStatus: TicketStatus.Canceled,
@@ -429,6 +468,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             type: NotificationType.Cancellation,
             message: '<p><span>user</span> cancelou o ticket <span>{{resource}}</span>.</p>',
             createdById: requester.id,
+            updatedById: requester.id,
             targetUserId: targetUser.id,
             resourceId: ticketResponse.id,
             resourceCustomId: ticketResponse.customId,

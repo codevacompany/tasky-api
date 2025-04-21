@@ -14,6 +14,7 @@ import { TicketUpdateModule } from './modules/ticket-updates/ticket-update.modul
 import { TenantModule } from './modules/tenant/tenant.module';
 import { RoleModule } from './modules/role/role.module';
 import { AwsModule } from './modules/aws/aws.module';
+import { TicketFileModule } from './modules/ticket-file/ticket-file.module';
 
 @Module({
     imports: [
@@ -32,7 +33,8 @@ import { AwsModule } from './modules/aws/aws.module';
         TicketUpdateModule,
         TenantModule,
         RoleModule,
-        AwsModule
+        AwsModule,
+        TicketFileModule
     ],
     controllers: [],
     providers: [DatabaseSeederService],
