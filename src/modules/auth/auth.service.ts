@@ -114,9 +114,9 @@ export class AuthService {
         }
 
         const verificationCode = await this.verificationCodeService.generate();
-        if (process.env.NODE_ENV !== 'test') {
-            await this.emailService.sendVerificationCode(user, verificationCode);
-        }
+        // if (process.env.NODE_ENV !== 'test') {
+        //     await this.emailService.sendVerificationCode(user, verificationCode);
+        // }
         await this.verificationCodeService.insert(verificationCode, email, user.tenantId);
 
         return { message: `Verification code sent to ${email}` };
