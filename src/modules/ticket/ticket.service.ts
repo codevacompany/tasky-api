@@ -7,7 +7,9 @@ import {
     CustomForbiddenException,
     CustomNotFoundException,
 } from '../../shared/exceptions/http-exception';
+import { EmailService } from '../../shared/services/email/email.service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
+import { extractFileName, extractMimeTypeFromUrl } from '../../shared/utils/file-helper';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { NotificationService } from '../notification/notification.service';
@@ -21,7 +23,6 @@ import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketRepository } from './ticket.repository';
-import { extractFileName, extractMimeTypeFromUrl } from '../../shared/utils/file-helper';
 
 @Injectable()
 export class TicketService extends TenantBoundBaseService<Ticket> {
@@ -34,6 +35,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly ticketUpdateRepository: TicketUpdateRepository,
         private readonly tenantRepository: TenantRepository,
         private readonly ticketFileRepository: TicketFileRepository,
+        private readonly emailService: EmailService,
     ) {
         super(ticketRepository);
     }
@@ -164,6 +166,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     resourceCustomId: createdTicket.customId,
                 }),
             );
+
+            const message = `Novo ticket criado por <span style="font-weight: 600;">${createdTicket.requester.firstName} ${createdTicket.requester.lastName}</span>.`;
+
+            this.emailService.sendMail({
+                subject: `Um novo ticket foi criado para você.`,
+                html: this.emailService.compileTemplate('ticket-update', { message }),
+                to: createdTicket.targetUser.email,
+            });
         });
 
         //Uncomment when ready to use SSE
@@ -265,6 +275,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 resourceCustomId: ticketResponse.customId,
             });
 
+            const message = `<span style="font-weight: 600;">${ticketResponse.targetUser.firstName} ${ticketResponse.targetUser.lastName}</span> enviou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> para verificação.`;
+
+            this.emailService.sendMail({
+                subject: `O ticket ${ticketResponse.customId} está pronto para verificação.`,
+                html: this.emailService.compileTemplate('ticket-update', { message }),
+                to: ticketResponse.targetUser.email,
+            });
+
             // this.notificationService.sendNotification(ticketResponse.requester.id, {
             //     type: NotificationType.StatusUpdated,
             //     message: `${ticketResponse.targetUser.firstName} ${ticketResponse.targetUser.lastName} enviou o ticket #${ticketResponse.id} para verificação.`,
@@ -294,6 +312,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 targetUserId: ticketResponse.targetUser.id,
                 resourceId: ticketResponse.id,
                 resourceCustomId: ticketResponse.customId,
+            });
+
+            const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> solicitou uma correção no ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
+
+            this.emailService.sendMail({
+                subject: `Uma correção foi solicitada no ticket ${ticketResponse.customId}.`,
+                html: this.emailService.compileTemplate('ticket-update', { message }),
+                to: ticketResponse.targetUser.email,
             });
 
             // this.notificationService.sendNotification(ticketResponse.targetUser.id, {
@@ -371,6 +397,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             resourceCustomId: ticketResponse.customId,
         });
 
+        const message = `<span style="font-weight: 600;">${targetUser.firstName} ${targetUser.lastName}</span> aceitou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
+
+        this.emailService.sendMail({
+            subject: `O ticket ${ticketResponse.customId} foi aceite`,
+            html: this.emailService.compileTemplate('ticket-update', { message }),
+            to: requester.email,
+        });
+
         // this.notificationService.sendNotification(requester.id, {
         //     type: NotificationType.StatusUpdated,
         //     message: `${targetUser.firstName} ${targetUser.lastName} aceitou o ticket #${ticketResponse.id}.`,
@@ -420,6 +454,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             targetUserId: targetUser.id,
             resourceId: ticketResponse.id,
             resourceCustomId: ticketResponse.customId,
+        });
+
+        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> aprovou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
+
+        this.emailService.sendMail({
+            subject: `O ticket ${ticketResponse.customId} foi aprovado.`,
+            html: this.emailService.compileTemplate('ticket-update', { message }),
+            to: ticketResponse.targetUser.email,
         });
 
         // this.notificationService.sendNotification(targetUser.id, {
@@ -472,6 +514,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             targetUserId: targetUser.id,
             resourceId: ticketResponse.id,
             resourceCustomId: ticketResponse.customId,
+        });
+
+        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> cancelou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
+
+        this.emailService.sendMail({
+            subject: `O ticket ${ticketResponse.customId} foi cancelado.`,
+            html: this.emailService.compileTemplate('ticket-update', { message }),
+            to: ticketResponse.targetUser.email,
         });
 
         return {

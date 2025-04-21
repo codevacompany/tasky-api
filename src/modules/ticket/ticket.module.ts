@@ -9,6 +9,7 @@ import { TicketController } from './ticket.controller';
 import { TicketRepository } from './ticket.repository';
 import { TicketService } from './ticket.service';
 import { TicketFileModule } from '../ticket-file/ticket-file.module';
+import { EmailModule } from '../../shared/services/email/email.module';
 
 @Module({
     imports: [
@@ -19,6 +20,7 @@ import { TicketFileModule } from '../ticket-file/ticket-file.module';
         TenantModule,
         TenantModule,
         TicketFileModule,
+        EmailModule,
     ],
     exports: [TicketService],
     controllers: [TicketController],
