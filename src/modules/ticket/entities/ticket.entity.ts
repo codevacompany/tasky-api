@@ -5,6 +5,7 @@ import { Department } from '../../department/entities/department.entity';
 import { TicketComment } from '../../ticket-comment/entities/ticket-comment.entity';
 import { TicketUpdate } from '../../ticket-updates/entities/ticket-update.entity';
 import { User } from '../../user/entities/user.entity';
+import { TicketFile } from '../../ticket-file/entities/ticket-file.entity';
 
 export enum TicketPriority {
     Low = 'baixa',
@@ -97,4 +98,7 @@ export class Ticket extends TenantBoundBaseEntity {
 
     @OneToMany(() => TicketUpdate, (update) => update.ticket)
     updates: TicketUpdate[];
+
+    @OneToMany(() => TicketFile, (file) => file.ticket, { cascade: true })
+    files: TicketFile[];
 }

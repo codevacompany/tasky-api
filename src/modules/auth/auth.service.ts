@@ -80,7 +80,7 @@ export class AuthService {
             });
         }
 
-        const { userId, email } = decodeResponse.sub;
+        const { userId, tenantId } = decodeResponse.sub;
 
         if (!userId) {
             throw new CustomForbiddenException({
@@ -98,7 +98,7 @@ export class AuthService {
             });
         }
 
-        return this.tokenService.createPair({ userId, email });
+        return this.tokenService.createPair({ userId, tenantId });
     }
 
     async requestPasswordReset(accessProfile: AccessProfile, email: string) {

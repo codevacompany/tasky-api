@@ -27,7 +27,7 @@ export class AwsService {
   }
 
   async generateUploadURL(fileExtension: string): Promise<string> {
-    const rawBytes = await randomBytes(16);
+    const rawBytes = await randomBytes(8);
     const imageName = rawBytes.toString('hex') + fileExtension;
 
     const command = new PutObjectCommand({

@@ -8,6 +8,7 @@ import { Ticket } from './entities/ticket.entity';
 import { TicketController } from './ticket.controller';
 import { TicketRepository } from './ticket.repository';
 import { TicketService } from './ticket.service';
+import { TicketFileModule } from '../ticket-file/ticket-file.module';
 
 @Module({
     imports: [
@@ -17,6 +18,7 @@ import { TicketService } from './ticket.service';
         forwardRef(() => TicketUpdateModule),
         TenantModule,
         TenantModule,
+        TicketFileModule,
     ],
     exports: [TicketService],
     controllers: [TicketController],
