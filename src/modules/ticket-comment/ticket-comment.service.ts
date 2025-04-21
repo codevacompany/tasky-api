@@ -102,6 +102,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
                     createdById: ticketCommentDto.userId,
                     targetUserId: commentWithTicket.ticket.requesterId,
                     resourceId: commentWithTicket.ticketId,
+                    resourceCustomId: commentWithTicket.ticketCustomId,
                 }),
             );
         }

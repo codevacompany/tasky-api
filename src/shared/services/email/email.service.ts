@@ -22,7 +22,7 @@ export class EmailService {
     }
 
     async sendMail(options: Mail.Options) {
-        // const data = await this.mountMessage(options);
+        console.info('Sending email')
 
         const oauth2Client = new google.auth.OAuth2(
             process.env.ID_CLIENT,
@@ -46,9 +46,11 @@ export class EmailService {
         return transport
             .sendMail(options)
             .then(() => {
+                console.info('Email successfully sent')
                 return { message: 'Email successfully sent' };
             })
             .catch((error) => {
+                console.error(`Error sending email: ${error.message}`)
                 throw new CustomInternalServerErrorException({
                     code: 'error-sending-email',
                     message: error.message,
