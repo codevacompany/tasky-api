@@ -169,7 +169,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
             const message = `Novo ticket criado por <span style="font-weight: 600;">${createdTicket.requester.firstName} ${createdTicket.requester.lastName}</span>.`;
 
-            await this.emailService.sendMail({
+            this.emailService.sendMail({
                 subject: `Um novo ticket foi criado para você.`,
                 html: this.emailService.compileTemplate('ticket-update', { message }),
                 to: createdTicket.targetUser.email,
@@ -277,10 +277,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
             const message = `<span style="font-weight: 600;">${ticketResponse.targetUser.firstName} ${ticketResponse.targetUser.lastName}</span> enviou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> para verificação.`;
 
-            await this.emailService.sendMail({
+            this.emailService.sendMail({
                 subject: `O ticket ${ticketResponse.customId} está pronto para verificação.`,
                 html: this.emailService.compileTemplate('ticket-update', { message }),
-                to: ticketResponse.targetUser.email,
+                to: ticketResponse.requester.email,
             });
 
             // this.notificationService.sendNotification(ticketResponse.requester.id, {
@@ -316,7 +316,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
             const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> solicitou uma correção no ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
 
-            await this.emailService.sendMail({
+            this.emailService.sendMail({
                 subject: `Uma correção foi solicitada no ticket ${ticketResponse.customId}.`,
                 html: this.emailService.compileTemplate('ticket-update', { message }),
                 to: ticketResponse.targetUser.email,
@@ -399,7 +399,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const message = `<span style="font-weight: 600;">${targetUser.firstName} ${targetUser.lastName}</span> aceitou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
 
-        await this.emailService.sendMail({
+        this.emailService.sendMail({
             subject: `O ticket ${ticketResponse.customId} foi aceite`,
             html: this.emailService.compileTemplate('ticket-update', { message }),
             to: requester.email,
@@ -458,7 +458,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> aprovou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
 
-        await this.emailService.sendMail({
+        this.emailService.sendMail({
             subject: `O ticket ${ticketResponse.customId} foi aprovado.`,
             html: this.emailService.compileTemplate('ticket-update', { message }),
             to: ticketResponse.targetUser.email,
