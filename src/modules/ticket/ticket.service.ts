@@ -13,6 +13,7 @@ import { extractFileName, extractMimeTypeFromUrl } from '../../shared/utils/file
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { NotificationService } from '../notification/notification.service';
+import { TicketStatsService } from '../stats/ticket-stats.service';
 import { TenantRepository } from '../tenant/tenant.repository';
 import { TicketFileRepository } from '../ticket-file/ticket-file.repository';
 import { TicketActionType } from '../ticket-updates/entities/ticket-update.entity';
@@ -36,6 +37,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly tenantRepository: TenantRepository,
         private readonly ticketFileRepository: TicketFileRepository,
         private readonly emailService: EmailService,
+        private readonly ticketStatsService: TicketStatsService,
     ) {
         super(ticketRepository);
     }
@@ -87,6 +89,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             where: { id: ticketDto.requesterId, tenantId: accessProfile.tenantId },
         });
 
+        const targetUser = await this.userRepository.findOne({
+            where: { id: ticketDto.targetUserId, tenantId: accessProfile.tenantId },
+        });
+
         if (!requester) {
             throw new CustomNotFoundException({
                 message: 'Requester not found',
@@ -122,6 +128,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 ...ticketData,
                 customId,
                 tenantId: accessProfile.tenantId,
+                createdById: requester.id,
+                updatedById: requester.id,
             });
 
             createdTicket = await manager.save(ticket);
@@ -167,12 +175,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 }),
             );
 
-            const message = `Novo ticket criado por <span style="font-weight: 600;">${createdTicket.requester.firstName} ${createdTicket.requester.lastName}</span>.`;
+            const message = `Novo ticket criado por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
 
             this.emailService.sendMail({
                 subject: `Um novo ticket foi criado para você.`,
                 html: this.emailService.compileTemplate('ticket-update', { message }),
-                to: createdTicket.targetUser.email,
+                to: targetUser.email,
             });
         });
 
@@ -464,14 +472,70 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             to: ticketResponse.targetUser.email,
         });
 
-        // this.notificationService.sendNotification(targetUser.id, {
-        //     type: NotificationType.StatusUpdated,
-        //     message: `${requester.firstName} ${requester.lastName} aprovou o ticket #${ticketResponse.id}.`,
-        //     resourceId: ticketResponse.id,
-        // });
+        // Create ticket stats
+        if (ticketResponse.acceptedAt) {
+            // Get the updated ticket data after status change
+            const updatedTicket = await this.findById(accessProfile, customId);
+            await this.ticketStatsService.create(accessProfile, updatedTicket);
+        }
 
         return {
-            message: 'Ticket approved!',
+            message: 'Ticket successfully approved!',
+            ticketId: customId,
+        };
+    }
+
+    async reject(accessProfile: AccessProfile, customId: string) {
+        const ticketResponse = await this.findById(accessProfile, customId);
+
+        const { targetUser, requester } = ticketResponse;
+
+        await this.repository.update(ticketResponse.id, {
+            status: TicketStatus.Rejected,
+            completedAt: new Date().toISOString(),
+        });
+
+        await this.ticketUpdateRepository.save({
+            tenantId: accessProfile.tenantId,
+            ticketId: ticketResponse.id,
+            ticketCustomId: ticketResponse.customId,
+            performedById: requester.id,
+            createdById: requester.id,
+            updatedById: requester.id,
+            action: TicketActionType.StatusUpdate,
+            fromStatus: ticketResponse.status as TicketStatus,
+            toStatus: TicketStatus.Rejected,
+            description: '<p><span>user</span> rejeitou este ticket.</p>',
+        });
+
+        await this.notificationRepository.save({
+            tenantId: accessProfile.tenantId,
+            type: NotificationType.StatusUpdate,
+            message: '<p><span>user</span> rejeitou o ticket <span>resource</span>.</p>',
+            createdById: requester.id,
+            updatedById: requester.id,
+            targetUserId: targetUser.id,
+            resourceId: ticketResponse.id,
+            resourceCustomId: ticketResponse.customId,
+        });
+
+        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> rejeitou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
+
+        this.emailService.sendMail({
+            subject: `O ticket ${ticketResponse.customId} foi rejeitado.`,
+            html: this.emailService.compileTemplate('ticket-update', { message }),
+            to: ticketResponse.targetUser.email,
+        });
+
+        // Create ticket stats
+        if (ticketResponse.acceptedAt) {
+            // Get the updated ticket data after status change
+            const updatedTicket = await this.findById(accessProfile, customId);
+            await this.ticketStatsService.create(accessProfile, updatedTicket);
+        }
+
+        return {
+            message: 'Ticket successfully rejected!',
             ticketId: customId,
         };
     }
@@ -523,6 +587,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             html: this.emailService.compileTemplate('ticket-update', { message }),
             to: ticketResponse.targetUser.email,
         });
+
+        // Create ticket stats with isResolved=false if the ticket had been accepted
+        if (ticketResponse.acceptedAt) {
+            // Get the updated ticket data after status change
+            const updatedTicket = await this.findById(accessProfile, customId);
+            await this.ticketStatsService.create(accessProfile, updatedTicket);
+        }
 
         return {
             message: 'Ticket successfully canceled!',

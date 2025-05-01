@@ -105,6 +105,11 @@ export class TicketController {
         return this.ticketService.approve(accessProfile, customId);
     }
 
+    @Post(':id/reject')
+    reject(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
+        return this.ticketService.reject(accessProfile, customId);
+    }
+
     @Post(':id/cancel')
     cancel(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
         return this.ticketService.cancel(accessProfile, customId);

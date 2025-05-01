@@ -22,7 +22,13 @@ export class EmailService {
     }
 
     async sendMail(options: Mail.Options) {
-        console.info('Sending email')
+        console.info('Sending email');
+
+        // Skip email sending in development environment
+        if (process.env.NODE_ENV === 'dev') {
+            console.info('Skipping email in development environment');
+            return { message: 'Email skipped in development mode' };
+        }
 
         const oauth2Client = new google.auth.OAuth2(
             process.env.ID_CLIENT,
@@ -46,11 +52,11 @@ export class EmailService {
         return transport
             .sendMail(options)
             .then(() => {
-                console.info('Email successfully sent')
+                console.info('Email successfully sent');
                 return { message: 'Email successfully sent' };
             })
             .catch((error) => {
-                console.error(`Error sending email: ${error.message}`)
+                console.error(`Error sending email: ${error.message}`);
                 throw new CustomInternalServerErrorException({
                     code: 'error-sending-email',
                     message: error.message,

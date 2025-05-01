@@ -21,8 +21,8 @@ export abstract class TenantBoundBaseService<T extends TenantBoundBaseEntity> {
 
         const [items, total] = await this.repository.findAndCount({
             ...options,
-            skip: (options.page - 1) * options.limit,
-            take: options.limit,
+            skip: options.paginated ? (options.page - 1) * options.limit : undefined,
+            take: options.paginated ? options.limit : undefined,
             order: { createdAt: 'DESC' } as any,
         });
 

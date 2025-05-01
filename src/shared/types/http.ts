@@ -2,11 +2,12 @@ import { FindOptionsWhere, FindOptionsOrder } from 'typeorm';
 
 export type QueryOptions<T> = {
     where?: FindOptionsWhere<T>;
-    page: number;
-    limit: number;
+    page?: number;
+    limit?: number;
     relations?: string[];
     order?: FindOptionsOrder<T>;
     tenantAware?: boolean;
+    paginated?: boolean;
 };
 
 export type PaginatedResponse<T> = {
