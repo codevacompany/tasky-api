@@ -1,11 +1,30 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import {
+    endOfDay,
+    endOfMonth,
+    endOfWeek,
+    startOfDay,
+    startOfMonth,
+    startOfWeek,
+    subDays,
+    subMonths,
+    subWeeks,
+} from 'date-fns';
+import { MoreThanOrEqual, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
-import { Ticket } from '../ticket/entities/ticket.entity';
+import { Ticket, TicketPriority, TicketStatus } from '../ticket/entities/ticket.entity';
+import {
+    TicketPriorityCountDto,
+    TicketPriorityCountResponseDto,
+} from './dtos/ticket-priority-count.dto';
 import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
+import { TicketStatusCountDto, TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
+import { TicketTrendsResponseDto, TrendDataPointDto } from './dtos/ticket-trends.dto';
 import { TicketStats } from './entities/ticket-stats.entity';
 import { TicketStatsRepository } from './ticket-stats.repository';
 
@@ -14,6 +33,8 @@ export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
     constructor(
         private readonly ticketStatsRepository: TicketStatsRepository,
         private readonly departmentService: DepartmentService,
+        @InjectRepository(Ticket)
+        private readonly ticketRepository: Repository<Ticket>,
     ) {
         super(ticketStatsRepository);
     }
@@ -30,27 +51,22 @@ export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
 
         let resolutionTimeSeconds = null;
         let acceptanceTimeSeconds = null;
-        const isResolved = ticket.status === 'finalizado';
+        const isResolved = ticket.status === TicketStatus.Canceled;
 
-        // Calculate resolution time if completed or rejected
-        if (ticket.completedAt) {
-            resolutionTimeSeconds = this.calculateTimeInSeconds(
-                ticket.acceptedAt,
-                new Date(ticket.completedAt),
-            );
-        }
+        resolutionTimeSeconds = this.calculateTimeInSeconds(
+            ticket.acceptedAt,
+            new Date(ticket.completedAt),
+        );
 
-        // Calculate acceptance time if accepted
-        if (ticket.acceptedAt) {
-            acceptanceTimeSeconds = this.calculateTimeInSeconds(
-                ticket.createdAt,
-                new Date(ticket.acceptedAt),
-            );
-        }
+        acceptanceTimeSeconds = this.calculateTimeInSeconds(
+            ticket.createdAt,
+            new Date(ticket.acceptedAt),
+        );
 
         return super.save(accessProfile, {
             ticketId: ticket.id,
             departmentId: ticket.departmentId,
+            targetUserId: ticket.targetUserId,
             tenantId: ticket.tenantId,
             isResolved,
             resolutionTimeSeconds,
@@ -109,6 +125,8 @@ export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
                 .map((stat) => stat.acceptanceTimeSeconds),
         );
 
+        const avgTotalTimeSeconds = avgResolutionTimeSeconds + avgAcceptanceTimeSeconds;
+
         // Calculate stats by department
         const ticketsByDepartment: DepartmentStatsDto[] = departments.items.map((department) => {
             const departmentTickets = ticketStats.items.filter(
@@ -123,6 +141,15 @@ export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
                     .map((stat) => stat.resolutionTimeSeconds),
             );
 
+            const avgDeptAcceptanceTimeSeconds = this.calculateAverage(
+                departmentTickets
+                    .filter((stat) => stat.acceptanceTimeSeconds !== null)
+                    .map((stat) => stat.acceptanceTimeSeconds),
+            );
+
+            const avgDeptTotalTimeSeconds =
+                avgDeptAcceptanceTimeSeconds + avgDeptResolutionTimeSeconds;
+
             const deptResolutionRate =
                 totalDeptTickets > 0 ? resolvedDeptTickets / totalDeptTickets : 0;
 
@@ -132,6 +159,8 @@ export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
                 totalTickets: totalDeptTickets,
                 resolvedTickets: resolvedDeptTickets,
                 averageResolutionTimeSeconds: avgDeptResolutionTimeSeconds,
+                averageAcceptanceTimeSeconds: avgDeptAcceptanceTimeSeconds,
+                averageTotalTimeSeconds: avgDeptTotalTimeSeconds,
                 resolutionRate: parseFloat(deptResolutionRate.toFixed(2)),
             };
         });
@@ -142,17 +171,182 @@ export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
             closedTickets,
             averageResolutionTimeSeconds: avgResolutionTimeSeconds,
             averageAcceptanceTimeSeconds: avgAcceptanceTimeSeconds,
+            averageTotalTimeSeconds: avgTotalTimeSeconds,
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
             ticketsByDepartment,
         };
     }
 
+    async getTicketTrends(accessProfile: AccessProfile): Promise<TicketTrendsResponseDto> {
+        const today = new Date();
+
+        // Run all trend calculations in parallel
+        const [daily, weekly, monthly] = await Promise.all([
+            this.calculateDailyTrends(accessProfile, today, 30),
+            this.calculateWeeklyTrends(accessProfile, today, 12),
+            this.calculateMonthlyTrends(accessProfile, today, 6),
+        ]);
+
+        return {
+            daily,
+            weekly,
+            monthly,
+        };
+    }
+
+    private async calculateDailyTrends(
+        accessProfile: AccessProfile,
+        endDate: Date,
+        days: number,
+    ): Promise<TrendDataPointDto[]> {
+        // Prepare date ranges for all days at once
+        const dateRanges = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const date = startOfDay(subDays(endDate, i));
+            dateRanges.push({
+                date,
+                startOfPeriod: date,
+                endOfPeriod: endOfDay(date),
+            });
+        }
+
+        // Get tickets for the tenant from the last 30 days only
+        const startOfRange = startOfDay(subDays(endDate, days - 1));
+
+        const tickets = await this.ticketRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                createdAt: MoreThanOrEqual(startOfRange),
+            },
+            select: ['id', 'createdAt', 'completedAt', 'status'],
+        });
+
+        return dateRanges.map(({ date, startOfPeriod, endOfPeriod }) => {
+            const total = tickets.filter((ticket) => ticket.createdAt <= endOfPeriod).length;
+
+            const created = tickets.filter(
+                (ticket) => ticket.createdAt >= startOfPeriod && ticket.createdAt <= endOfPeriod,
+            ).length;
+
+            const resolved = tickets.filter(
+                (ticket) =>
+                    ticket.completedAt &&
+                    ticket.completedAt >= startOfPeriod &&
+                    ticket.completedAt <= endOfPeriod &&
+                    ticket.status === TicketStatus.Completed,
+            ).length;
+
+            return {
+                date: date.toISOString(),
+                total,
+                resolved,
+                created,
+            };
+        });
+    }
+
+    private async calculateWeeklyTrends(
+        accessProfile: AccessProfile,
+        endDate: Date,
+        weeks: number,
+    ): Promise<TrendDataPointDto[]> {
+        const dateRanges = [];
+        for (let i = weeks - 1; i >= 0; i--) {
+            const startDate = startOfWeek(subWeeks(endDate, i));
+            dateRanges.push({
+                date: startDate,
+                startOfPeriod: startDate,
+                endOfPeriod: endOfWeek(startDate),
+            });
+        }
+
+        const startOfRange = startOfWeek(subWeeks(endDate, weeks - 1));
+
+        const tickets = await this.ticketRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                createdAt: MoreThanOrEqual(startOfRange),
+            },
+            select: ['id', 'createdAt', 'completedAt', 'status'],
+        });
+
+        return dateRanges.map(({ date, startOfPeriod, endOfPeriod }) => {
+            const total = tickets.filter((ticket) => ticket.createdAt <= endOfPeriod).length;
+
+            // Tickets created during this week
+            const created = tickets.filter(
+                (ticket) => ticket.createdAt >= startOfPeriod && ticket.createdAt <= endOfPeriod,
+            ).length;
+
+            // Tickets resolved during this week
+            const resolved = tickets.filter(
+                (ticket) =>
+                    ticket.completedAt &&
+                    ticket.completedAt >= startOfPeriod &&
+                    ticket.completedAt <= endOfPeriod &&
+                    ticket.status === TicketStatus.Completed,
+            ).length;
+
+            return {
+                date: date.toISOString(),
+                total,
+                resolved,
+                created,
+            };
+        });
+    }
+
+    private async calculateMonthlyTrends(
+        accessProfile: AccessProfile,
+        endDate: Date,
+        months: number,
+    ): Promise<TrendDataPointDto[]> {
+        const dateRanges = [];
+        for (let i = months - 1; i >= 0; i--) {
+            const startDate = startOfMonth(subMonths(endDate, i));
+            dateRanges.push({
+                date: startDate,
+                startOfPeriod: startDate,
+                endOfPeriod: endOfMonth(startDate),
+            });
+        }
+
+        const startOfRange = startOfMonth(subMonths(endDate, months - 1));
+
+        const tickets = await this.ticketRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                createdAt: MoreThanOrEqual(startOfRange),
+            },
+            select: ['id', 'createdAt', 'completedAt', 'status'],
+        });
+
+        return dateRanges.map(({ date, startOfPeriod, endOfPeriod }) => {
+            const total = tickets.filter((ticket) => ticket.createdAt <= endOfPeriod).length;
+
+            const created = tickets.filter(
+                (ticket) => ticket.createdAt >= startOfPeriod && ticket.createdAt <= endOfPeriod,
+            ).length;
+
+            const resolved = tickets.filter(
+                (ticket) =>
+                    ticket.completedAt &&
+                    ticket.completedAt >= startOfPeriod &&
+                    ticket.completedAt <= endOfPeriod &&
+                    ticket.status === TicketStatus.Completed,
+            ).length;
+
+            return {
+                date: date.toISOString(),
+                total,
+                resolved,
+                created,
+            };
+        });
+    }
+
     private calculateTimeInSeconds(startDate: Date, endDate: Date): number {
         const diff = endDate.getTime() - startDate.getTime();
-        console.info('startDate', startDate);
-        console.info('endDate', endDate);
-        console.info('diff', diff);
-        console.info('seconds', Math.floor(diff / 1000));
         return Math.floor(diff / 1000); // Convert to seconds
     }
 
@@ -160,5 +354,69 @@ export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
         if (values.length === 0) return 0;
         const sum = values.reduce((acc, val) => acc + val, 0);
         return sum / values.length;
+    }
+
+    async getTicketsByStatus(accessProfile: AccessProfile): Promise<TicketStatusCountResponseDto> {
+        const tickets = await this.ticketRepository.find({
+            where: { tenantId: accessProfile.tenantId },
+            select: ['id', 'status'],
+        });
+
+        const total = tickets.length;
+        const statusMap = new Map<string, number>();
+
+        Object.values(TicketStatus).forEach((status) => {
+            statusMap.set(status, 0);
+        });
+
+        tickets.forEach((ticket) => {
+            const currentCount = statusMap.get(ticket.status) || 0;
+            statusMap.set(ticket.status, currentCount + 1);
+        });
+
+        const statusCounts: TicketStatusCountDto[] = Array.from(statusMap.entries()).map(
+            ([status, count]) => ({
+                status: status as TicketStatus,
+                count,
+            }),
+        );
+
+        return {
+            statusCounts,
+            total,
+        };
+    }
+
+    async getTicketsByPriority(
+        accessProfile: AccessProfile,
+    ): Promise<TicketPriorityCountResponseDto> {
+        const tickets = await this.ticketRepository.find({
+            where: { tenantId: accessProfile.tenantId },
+            select: ['id', 'priority'],
+        });
+
+        const total = tickets.length;
+        const priorityMap = new Map<string, number>();
+
+        Object.values(TicketPriority).forEach((priority) => {
+            priorityMap.set(priority, 0);
+        });
+
+        tickets.forEach((ticket) => {
+            const currentCount = priorityMap.get(ticket.priority) || 0;
+            priorityMap.set(ticket.priority, currentCount + 1);
+        });
+
+        const priorityCounts: TicketPriorityCountDto[] = Array.from(priorityMap.entries()).map(
+            ([priority, count]) => ({
+                priority: priority as TicketPriority,
+                count,
+            }),
+        );
+
+        return {
+            priorityCounts,
+            total,
+        };
     }
 }

@@ -32,6 +32,11 @@ export class TicketController {
         return this.ticketService.create(accessProfile, createTicketDto);
     }
 
+    @Get('all')
+    findAll(@GetAccessProfile() accessProfile: AccessProfile, @GetQueryOptions() options: QueryOptions<Ticket>) {
+        return this.ticketService.findAll(accessProfile, options);
+    }
+
     @Get()
     findMany(
         @GetAccessProfile() accessProfile: AccessProfile,

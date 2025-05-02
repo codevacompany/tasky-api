@@ -4,6 +4,8 @@ export class DepartmentStatsDto {
     totalTickets: number;
     resolvedTickets: number;
     averageResolutionTimeSeconds: number;
+    averageAcceptanceTimeSeconds: number;
+    averageTotalTimeSeconds: number;
     resolutionRate: number;
 }
 
@@ -13,6 +15,7 @@ export class TicketStatsResponseDto {
     closedTickets: number;
     averageResolutionTimeSeconds: number;
     averageAcceptanceTimeSeconds: number;
+    averageTotalTimeSeconds: number;
     resolutionRate: number;
     ticketsByDepartment: DepartmentStatsDto[];
 }

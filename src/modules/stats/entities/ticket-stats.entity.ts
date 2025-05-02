@@ -2,6 +2,7 @@ import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { Department } from '../../department/entities/department.entity';
 import { Ticket } from '../../ticket/entities/ticket.entity';
+import { User } from '../../user/entities/user.entity';
 
 @Entity()
 export class TicketStats extends TenantBoundBaseEntity {
@@ -18,6 +19,13 @@ export class TicketStats extends TenantBoundBaseEntity {
     @ManyToOne(() => Department)
     @JoinColumn({ name: 'departmentId' })
     department: Department;
+
+    @Column({ nullable: true })
+    targetUserId: number;
+
+    @ManyToOne(() => Department)
+    @JoinColumn({ name: 'targetUserId' })
+    targetUser: User;
 
     @Column({ default: false })
     isResolved: boolean;
