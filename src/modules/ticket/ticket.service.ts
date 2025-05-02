@@ -482,13 +482,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             to: ticketResponse.targetUser.email,
         });
 
-        // Create ticket stats
-        if (ticketResponse.acceptedAt) {
-            // Get the updated ticket data after status change
-            const updatedTicket = await this.findById(accessProfile, customId);
-            await this.ticketStatsService.create(accessProfile, updatedTicket);
-        }
-
         return {
             message: 'Ticket successfully approved!',
             ticketId: customId,
@@ -536,13 +529,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             html: this.emailService.compileTemplate('ticket-update', { message }),
             to: ticketResponse.targetUser.email,
         });
-
-        // Create ticket stats
-        if (ticketResponse.acceptedAt) {
-            // Get the updated ticket data after status change
-            const updatedTicket = await this.findById(accessProfile, customId);
-            await this.ticketStatsService.create(accessProfile, updatedTicket);
-        }
 
         return {
             message: 'Ticket successfully rejected!',
@@ -597,13 +583,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             html: this.emailService.compileTemplate('ticket-update', { message }),
             to: ticketResponse.targetUser.email,
         });
-
-        // Create ticket stats with isResolved=false if the ticket had been accepted
-        if (ticketResponse.acceptedAt) {
-            // Get the updated ticket data after status change
-            const updatedTicket = await this.findById(accessProfile, customId);
-            await this.ticketStatsService.create(accessProfile, updatedTicket);
-        }
 
         return {
             message: 'Ticket successfully canceled!',
