@@ -13,8 +13,6 @@ import {
 } from 'date-fns';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
-import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
-import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
 import { Ticket, TicketPriority, TicketStatus } from '../ticket/entities/ticket.entity';
@@ -26,69 +24,41 @@ import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-
 import { TicketStatusCountDto, TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto, TrendDataPointDto } from './dtos/ticket-trends.dto';
 import { TicketStats } from './entities/ticket-stats.entity';
-import { TicketStatsRepository } from './ticket-stats.repository';
 
 @Injectable()
-export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
+export class TicketStatsService {
     constructor(
-        private readonly ticketStatsRepository: TicketStatsRepository,
+        @InjectRepository(TicketStats)
+        private readonly ticketStatsRepository: Repository<TicketStats>,
         private readonly departmentService: DepartmentService,
         @InjectRepository(Ticket)
         private readonly ticketRepository: Repository<Ticket>,
-    ) {
-        super(ticketStatsRepository);
-    }
-
-    async create(accessProfile: AccessProfile, ticket: Ticket): Promise<TicketStats> {
-        const statsExist = await this.findByTicketId(accessProfile, ticket.id, ticket.tenantId);
-
-        if (statsExist) {
-            throw new CustomConflictException({
-                code: 'ticket-stats-already-exists',
-                message: 'Ticket stats already exists',
-            });
-        }
-
-        let resolutionTimeSeconds = null;
-        let acceptanceTimeSeconds = null;
-        const isResolved = ticket.status === TicketStatus.Canceled;
-
-        resolutionTimeSeconds = this.calculateTimeInSeconds(
-            ticket.acceptedAt,
-            new Date(ticket.completedAt),
-        );
-
-        acceptanceTimeSeconds = this.calculateTimeInSeconds(
-            ticket.createdAt,
-            new Date(ticket.acceptedAt),
-        );
-
-        return super.save(accessProfile, {
-            ticketId: ticket.id,
-            departmentId: ticket.departmentId,
-            targetUserId: ticket.targetUserId,
-            tenantId: ticket.tenantId,
-            isResolved,
-            resolutionTimeSeconds,
-            acceptanceTimeSeconds,
-        });
-    }
+    ) {}
 
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<TicketStats>) {
         const filters = {
             ...options,
+            where: {
+                ...(options?.where || {}),
+                tenantId: accessProfile.tenantId,
+            },
             order: { createdAt: 'DESC' } as any,
         };
-        return super.findMany(accessProfile, filters);
+
+        const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
+
+        return {
+            items,
+            total,
+            page: options?.page || 1,
+            limit: options?.limit || total,
+            totalPages: options?.limit ? Math.ceil(total / options.limit) : 1,
+        };
     }
 
-    async findByTicketId(
-        accessProfile: AccessProfile,
-        ticketId: number,
-        tenantId: number,
-    ): Promise<TicketStats> {
-        return this.findOne(accessProfile, {
-            where: { ticketId, tenantId },
+    async findByTicketId(accessProfile: AccessProfile, ticketId: number): Promise<TicketStats> {
+        return this.ticketStatsRepository.findOne({
+            where: { ticketId, tenantId: accessProfile.tenantId },
         });
     }
 
@@ -350,10 +320,17 @@ export class TicketStatsService extends TenantBoundBaseService<TicketStats> {
         return Math.floor(diff / 1000); // Convert to seconds
     }
 
-    private calculateAverage(values: number[]): number {
-        if (values.length === 0) return 0;
-        const sum = values.reduce((acc, val) => acc + val, 0);
-        return sum / values.length;
+    private calculateAverage(values: (number | string | null | undefined)[]): number {
+        // Filter out null, undefined and convert strings to numbers
+        const validValues = values
+            .filter((val) => val !== null && val !== undefined)
+            .map((val) => (typeof val === 'string' ? parseFloat(val) : val))
+            .filter((val) => !isNaN(val as number));
+
+        if (validValues.length === 0) return 0;
+
+        const sum = validValues.reduce((acc, val) => acc + (val as number), 0);
+        return sum / validValues.length;
     }
 
     async getTicketsByStatus(accessProfile: AccessProfile): Promise<TicketStatusCountResponseDto> {

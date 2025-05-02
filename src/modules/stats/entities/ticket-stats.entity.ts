@@ -1,38 +1,59 @@
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
-import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
-import { Department } from '../../department/entities/department.entity';
+import { DataSource, ViewColumn, ViewEntity } from 'typeorm';
 import { Ticket } from '../../ticket/entities/ticket.entity';
-import { User } from '../../user/entities/user.entity';
 
-@Entity()
-export class TicketStats extends TenantBoundBaseEntity {
-    @Column()
+@ViewEntity({
+    expression: (dataSource: DataSource) =>
+        dataSource
+            .createQueryBuilder()
+            .select('ticket.id', 'id')
+            .addSelect('ticket.createdAt', 'createdAt')
+            .addSelect('ticket.updatedAt', 'updatedAt')
+            .addSelect('ticket.id', 'ticketId')
+            .addSelect('ticket.departmentId', 'departmentId')
+            .addSelect('ticket.targetUserId', 'targetUserId')
+            .addSelect('ticket.tenantId', 'tenantId')
+            .addSelect(
+                "CASE WHEN ticket.status = 'finalizado' THEN true ELSE false END",
+                'isResolved',
+            )
+            .addSelect(
+                'CASE WHEN ticket.completedAt IS NOT NULL AND ticket.acceptedAt IS NOT NULL THEN EXTRACT(EPOCH FROM (ticket.completedAt - ticket.acceptedAt)) ELSE NULL END',
+                'resolutionTimeSeconds',
+            )
+            .addSelect(
+                'CASE WHEN ticket.acceptedAt IS NOT NULL THEN EXTRACT(EPOCH FROM (ticket.acceptedAt - ticket.createdAt)) ELSE NULL END',
+                'acceptanceTimeSeconds',
+            )
+            .from(Ticket, 'ticket'),
+})
+export class TicketStats {
+    @ViewColumn()
+    id: number;
+
+    @ViewColumn()
+    createdAt: Date;
+
+    @ViewColumn()
+    updatedAt: Date;
+
+    @ViewColumn()
     ticketId: number;
 
-    @ManyToOne(() => Ticket)
-    @JoinColumn({ name: 'ticketId' })
-    ticket: Ticket;
-
-    @Column()
+    @ViewColumn()
     departmentId: number;
 
-    @ManyToOne(() => Department)
-    @JoinColumn({ name: 'departmentId' })
-    department: Department;
-
-    @Column({ nullable: true })
+    @ViewColumn()
     targetUserId: number;
 
-    @ManyToOne(() => Department)
-    @JoinColumn({ name: 'targetUserId' })
-    targetUser: User;
+    @ViewColumn()
+    tenantId: number;
 
-    @Column({ default: false })
+    @ViewColumn()
     isResolved: boolean;
 
-    @Column('int', { nullable: true })
+    @ViewColumn()
     resolutionTimeSeconds: number;
 
-    @Column('int', { nullable: true })
+    @ViewColumn()
     acceptanceTimeSeconds: number;
 }
