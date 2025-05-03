@@ -49,6 +49,9 @@ export class TicketUpdate extends TenantBoundBaseEntity {
     @Column({ type: 'enum', enum: TicketUpdateTicketStatus, nullable: true })
     toStatus?: string;
 
+    @Column({ nullable: true })
+    timeSecondsInLastStatus?: number;
+
     @Column({ type: 'text', nullable: true })
     description?: string;
 }
