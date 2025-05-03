@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { TicketPriorityCountResponseDto } from './dtos/ticket-priority-count.dto';
@@ -7,16 +7,34 @@ import { TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto } from './dtos/ticket-trends.dto';
 import { TicketStatsService } from './ticket-stats.service';
 
+export enum StatsPeriod {
+    ANNUAL = 'annual',
+    SEMESTRAL = 'semestral',
+    TRIMESTRAL = 'trimestral',
+    MONTHLY = 'monthly',
+    WEEKLY = 'weekly',
+    ALL = 'all',
+}
+
 @Controller('stats')
 @UseGuards(AuthGuard('jwt'))
 export class StatsController {
     constructor(private readonly ticketStatsService: TicketStatsService) {}
 
-    @Get()
-    async getTicketStats(
+    @Get('/by-tenant')
+    async getTenantStats(
         @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<TicketStatsResponseDto> {
-        return this.ticketStatsService.getTenantStats(accessProfile);
+        return this.ticketStatsService.getTenantStats(accessProfile, period);
+    }
+
+    @Get('/by-user')
+    async getUserStats(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
+    ): Promise<TicketStatsResponseDto> {
+        return this.ticketStatsService.getUserStats(accessProfile, accessProfile.userId, period);
     }
 
     @Get('ticket-trends')

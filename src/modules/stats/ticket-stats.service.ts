@@ -24,6 +24,7 @@ import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-
 import { TicketStatusCountDto, TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto, TrendDataPointDto } from './dtos/ticket-trends.dto';
 import { TicketStats } from './entities/ticket-stats.entity';
+import { StatsPeriod } from './stats.controller';
 
 @Injectable()
 export class TicketStatsService {
@@ -62,9 +63,46 @@ export class TicketStatsService {
         });
     }
 
-    async getTenantStats(accessProfile: AccessProfile): Promise<TicketStatsResponseDto> {
-        // Get all ticket stats for the tenant
-        const ticketStats = await this.findMany(accessProfile, { paginated: false });
+    async getTenantStats(
+        accessProfile: AccessProfile,
+        period: StatsPeriod = StatsPeriod.ALL,
+    ): Promise<TicketStatsResponseDto> {
+        // Define date filter based on period
+        let dateFilter = {};
+        const now = new Date();
+
+        switch (period) {
+            case StatsPeriod.WEEKLY:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 7))) };
+                break;
+            case StatsPeriod.MONTHLY:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 30))) };
+                break;
+            case StatsPeriod.TRIMESTRAL:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 3))) };
+                break;
+            case StatsPeriod.SEMESTRAL:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 6))) };
+                break;
+            case StatsPeriod.ANNUAL:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 12))) };
+                break;
+            case StatsPeriod.ALL:
+            default:
+                // No date filter
+                break;
+        }
+
+        // Get all ticket stats for the tenant with date filter
+        const filters = {
+            where: {
+                tenantId: accessProfile.tenantId,
+                ...dateFilter,
+            },
+        };
+
+        const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
+        const ticketStats = { items, total };
 
         // Get all departments for the tenant
         const departments = await this.departmentService.findMany(accessProfile, {
@@ -315,11 +353,6 @@ export class TicketStatsService {
         });
     }
 
-    private calculateTimeInSeconds(startDate: Date, endDate: Date): number {
-        const diff = endDate.getTime() - startDate.getTime();
-        return Math.floor(diff / 1000); // Convert to seconds
-    }
-
     private calculateAverage(values: (number | string | null | undefined)[]): number {
         // Filter out null, undefined and convert strings to numbers
         const validValues = values
@@ -394,6 +427,80 @@ export class TicketStatsService {
         return {
             priorityCounts,
             total,
+        };
+    }
+
+    async getUserStats(
+        accessProfile: AccessProfile,
+        userId: number,
+        period: StatsPeriod = StatsPeriod.ALL,
+    ): Promise<TicketStatsResponseDto> {
+        let dateFilter = {};
+        const now = new Date();
+
+        switch (period) {
+            case StatsPeriod.WEEKLY:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 7))) };
+                break;
+            case StatsPeriod.MONTHLY:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 30))) };
+                break;
+            case StatsPeriod.TRIMESTRAL:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 3))) };
+                break;
+            case StatsPeriod.SEMESTRAL:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 6))) };
+                break;
+            case StatsPeriod.ANNUAL:
+                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 12))) };
+                break;
+            case StatsPeriod.ALL:
+            default:
+                break;
+        }
+
+        const filters = {
+            where: {
+                tenantId: accessProfile.tenantId,
+                targetUserId: userId,
+                ...dateFilter,
+            },
+        };
+
+        const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
+        const ticketStats = { items, total };
+
+        const totalTickets = ticketStats.items.length;
+        const resolvedTickets = ticketStats.items.filter((stat) => stat.isResolved).length;
+        const closedTickets = ticketStats.items.filter(
+            (stat) => stat.resolutionTimeSeconds !== null,
+        ).length;
+        const openTickets = totalTickets - closedTickets;
+
+        const resolutionRate = closedTickets > 0 ? resolvedTickets / closedTickets : 0;
+
+        const avgResolutionTimeSeconds = this.calculateAverage(
+            ticketStats.items
+                .filter((stat) => stat.resolutionTimeSeconds !== null)
+                .map((stat) => stat.resolutionTimeSeconds),
+        );
+
+        const avgAcceptanceTimeSeconds = this.calculateAverage(
+            ticketStats.items
+                .filter((stat) => stat.acceptanceTimeSeconds !== null)
+                .map((stat) => stat.acceptanceTimeSeconds),
+        );
+
+        const avgTotalTimeSeconds = avgResolutionTimeSeconds + avgAcceptanceTimeSeconds;
+
+        return {
+            totalTickets,
+            openTickets,
+            closedTickets,
+            averageResolutionTimeSeconds: avgResolutionTimeSeconds,
+            averageAcceptanceTimeSeconds: avgAcceptanceTimeSeconds,
+            averageTotalTimeSeconds: avgTotalTimeSeconds,
+            resolutionRate: parseFloat(resolutionRate.toFixed(2)),
         };
     }
 }

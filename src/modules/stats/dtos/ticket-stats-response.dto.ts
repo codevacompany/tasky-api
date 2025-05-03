@@ -17,5 +17,5 @@ export class TicketStatsResponseDto {
     averageAcceptanceTimeSeconds: number;
     averageTotalTimeSeconds: number;
     resolutionRate: number;
-    ticketsByDepartment: DepartmentStatsDto[];
+    ticketsByDepartment?: DepartmentStatsDto[];
 }
