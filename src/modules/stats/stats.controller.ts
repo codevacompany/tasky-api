@@ -3,17 +3,17 @@ import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { StatusDurationResponseDto } from './dtos/status-duration.dto';
 import { TicketPriorityCountResponseDto } from './dtos/ticket-priority-count.dto';
-import { TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
+import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
 import { TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto } from './dtos/ticket-trends.dto';
 import { TicketStatsService } from './ticket-stats.service';
 
 export enum StatsPeriod {
-    ANNUAL = 'annual',
-    SEMESTRAL = 'semestral',
-    TRIMESTRAL = 'trimestral',
-    MONTHLY = 'monthly',
     WEEKLY = 'weekly',
+    MONTHLY = 'monthly',
+    TRIMESTRAL = 'trimestral',
+    SEMESTRAL = 'semestral',
+    ANNUAL = 'annual',
     ALL = 'all',
 }
 
@@ -65,5 +65,13 @@ export class StatsController {
         @GetAccessProfile() accessProfile: AccessProfile,
     ): Promise<TicketPriorityCountResponseDto> {
         return this.ticketStatsService.getTicketsByPriority(accessProfile);
+    }
+
+    @Get('department-stats')
+    async getDepartmentStats(
+        @GetAccessProfile() profile: AccessProfile,
+        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
+    ): Promise<DepartmentStatsDto[]> {
+        return this.ticketStatsService.getDepartmentStats(profile, period);
     }
 }

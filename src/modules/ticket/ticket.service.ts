@@ -55,7 +55,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
         const filters = {
             ...options,
-            relations: ['requester', 'targetUser', 'department', 'files'],
+            relations: ['requester', 'targetUser', 'department', 'files', 'updates'],
             order: { createdAt: 'DESC' } as any,
         };
         return super.findMany(accessProfile, filters);
