@@ -13,9 +13,9 @@ export class TicketStatsResponseDto {
     totalTickets: number;
     openTickets: number;
     closedTickets: number;
+    resolvedTickets: number;
     averageResolutionTimeSeconds: number;
     averageAcceptanceTimeSeconds: number;
     averageTotalTimeSeconds: number;
     resolutionRate: number;
-    ticketsByDepartment: DepartmentStatsDto[];
 }

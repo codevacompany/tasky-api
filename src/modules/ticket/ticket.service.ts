@@ -55,7 +55,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
         const filters = {
             ...options,
-            relations: ['requester', 'targetUser', 'department', 'files'],
+            relations: ['requester', 'targetUser', 'department', 'files', 'updates'],
             order: { createdAt: 'DESC' } as any,
         };
         return super.findMany(accessProfile, filters);
@@ -268,6 +268,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         await this.repository.update(ticketResponse.id, ticket);
 
         if (ticket.status === TicketStatus.AwaitingVerification) {
+            const lastStatusUpdate = await this.findLastStatusUpdate(
+                ticketResponse.id,
+                TicketStatus.InProgress,
+            );
+            let timeSecondsInLastStatus = null;
+
+            if (lastStatusUpdate) {
+                timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                    lastStatusUpdate.createdAt,
+                    new Date(),
+                );
+            }
+
             await this.ticketUpdateRepository.save({
                 tenantId: accessProfile.tenantId,
                 ticketId: ticketResponse.id,
@@ -278,6 +291,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 action: TicketActionType.StatusUpdate,
                 fromStatus: TicketStatus.InProgress,
                 toStatus: TicketStatus.AwaitingVerification,
+                timeSecondsInLastStatus,
                 description: '<p><span>user</span> enviou este ticket para verificação.</p>',
             });
 
@@ -307,6 +321,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             //     resourceId: ticketResponse.id,
             // });
         } else if (ticket.status === TicketStatus.Returned) {
+            const lastStatusUpdate = await this.findLastStatusUpdate(
+                ticketResponse.id,
+                TicketStatus.UnderVerification,
+            );
+            let timeSecondsInLastStatus = null;
+
+            if (lastStatusUpdate) {
+                timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                    lastStatusUpdate.createdAt,
+                    new Date(),
+                );
+            }
+
             await this.ticketUpdateRepository.save({
                 tenantId: accessProfile.tenantId,
                 ticketId: ticketResponse.id,
@@ -317,6 +344,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 action: TicketActionType.StatusUpdate,
                 fromStatus: TicketStatus.UnderVerification,
                 toStatus: TicketStatus.Returned,
+                timeSecondsInLastStatus,
                 description: '<p><span>user</span> solicitou uma correção neste ticket.</p>',
             });
 
@@ -391,6 +419,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const { targetUser, requester } = ticketResponse;
 
+        const lastStatusUpdate = await this.findLastStatusUpdate(
+            ticketResponse.id,
+            TicketStatus.Pending,
+        );
+        let timeSecondsInLastStatus = null;
+
+        if (lastStatusUpdate) {
+            timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                lastStatusUpdate.createdAt,
+                new Date(),
+            );
+        }
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -401,6 +442,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             action: TicketActionType.StatusUpdate,
             fromStatus: TicketStatus.Pending,
             toStatus: TicketStatus.InProgress,
+            timeSecondsInLastStatus,
             description: '<p><span>user</span> aceitou este ticket.</p>',
         });
 
@@ -445,10 +487,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             completedAt: new Date().toISOString(),
         });
 
-        // await super.update(accessProfile, customId, {
-        //     status: TicketStatus.Completed,
-        //     completedAt: new Date().toISOString(),
-        // });
+        // Find the last status update where the ticket was changed to UnderVerification
+        const lastStatusUpdate = await this.findLastStatusUpdate(
+            ticketResponse.id,
+            TicketStatus.UnderVerification,
+        );
+        let timeSecondsInLastStatus = null;
+
+        if (lastStatusUpdate) {
+            timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                lastStatusUpdate.createdAt,
+                new Date(),
+            );
+        }
 
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
@@ -460,6 +511,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             action: TicketActionType.Completion,
             fromStatus: TicketStatus.UnderVerification,
             toStatus: TicketStatus.Completed,
+            timeSecondsInLastStatus,
             description: '<p><span>user</span> aprovou este ticket.</p>',
         });
 
@@ -498,6 +550,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             completedAt: new Date().toISOString(),
         });
 
+        const lastStatusUpdate = await this.findLastStatusUpdate(
+            ticketResponse.id,
+            TicketStatus.UnderVerification,
+        );
+        let timeSecondsInLastStatus = null;
+
+        if (lastStatusUpdate) {
+            timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                lastStatusUpdate.createdAt,
+                new Date(),
+            );
+        }
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -508,6 +573,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             action: TicketActionType.StatusUpdate,
             fromStatus: ticketResponse.status as TicketStatus,
             toStatus: TicketStatus.Rejected,
+            timeSecondsInLastStatus,
             description: '<p><span>user</span> rejeitou este ticket.</p>',
         });
 
@@ -552,6 +618,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             canceledAt: new Date(),
         });
 
+        const lastStatusUpdate = await this.findLastStatusUpdate(
+            ticketResponse.id,
+            ticketResponse.status,
+        );
+        let timeSecondsInLastStatus = null;
+
+        if (lastStatusUpdate) {
+            timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                lastStatusUpdate.createdAt,
+                new Date(),
+            );
+        }
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -562,6 +641,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             action: TicketActionType.Cancellation,
             fromStatus: ticketResponse.status as TicketStatus,
             toStatus: TicketStatus.Canceled,
+            timeSecondsInLastStatus,
             description: '<p><span>user</span> cancelou este ticket.</p>',
         });
 
@@ -607,5 +687,22 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 message: 'Ticket not found or already deleted',
             });
         }
+    }
+
+    private calculateTimeInSeconds(startDate: Date, endDate: Date): number {
+        const diff = endDate.getTime() - startDate.getTime();
+        return Math.floor(diff / 1000);
+    }
+
+    private async findLastStatusUpdate(ticketId: number, status: string): Promise<any> {
+        return this.ticketUpdateRepository.findOne({
+            where: {
+                ticketId,
+                toStatus: status,
+            },
+            order: {
+                createdAt: 'DESC',
+            },
+        });
     }
 }

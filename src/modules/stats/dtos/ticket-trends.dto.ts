@@ -9,4 +9,5 @@ export class TicketTrendsResponseDto {
     daily: TrendDataPointDto[];
     weekly: TrendDataPointDto[];
     monthly: TrendDataPointDto[];
+    trimestral: TrendDataPointDto[];
 }
