@@ -70,14 +70,22 @@ export class UserService extends TenantBoundBaseService<User> {
 
         qb.where('user.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
 
+        if (options?.where) {
+            if (options.where.departmentId) {
+                qb.andWhere('user.departmentId = :departmentId', {
+                    departmentId: options.where.departmentId,
+                });
+            }
+        }
+
         if (additionalFilter?.name) {
             qb.andWhere('(user.firstName ILIKE :name OR user.lastName ILIKE :name)', {
                 name: `%${additionalFilter.name}%`,
             });
         }
 
-        const page = options.page;
-        const limit = options.limit;
+        const page = options?.page || 1;
+        const limit = options?.limit || 10;
 
         qb.skip((page - 1) * limit).take(limit);
 
