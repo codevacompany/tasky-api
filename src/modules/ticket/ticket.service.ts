@@ -705,4 +705,49 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             },
         });
     }
+
+    async addFiles(accessProfile: AccessProfile, customId: string, files: string[]) {
+        const ticket = await this.findOne(accessProfile, {
+            where: { customId },
+            relations: ['files'],
+        });
+
+        if (!ticket) {
+            throw new CustomNotFoundException({
+                message: 'Ticket not found',
+                code: 'ticket-not-found',
+            });
+        }
+
+        const ticketFiles = files.map((url: string) => ({
+            tenantId: accessProfile.tenantId,
+            url,
+            name: extractFileName(url),
+            mimeType: extractMimeTypeFromUrl(url),
+            ticketId: ticket.id,
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
+        }));
+
+        const savedFiles = await this.ticketFileRepository.save(
+            this.ticketFileRepository.create(ticketFiles),
+        );
+
+        await this.ticketUpdateRepository.save(
+            this.ticketUpdateRepository.create({
+                tenantId: accessProfile.tenantId,
+                ticketId: ticket.id,
+                ticketCustomId: ticket.customId,
+                performedById: accessProfile.userId,
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                action: TicketActionType.Update,
+                fromStatus: ticket.status,
+                toStatus: ticket.status,
+                description: `<p><span>user</span> adicionou ${files.length} arquivo(s) ao ticket.</p>`,
+            }),
+        );
+
+        return savedFiles;
+    }
 }

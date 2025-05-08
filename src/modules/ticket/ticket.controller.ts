@@ -13,6 +13,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
+import { AddTicketFilesDto } from './dtos/add-ticket-files.dto';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
@@ -33,7 +34,10 @@ export class TicketController {
     }
 
     @Get('all')
-    findAll(@GetAccessProfile() accessProfile: AccessProfile, @GetQueryOptions() options: QueryOptions<Ticket>) {
+    findAll(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetQueryOptions() options: QueryOptions<Ticket>,
+    ) {
         return this.ticketService.findAll(accessProfile, options);
     }
 
@@ -123,5 +127,14 @@ export class TicketController {
     @Delete(':id')
     delete(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
         return this.ticketService.deleteTicket(accessProfile, customId);
+    }
+
+    @Post(':id/files')
+    addFiles(
+        @Param('id') customId: string,
+        @Body() addTicketFilesDto: AddTicketFilesDto,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.addFiles(accessProfile, customId, addTicketFilesDto.files);
     }
 }
