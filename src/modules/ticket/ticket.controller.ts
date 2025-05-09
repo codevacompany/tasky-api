@@ -49,6 +49,14 @@ export class TicketController {
         return this.ticketService.findMany(accessProfile, options);
     }
 
+    @Get('archived')
+    findArchived(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetQueryOptions() options: QueryOptions<Ticket>,
+    ) {
+        return this.ticketService.findArchived(accessProfile, options);
+    }
+
     @Get(':id')
     findById(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
         return this.ticketService.findById(accessProfile, customId);

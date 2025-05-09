@@ -729,9 +729,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             updatedById: accessProfile.userId,
         }));
 
-        const savedFiles = await this.ticketFileRepository.save(
-            this.ticketFileRepository.create(ticketFiles),
-        );
+        await this.ticketFileRepository.save(this.ticketFileRepository.create(ticketFiles));
 
         await this.ticketUpdateRepository.save(
             this.ticketUpdateRepository.create({
@@ -748,6 +746,51 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             }),
         );
 
-        return savedFiles;
+        const updatedTicket = await this.findById(accessProfile, customId);
+
+        return updatedTicket;
+    }
+
+    async findArchived(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
+        const qb = this.repository
+            .createQueryBuilder('ticket')
+            .leftJoinAndSelect('ticket.requester', 'requester')
+            .leftJoinAndSelect('ticket.targetUser', 'targetUser')
+            .leftJoinAndSelect('ticket.department', 'department')
+            .leftJoinAndSelect('ticket.files', 'files')
+            .leftJoinAndSelect('ticket.updates', 'updates')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('(ticket.requesterId = :userId OR ticket.targetUserId = :userId)', {
+                userId: accessProfile.userId,
+            })
+            .andWhere('ticket.status IN (:...statuses)', {
+                statuses: [TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled],
+            })
+            .orderBy('ticket.createdAt', 'DESC');
+
+        if (options?.where) {
+            if (options.where.name) {
+                qb.andWhere('ticket.name ILIKE :name', { name: `%${options.where.name}%` });
+            }
+            if (options.where.departmentId) {
+                qb.andWhere('ticket.departmentId = :departmentId', {
+                    departmentId: options.where.departmentId,
+                });
+            }
+        }
+
+        const page = options?.page || 1;
+        const limit = options?.limit || 10;
+        qb.skip((page - 1) * limit).take(limit);
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
     }
 }
