@@ -705,4 +705,92 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             },
         });
     }
+
+    async addFiles(accessProfile: AccessProfile, customId: string, files: string[]) {
+        const ticket = await this.findOne(accessProfile, {
+            where: { customId },
+            relations: ['files'],
+        });
+
+        if (!ticket) {
+            throw new CustomNotFoundException({
+                message: 'Ticket not found',
+                code: 'ticket-not-found',
+            });
+        }
+
+        const ticketFiles = files.map((url: string) => ({
+            tenantId: accessProfile.tenantId,
+            url,
+            name: extractFileName(url),
+            mimeType: extractMimeTypeFromUrl(url),
+            ticketId: ticket.id,
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
+        }));
+
+        await this.ticketFileRepository.save(this.ticketFileRepository.create(ticketFiles));
+
+        await this.ticketUpdateRepository.save(
+            this.ticketUpdateRepository.create({
+                tenantId: accessProfile.tenantId,
+                ticketId: ticket.id,
+                ticketCustomId: ticket.customId,
+                performedById: accessProfile.userId,
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                action: TicketActionType.Update,
+                fromStatus: ticket.status,
+                toStatus: ticket.status,
+                description: `<p><span>user</span> adicionou ${files.length} arquivo(s) ao ticket.</p>`,
+            }),
+        );
+
+        const updatedTicket = await this.findById(accessProfile, customId);
+
+        return updatedTicket;
+    }
+
+    async findArchived(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
+        const qb = this.repository
+            .createQueryBuilder('ticket')
+            .leftJoinAndSelect('ticket.requester', 'requester')
+            .leftJoinAndSelect('ticket.targetUser', 'targetUser')
+            .leftJoinAndSelect('ticket.department', 'department')
+            .leftJoinAndSelect('ticket.files', 'files')
+            .leftJoinAndSelect('ticket.updates', 'updates')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('(ticket.requesterId = :userId OR ticket.targetUserId = :userId)', {
+                userId: accessProfile.userId,
+            })
+            .andWhere('ticket.status IN (:...statuses)', {
+                statuses: [TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled],
+            })
+            .orderBy('ticket.createdAt', 'DESC');
+
+        if (options?.where) {
+            if (options.where.name) {
+                qb.andWhere('ticket.name ILIKE :name', { name: `%${options.where.name}%` });
+            }
+            if (options.where.departmentId) {
+                qb.andWhere('ticket.departmentId = :departmentId', {
+                    departmentId: options.where.departmentId,
+                });
+            }
+        }
+
+        const page = options?.page || 1;
+        const limit = options?.limit || 10;
+        qb.skip((page - 1) * limit).take(limit);
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
+    }
 }
