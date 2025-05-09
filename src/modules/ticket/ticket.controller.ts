@@ -10,6 +10,7 @@ import {
     UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { In, Not } from 'typeorm';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
@@ -17,7 +18,7 @@ import { AddTicketFilesDto } from './dtos/add-ticket-files.dto';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
-import { Ticket } from './entities/ticket.entity';
+import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketService } from './ticket.service';
 
 @Controller('tickets')
@@ -68,7 +69,12 @@ export class TicketController {
         @GetQueryOptions() options: QueryOptions<Ticket>,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        options.where = { ...options.where, departmentId, isPrivate: false };
+        options.where = {
+            ...options.where,
+            departmentId,
+            isPrivate: false,
+            status: Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled])),
+        };
 
         return this.ticketService.findBy(accessProfile, options);
     }
@@ -79,7 +85,11 @@ export class TicketController {
         @GetQueryOptions() options: QueryOptions<Ticket>,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        options.where.requesterId = requesterId;
+        options.where = {
+            ...options.where,
+            requesterId,
+            status: Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled])),
+        };
 
         return this.ticketService.findBy(accessProfile, options);
     }
@@ -90,7 +100,12 @@ export class TicketController {
         @GetQueryOptions() options: QueryOptions<Ticket>,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        options.where.targetUserId = userId;
+        options.where = {
+            ...options.where,
+            targetUserId: userId,
+            status: Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled])),
+        };
+
         return this.ticketService.findBy(accessProfile, options);
     }
 
