@@ -8,6 +8,8 @@ export enum NotificationType {
     StatusUpdate = 'atualização_de_status',
     TicketUpdate = 'atualização',
     Cancellation = 'cancelamento',
+    Disapproval = 'reprovação',
+    CorrectionRequest = 'solicitação_de_correção',
 }
 
 @Entity()
