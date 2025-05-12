@@ -1,11 +1,14 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, OneToOne } from 'typeorm';
 import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { Category } from '../../category/entities/category.entity';
+import { CorrectionRequest } from '../../correction-request-reason/entities/correction-request-reason.entity';
 import { Department } from '../../department/entities/department.entity';
+import { TicketCancellationReason } from '../../ticket-cancellation-reason/entities/ticket-cancellation-reason.entity';
 import { TicketComment } from '../../ticket-comment/entities/ticket-comment.entity';
+import { TicketDisapprovalReason } from '../../ticket-disapproval-reason/entities/ticket-disapproval-reason.entity';
+import { TicketFile } from '../../ticket-file/entities/ticket-file.entity';
 import { TicketUpdate } from '../../ticket-updates/entities/ticket-update.entity';
 import { User } from '../../user/entities/user.entity';
-import { TicketFile } from '../../ticket-file/entities/ticket-file.entity';
 
 export enum TicketPriority {
     Low = 'baixa',
@@ -101,4 +104,13 @@ export class Ticket extends TenantBoundBaseEntity {
 
     @OneToMany(() => TicketFile, (file) => file.ticket, { cascade: true })
     files: TicketFile[];
+
+    @OneToOne(() => TicketCancellationReason, (reason) => reason.ticket, { nullable: true })
+    cancellationReason: TicketCancellationReason;
+
+    @OneToOne(() => TicketDisapprovalReason, (reason) => reason.ticket, { nullable: true })
+    disapprovalReason: TicketDisapprovalReason;
+
+    @OneToMany(() => CorrectionRequest, (reason) => reason.ticket)
+    correctionRequests: CorrectionRequest[];
 }

@@ -14,6 +14,9 @@ import { In, Not } from 'typeorm';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
+import { CreateCorrectionRequestDto } from '../correction-request-reason/dtos/create-correction-request-reason.dto';
+import { CreateTicketCancellationReasonDto } from '../ticket-cancellation-reason/dtos/create-ticket-cancellation-reason.dto';
+import { CreateTicketDisapprovalReasonDto } from '../ticket-disapproval-reason/dtos/create-ticket-rejection-reason.dto';
 import { AddTicketFilesDto } from './dtos/add-ticket-files.dto';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
@@ -138,13 +141,21 @@ export class TicketController {
     }
 
     @Post(':id/reject')
-    reject(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
-        return this.ticketService.reject(accessProfile, customId);
+    reject(
+        @Param('id') customId: string,
+        @Body() createDisapprovalReasonDto: CreateTicketDisapprovalReasonDto,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.reject(accessProfile, customId, createDisapprovalReasonDto);
     }
 
     @Post(':id/cancel')
-    cancel(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
-        return this.ticketService.cancel(accessProfile, customId);
+    cancel(
+        @Param('id') customId: string,
+        @Body() createCancellationReasonDto: CreateTicketCancellationReasonDto,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.cancel(accessProfile, customId, createCancellationReasonDto);
     }
 
     @Delete(':id')
@@ -159,5 +170,18 @@ export class TicketController {
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.addFiles(accessProfile, customId, addTicketFilesDto.files);
+    }
+
+    @Post(':id/request-correction')
+    requestCorrection(
+        @Param('id') customId: string,
+        @Body() createCorrectionRequestDto: CreateCorrectionRequestDto,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.requestCorrection(
+            accessProfile,
+            customId,
+            createCorrectionRequestDto,
+        );
     }
 }
