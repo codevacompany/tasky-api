@@ -293,79 +293,79 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async updateStatus(
         accessProfile: AccessProfile,
         customId: string,
-        ticket: UpdateTicketStatusDto,
+        ticketUpdate: UpdateTicketStatusDto,
     ) {
-        // await this.update(accessProfile, customId, ticket);
-        const ticketResponse = await this.findById(accessProfile, customId);
+        return this.dataSource.transaction(async () => {
+            const ticket = await this.findById(accessProfile, customId);
 
-        if (!ticketResponse) {
-            throw new CustomNotFoundException({
-                code: 'ticket-not-found',
-                message: 'Ticket not found.',
-            });
-        }
-
-        await this.repository.update(ticketResponse.id, ticket);
-
-        if (ticket.status === TicketStatus.AwaitingVerification) {
-            const lastStatusUpdate = await this.findLastStatusUpdate(
-                ticketResponse.id,
-                TicketStatus.InProgress,
-            );
-            let timeSecondsInLastStatus = null;
-
-            if (lastStatusUpdate) {
-                timeSecondsInLastStatus = this.calculateTimeInSeconds(
-                    lastStatusUpdate.createdAt,
-                    new Date(),
-                );
+            if (!ticket) {
+                throw new CustomNotFoundException({
+                    code: 'ticket-not-found',
+                    message: 'Ticket not found.',
+                });
             }
 
-            await this.ticketUpdateRepository.save({
-                tenantId: accessProfile.tenantId,
-                ticketId: ticketResponse.id,
-                ticketCustomId: ticketResponse.customId,
-                performedById: ticketResponse.targetUser.id,
-                createdById: ticketResponse.targetUser.id,
-                updatedById: ticketResponse.targetUser.id,
-                action: TicketActionType.StatusUpdate,
-                fromStatus: TicketStatus.InProgress,
-                toStatus: TicketStatus.AwaitingVerification,
-                timeSecondsInLastStatus,
-                description: '<p><span>user</span> enviou este ticket para verificação.</p>',
-            });
+            Object.assign(ticket, ticketUpdate);
+            await this.repository.update(ticket.id, ticketUpdate);
+            if (ticketUpdate.status === TicketStatus.AwaitingVerification) {
+                let timeSecondsInLastStatus = null;
 
-            await this.notificationRepository.save({
-                tenantId: accessProfile.tenantId,
-                type: NotificationType.StatusUpdate,
-                message:
-                    '<p><span>user</span> enviou o ticket <span>resource</span> para verificação.</p>',
-                createdById: ticketResponse.targetUser.id,
-                updatedById: ticketResponse.targetUser.id,
-                targetUserId: ticketResponse.requester.id,
-                resourceId: ticketResponse.id,
-                resourceCustomId: ticketResponse.customId,
-            });
+                const lastStatusUpdate = await this.findLastStatusUpdate(
+                    ticket.id,
+                    TicketStatus.InProgress,
+                );
 
-            const message = `<span style="font-weight: 600;">${ticketResponse.targetUser.firstName} ${ticketResponse.targetUser.lastName}</span> enviou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> para verificação.`;
+                if (lastStatusUpdate) {
+                    timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                        lastStatusUpdate.createdAt,
+                        new Date(),
+                    );
+                }
 
-            this.emailService.sendMail({
-                subject: `O ticket ${ticketResponse.customId} está pronto para verificação.`,
-                html: this.emailService.compileTemplate('ticket-update', { message }),
-                to: ticketResponse.requester.email,
-            });
+                await Promise.all([
+                    this.ticketUpdateRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        ticketId: ticket.id,
+                        ticketCustomId: ticket.customId,
+                        performedById: ticket.targetUser.id,
+                        createdById: ticket.targetUser.id,
+                        updatedById: ticket.targetUser.id,
+                        action: TicketActionType.StatusUpdate,
+                        fromStatus: TicketStatus.InProgress,
+                        toStatus: TicketStatus.AwaitingVerification,
+                        timeSecondsInLastStatus,
+                        description:
+                            '<p><span>user</span> enviou este ticket para verificação.</p>',
+                    }),
+                    this.notificationRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.StatusUpdate,
+                        message:
+                            '<p><span>user</span> enviou o ticket <span>resource</span> para verificação.</p>',
+                        createdById: ticket.targetUser.id,
+                        updatedById: ticket.targetUser.id,
+                        targetUserId: ticket.requester.id,
+                        resourceId: ticket.id,
+                        resourceCustomId: ticket.customId,
+                    }),
+                ]);
 
-            // this.notificationService.sendNotification(ticketResponse.requester.id, {
-            //     type: NotificationType.StatusUpdated,
-            //     message: `${ticketResponse.targetUser.firstName} ${ticketResponse.targetUser.lastName} enviou o ticket #${ticketResponse.id} para verificação.`,
-            //     resourceId: ticketResponse.id,
-            // });
-        }
+                const message = `<span style="font-weight: 600;">${ticket.targetUser.firstName} ${ticket.targetUser.lastName}</span> enviou o ticket <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
 
-        return {
-            message: 'Successfully updated!',
-            ticketData: ticketResponse,
-        };
+                this.emailService.sendMail({
+                    subject: `O ticket ${ticket.customId} está pronto para verificação.`,
+                    html: this.emailService.compileTemplate('ticket-update', { message }),
+                    to: ticket.requester.email,
+                });
+            }
+
+            const updatedTicket = await this.findById(accessProfile, customId);
+
+            return {
+                message: 'Successfully updated!',
+                ticketData: updatedTicket,
+            };
+        });
     }
 
     // protected async update(accessProfile: AccessProfile, id: number, data: QueryDeepPartialEntity<T>) {
