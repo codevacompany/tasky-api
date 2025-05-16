@@ -1,4 +1,4 @@
-import { FindOptionsWhere, FindOptionsOrder } from 'typeorm';
+import { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
 
 export type QueryOptions<T> = {
     where?: FindOptionsWhere<T>;
@@ -7,7 +7,7 @@ export type QueryOptions<T> = {
     relations?: string[];
     order?: FindOptionsOrder<T>;
     tenantAware?: boolean;
-    paginated?: boolean;
+    paginated?: boolean; // Default value is handled in implementation
 };
 
 export type PaginatedResponse<T> = {
@@ -16,9 +16,9 @@ export type PaginatedResponse<T> = {
     page: number;
     limit: number;
     totalPages: number;
-  };
+};
 
-  export type FindOneQueryOptions<T> = {
+export type FindOneQueryOptions<T> = {
     where?: FindOptionsWhere<T>;
     relations?: string[];
     tenantAware?: boolean;
