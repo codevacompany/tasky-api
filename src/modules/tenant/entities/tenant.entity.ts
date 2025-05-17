@@ -44,4 +44,23 @@ export class Tenant extends IdTimestampBaseEntity {
 
     @Column({ nullable: true })
     mainActivity: string;
+
+    // Consent tracking fields
+    @Column({ default: false })
+    termsAccepted: boolean;
+
+    @Column({ type: 'timestamp', nullable: true })
+    termsAcceptedAt: Date;
+
+    @Column({ nullable: true })
+    termsVersion: string;
+
+    @Column({ default: false })
+    privacyPolicyAccepted: boolean;
+
+    @Column({ type: 'timestamp', nullable: true })
+    privacyPolicyAcceptedAt: Date;
+
+    @Column({ nullable: true })
+    privacyPolicyVersion: string;
 }

@@ -4,6 +4,7 @@ import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { CnpjModule } from '../../shared/services/cnpj/cnpj.module';
 import { EmailModule } from '../../shared/services/email/email.module';
 import { DepartmentModule } from '../department/department.module';
+import { LegalDocumentModule } from '../legal-document/legal-document.module';
 import { RoleModule } from '../role/role.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { UserModule } from '../user/user.module';
@@ -21,6 +22,7 @@ import { SignUpService } from './sign-up.service';
         UserModule,
         RoleModule,
         DepartmentModule,
+        LegalDocumentModule,
     ],
     controllers: [SignUpController],
     providers: [SignUpService, SignUpRepository, GlobalAdminGuard],

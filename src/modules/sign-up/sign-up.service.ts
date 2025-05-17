@@ -10,6 +10,8 @@ import { CnpjService } from '../../shared/services/cnpj/cnpj.service';
 import { EmailService } from '../../shared/services/email/email.service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
+import { LegalDocumentType } from '../legal-document/entities/legal-document.entity';
+import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { RoleName } from '../role/entities/role.entity';
 import { RoleRepository } from '../role/role.repository';
 import { TenantService } from '../tenant/tenant.service';
@@ -28,13 +30,78 @@ export class SignUpService {
         private readonly userService: UserService,
         private readonly roleRepository: RoleRepository,
         private readonly departmentService: DepartmentService,
+        private readonly legalDocumentService: LegalDocumentService,
     ) {}
 
     async create(createSignUpDto: CreateSignUpDto): Promise<SignUp> {
-        // Fetch company data from ReceitaWS API
         const cnpjData = await this.cnpjService.validateAndFetchData(createSignUpDto.cnpj);
 
-        // Create sign-up entity with data from both DTO and CNPJ API
+        if (!createSignUpDto.termsAccepted) {
+            throw new CustomBadRequestException({
+                code: 'terms-not-accepted',
+                message: 'You must accept the terms of use to continue',
+            });
+        }
+
+        if (!createSignUpDto.privacyPolicyAccepted) {
+            throw new CustomBadRequestException({
+                code: 'privacy-policy-not-accepted',
+                message: 'You must accept the privacy policy to continue',
+            });
+        }
+
+        // Validate that the terms version exists
+        if (createSignUpDto.termsVersion) {
+            try {
+                await this.legalDocumentService.findByTypeAndVersion(
+                    LegalDocumentType.TERMS_OF_SERVICE,
+                    createSignUpDto.termsVersion,
+                );
+            } catch (error) {
+                throw new CustomBadRequestException({
+                    code: 'invalid-terms-version',
+                    message: `Terms of service version ${createSignUpDto.termsVersion} not found`,
+                });
+            }
+        } else {
+            // Get the active terms version
+            try {
+                const activeTerms = await this.legalDocumentService.getActiveDocumentByType(
+                    LegalDocumentType.TERMS_OF_SERVICE,
+                );
+                createSignUpDto.termsVersion = activeTerms.version;
+            } catch (error) {
+                // If no active terms, use default version
+                createSignUpDto.termsVersion = '1.0';
+            }
+        }
+
+        // Validate that the privacy policy version exists
+        if (createSignUpDto.privacyPolicyVersion) {
+            try {
+                await this.legalDocumentService.findByTypeAndVersion(
+                    LegalDocumentType.PRIVACY_POLICY,
+                    createSignUpDto.privacyPolicyVersion,
+                );
+            } catch (error) {
+                throw new CustomBadRequestException({
+                    code: 'invalid-privacy-policy-version',
+                    message: `Privacy policy version ${createSignUpDto.privacyPolicyVersion} not found`,
+                });
+            }
+        } else {
+            // Get the active privacy policy version
+            try {
+                const activePrivacyPolicy = await this.legalDocumentService.getActiveDocumentByType(
+                    LegalDocumentType.PRIVACY_POLICY,
+                );
+                createSignUpDto.privacyPolicyVersion = activePrivacyPolicy.version;
+            } catch (error) {
+                // If no active privacy policy, use default version
+                createSignUpDto.privacyPolicyVersion = '1.0';
+            }
+        }
+
         const signUp = this.signUpRepository.create({
             companyName: createSignUpDto.companyName,
             email: createSignUpDto.email,
@@ -44,7 +111,6 @@ export class SignUpService {
             contactPhone: createSignUpDto.contactPhone,
             status: SignUpStatus.PENDING,
 
-            // Map address data from the CNPJ API response
             cep: cnpjData.cep,
             state: cnpjData.uf,
             city: cnpjData.municipio,
@@ -53,15 +119,18 @@ export class SignUpService {
             number: cnpjData.numero,
             complement: cnpjData.complemento,
             phoneNumber: cnpjData.telefone,
-
-            // Map additional company data
             companySize: cnpjData.porte,
             mainActivity: cnpjData.atividade_principal?.[0]?.text || '',
+            termsAccepted: createSignUpDto.termsAccepted,
+            termsAcceptedAt: new Date(),
+            termsVersion: createSignUpDto.termsVersion,
+            privacyPolicyAccepted: createSignUpDto.privacyPolicyAccepted,
+            privacyPolicyAcceptedAt: new Date(),
+            privacyPolicyVersion: createSignUpDto.privacyPolicyVersion,
         });
 
         const savedSignUp = await this.signUpRepository.save(signUp);
 
-        // Send notification email about new sign-up request
         await this.emailService.sendMail({
             subject: 'Nova solicitação de cadastro',
             html: this.emailService.compileTemplate('sign-up-notification', {
@@ -72,7 +141,6 @@ export class SignUpService {
             to: process.env.ADMIN_EMAIL,
         });
 
-        // Send confirmation email to the user
         await this.emailService.sendMail({
             subject: 'Solicitação de cadastro recebida',
             html: this.emailService.compileTemplate('sign-up-confirmation', {
@@ -163,7 +231,6 @@ export class SignUpService {
 
         const updatedSignUp = await this.findOne(id);
 
-        // Send the activation email with the token
         await this.emailService.sendMail({
             subject: 'Complete seu cadastro no Tasky System',
             html: this.emailService.compileTemplate('complete-your-sign-up', {
@@ -234,6 +301,12 @@ export class SignUpService {
             complement: signUp.complement,
             companySize: signUp.companySize,
             mainActivity: signUp.mainActivity,
+            termsAccepted: signUp.termsAccepted,
+            termsAcceptedAt: signUp.termsAcceptedAt,
+            termsVersion: signUp.termsVersion,
+            privacyPolicyAccepted: signUp.privacyPolicyAccepted,
+            privacyPolicyAcceptedAt: signUp.privacyPolicyAcceptedAt,
+            privacyPolicyVersion: signUp.privacyPolicyVersion,
         });
 
         const accessProfile = new AccessProfile();

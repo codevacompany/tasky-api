@@ -1,15 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { ILike } from 'typeorm';
-import { CustomConflictException } from '../../shared/exceptions/http-exception';
+import {
+    CustomBadRequestException,
+    CustomConflictException,
+    CustomNotFoundException,
+} from '../../shared/exceptions/http-exception';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
+import { LegalDocumentType } from '../legal-document/entities/legal-document.entity';
+import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { CreateTenantDto } from './dtos/create-tenant.dto';
+import { UpdateTenantConsentDto } from './dtos/update-tenant-consent.dto';
 import { UpdateTenantDto } from './dtos/update-tenant.dto';
 import { Tenant } from './entities/tenant.entity';
 import { TenantRepository } from './tenant.repository';
 
 @Injectable()
 export class TenantService {
-    constructor(private tenantRepository: TenantRepository) {}
+    constructor(
+        private tenantRepository: TenantRepository,
+        private legalDocumentService: LegalDocumentService,
+    ) {}
 
     async findAll(
         where?: { name: string },
@@ -40,6 +50,23 @@ export class TenantService {
         });
     }
 
+    async findById(id: number): Promise<Tenant> {
+        const tenant = await this.tenantRepository.findOne({
+            where: {
+                id,
+            },
+        });
+
+        if (!tenant) {
+            throw new CustomNotFoundException({
+                code: 'tenant-not-found',
+                message: 'Tenant not found',
+            });
+        }
+
+        return tenant;
+    }
+
     async create(Tenant: CreateTenantDto) {
         const TenantExists = await this.tenantRepository.findOne({
             where: {
@@ -63,6 +90,47 @@ export class TenantService {
         return {
             message: 'Successfully updated!',
             TenantId: id,
+        };
+    }
+
+    async updateConsent(id: number, consentData: UpdateTenantConsentDto) {
+        await this.findById(id);
+
+        // Validate terms version exists
+        try {
+            await this.legalDocumentService.findByTypeAndVersion(
+                LegalDocumentType.TERMS_OF_SERVICE,
+                consentData.termsVersion,
+            );
+        } catch (error) {
+            throw new CustomBadRequestException({
+                code: 'invalid-terms-version',
+                message: `Terms of service version ${consentData.termsVersion} not found`,
+            });
+        }
+
+        // Validate privacy policy version exists
+        try {
+            await this.legalDocumentService.findByTypeAndVersion(
+                LegalDocumentType.PRIVACY_POLICY,
+                consentData.privacyPolicyVersion,
+            );
+        } catch (error) {
+            throw new CustomBadRequestException({
+                code: 'invalid-privacy-policy-version',
+                message: `Privacy policy version ${consentData.privacyPolicyVersion} not found`,
+            });
+        }
+
+        await this.tenantRepository.update(id, {
+            ...consentData,
+            termsAcceptedAt: new Date(),
+            privacyPolicyAcceptedAt: new Date(),
+        });
+
+        return {
+            message: 'Consent information updated successfully',
+            tenantId: id,
         };
     }
 

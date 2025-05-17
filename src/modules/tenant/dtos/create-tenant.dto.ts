@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsDate, IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateTenantDto {
     @IsNotEmpty()
@@ -55,4 +55,29 @@ export class CreateTenantDto {
     @IsOptional()
     @IsString()
     mainActivity?: string;
+
+    // Consent tracking fields
+    @IsOptional()
+    @IsBoolean()
+    termsAccepted?: boolean;
+
+    @IsOptional()
+    @IsDate()
+    termsAcceptedAt?: Date;
+
+    @IsOptional()
+    @IsString()
+    termsVersion?: string;
+
+    @IsOptional()
+    @IsBoolean()
+    privacyPolicyAccepted?: boolean;
+
+    @IsOptional()
+    @IsDate()
+    privacyPolicyAcceptedAt?: Date;
+
+    @IsOptional()
+    @IsString()
+    privacyPolicyVersion?: string;
 }

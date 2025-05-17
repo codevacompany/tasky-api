@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { IsCnpj } from '../../../shared/validators/is-cnpj.validator';
 import { IsCpf } from '../../../shared/validators/is-cpf.validator';
 
@@ -33,4 +33,21 @@ export class CreateSignUpDto {
     @IsNotEmpty()
     @MinLength(10)
     contactPhone: string;
+
+    // Consent fields
+    @IsBoolean()
+    @IsNotEmpty()
+    termsAccepted: boolean;
+
+    @IsString()
+    @IsOptional()
+    termsVersion?: string;
+
+    @IsBoolean()
+    @IsNotEmpty()
+    privacyPolicyAccepted: boolean;
+
+    @IsString()
+    @IsOptional()
+    privacyPolicyVersion?: string;
 }
