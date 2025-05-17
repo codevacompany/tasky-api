@@ -1,0 +1,28 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { CnpjModule } from '../../shared/services/cnpj/cnpj.module';
+import { EmailModule } from '../../shared/services/email/email.module';
+import { DepartmentModule } from '../department/department.module';
+import { RoleModule } from '../role/role.module';
+import { TenantModule } from '../tenant/tenant.module';
+import { UserModule } from '../user/user.module';
+import { SignUp } from './entities/sign-up.entity';
+import { SignUpController } from './sign-up.controller';
+import { SignUpRepository } from './sign-up.repository';
+import { SignUpService } from './sign-up.service';
+
+@Module({
+    imports: [
+        TypeOrmModule.forFeature([SignUp]),
+        TenantModule,
+        EmailModule,
+        CnpjModule,
+        UserModule,
+        RoleModule,
+        DepartmentModule,
+    ],
+    controllers: [SignUpController],
+    providers: [SignUpService, SignUpRepository],
+    exports: [SignUpService],
+})
+export class SignUpModule {}

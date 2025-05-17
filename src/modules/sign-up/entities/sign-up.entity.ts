@@ -1,22 +1,23 @@
 import { Column, Entity } from 'typeorm';
 import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
 
+export enum SignUpStatus {
+    PENDING = 'pending',
+    APPROVED = 'approved',
+    REJECTED = 'rejected',
+    COMPLETED = 'completed',
+}
+
 @Entity()
-export class Tenant extends IdTimestampBaseEntity {
+export class SignUp extends IdTimestampBaseEntity {
     @Column()
-    name: string;
+    companyName: string;
 
     @Column({ default: '' })
     email: string;
 
     @Column({ nullable: true })
     phoneNumber: string;
-
-    @Column()
-    customKey: string;
-
-    @Column({ default: false })
-    isInternal: boolean;
 
     @Column({ nullable: true })
     cep: string;
@@ -44,4 +45,25 @@ export class Tenant extends IdTimestampBaseEntity {
 
     @Column({ nullable: true })
     mainActivity: string;
+
+    @Column()
+    contactName: string;
+
+    @Column()
+    contactCpf: string;
+
+    @Column()
+    contactEmail: string;
+
+    @Column()
+    contactPhone: string;
+
+    @Column({ default: 'pending' })
+    status: string;
+
+    @Column({ nullable: true })
+    activationToken: string;
+
+    @Column({ type: 'timestamp', nullable: true })
+    completedAt: Date;
 }

@@ -1,0 +1,25 @@
+{{#> layout}}
+  <p>Olá {{contactName}},</p>
+
+  <p><strong>Ótimas notícias!</strong> Sua solicitação de cadastro para <strong>{{companyName}}</strong> foi aprovada no Tasky System.</p>
+
+  <p>Agora você precisa completar o processo de configuração da sua conta clicando no botão abaixo:</p>
+
+  <div style="width: 100%; text-align: center; margin: 30px 0;">
+    <a
+      href="{{frontendUrl}}/complete-signup/{{activationToken}}"
+      target="_blank"
+      style="display: block; color: #fff; font-weight: 500; max-width: 300px; margin: 0 auto; text-decoration: none; padding-top: 0.625rem; padding-bottom: 0.625rem; padding-left: 1.25rem; padding-right: 1.25rem; border-radius: 0.25rem; background-color: #8b19f4;">
+      Completar Cadastro
+    </a>
+  </div>
+
+  <p>No próximo passo, você poderá escolher uma chave de acesso para sua empresa e definir sua senha de administrador.</p>
+
+  <p>Por questões de segurança, este link será válido por 48 horas.</p>
+
+  <p>Se você tiver alguma dúvida, não hesite em entrar em contato com nossa equipe de suporte.</p>
+
+  <p>Atenciosamente,<br>
+  Equipe Tasky System</p>
+{{/layout}}

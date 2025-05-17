@@ -9,6 +9,7 @@ import { CorrectionRequestModule } from './modules/correction-request-reason/cor
 import { DepartmentModule } from './modules/department/department.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { RoleModule } from './modules/role/role.module';
+import { SignUpModule } from './modules/sign-up/sign-up.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { TicketCancellationReasonModule } from './modules/ticket-cancellation-reason/ticket-cancellation-reason.module';
@@ -39,6 +40,7 @@ import { VerificationCodeModule } from './modules/verification-code/verification
         TicketDisapprovalReasonModule,
         CorrectionRequestModule,
         TenantModule,
+        SignUpModule,
         RoleModule,
         AwsModule,
         TicketFileModule,
