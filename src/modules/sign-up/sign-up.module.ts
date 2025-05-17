@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { CnpjModule } from '../../shared/services/cnpj/cnpj.module';
 import { EmailModule } from '../../shared/services/email/email.module';
 import { DepartmentModule } from '../department/department.module';
@@ -22,7 +23,7 @@ import { SignUpService } from './sign-up.service';
         DepartmentModule,
     ],
     controllers: [SignUpController],
-    providers: [SignUpService, SignUpRepository],
+    providers: [SignUpService, SignUpRepository, GlobalAdminGuard],
     exports: [SignUpService],
 })
 export class SignUpModule {}

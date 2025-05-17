@@ -12,6 +12,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
+import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { FindOneQueryOptions, QueryOptions } from '../../shared/types/http';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy';
@@ -35,7 +36,7 @@ export class UserController {
 
     //TODO: add a role/permission validation decorator
     @Get('all')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {
         return this.userService.findAll({ name }, options);
     }
@@ -64,8 +65,11 @@ export class UserController {
     }
 
     @Post('super-admin')
-    @UseGuards(AuthGuard('jwt'))
-    async SuperAdminCreate(@GetAccessProfile() accessProfile: AccessProfile, @Body() createUserDto: SuperAdminCreateUserDto) {
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async SuperAdminCreate(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Body() createUserDto: SuperAdminCreateUserDto,
+    ) {
         return this.userService.superAdminCreate(accessProfile, createUserDto);
     }
 
