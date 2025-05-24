@@ -6,7 +6,6 @@ import {
     HttpStatus,
     Param,
     ParseIntPipe,
-    Patch,
     Post,
     Query,
     UseGuards,
@@ -50,13 +49,13 @@ export class SignUpController {
         return this.signUpService.findByActivationToken(token);
     }
 
-    @Patch(':id/approve')
+    @Post(':id/approve')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     approveSignUp(@Param('id', ParseIntPipe) id: number) {
         return this.signUpService.approveSignUp(id);
     }
 
-    @Patch(':id/reject')
+    @Post(':id/reject')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     rejectSignUp(@Param('id', ParseIntPipe) id: number) {
         return this.signUpService.rejectSignUp(id);

@@ -10,7 +10,6 @@ import { CnpjService } from '../../shared/services/cnpj/cnpj.service';
 import { EmailService } from '../../shared/services/email/email.service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
-import { LegalDocumentType } from '../legal-document/entities/legal-document.entity';
 import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { RoleName } from '../role/entities/role.entity';
 import { RoleRepository } from '../role/role.repository';
@@ -51,56 +50,56 @@ export class SignUpService {
         }
 
         // Validate that the terms version exists
-        if (createSignUpDto.termsVersion) {
-            try {
-                await this.legalDocumentService.findByTypeAndVersion(
-                    LegalDocumentType.TERMS_OF_SERVICE,
-                    createSignUpDto.termsVersion,
-                );
-            } catch (error) {
-                throw new CustomBadRequestException({
-                    code: 'invalid-terms-version',
-                    message: `Terms of service version ${createSignUpDto.termsVersion} not found`,
-                });
-            }
-        } else {
-            // Get the active terms version
-            try {
-                const activeTerms = await this.legalDocumentService.getActiveDocumentByType(
-                    LegalDocumentType.TERMS_OF_SERVICE,
-                );
-                createSignUpDto.termsVersion = activeTerms.version;
-            } catch (error) {
-                // If no active terms, use default version
-                createSignUpDto.termsVersion = '1.0';
-            }
-        }
+        // if (createSignUpDto.termsVersion) {
+        //     try {
+        //         await this.legalDocumentService.findByTypeAndVersion(
+        //             LegalDocumentType.TERMS_OF_SERVICE,
+        //             createSignUpDto.termsVersion,
+        //         );
+        //     } catch (error) {
+        //         throw new CustomBadRequestException({
+        //             code: 'invalid-terms-version',
+        //             message: `Terms of service version ${createSignUpDto.termsVersion} not found`,
+        //         });
+        //     }
+        // } else {
+        //     // Get the active terms version
+        //     try {
+        //         const activeTerms = await this.legalDocumentService.getActiveDocumentByType(
+        //             LegalDocumentType.TERMS_OF_SERVICE,
+        //         );
+        //         createSignUpDto.termsVersion = activeTerms.version;
+        //     } catch (error) {
+        //         // If no active terms, use default version
+        //         createSignUpDto.termsVersion = '1.0';
+        //     }
+        // }
 
         // Validate that the privacy policy version exists
-        if (createSignUpDto.privacyPolicyVersion) {
-            try {
-                await this.legalDocumentService.findByTypeAndVersion(
-                    LegalDocumentType.PRIVACY_POLICY,
-                    createSignUpDto.privacyPolicyVersion,
-                );
-            } catch (error) {
-                throw new CustomBadRequestException({
-                    code: 'invalid-privacy-policy-version',
-                    message: `Privacy policy version ${createSignUpDto.privacyPolicyVersion} not found`,
-                });
-            }
-        } else {
-            // Get the active privacy policy version
-            try {
-                const activePrivacyPolicy = await this.legalDocumentService.getActiveDocumentByType(
-                    LegalDocumentType.PRIVACY_POLICY,
-                );
-                createSignUpDto.privacyPolicyVersion = activePrivacyPolicy.version;
-            } catch (error) {
-                // If no active privacy policy, use default version
-                createSignUpDto.privacyPolicyVersion = '1.0';
-            }
-        }
+        // if (createSignUpDto.privacyPolicyVersion) {
+        //     try {
+        //         await this.legalDocumentService.findByTypeAndVersion(
+        //             LegalDocumentType.PRIVACY_POLICY,
+        //             createSignUpDto.privacyPolicyVersion,
+        //         );
+        //     } catch (error) {
+        //         throw new CustomBadRequestException({
+        //             code: 'invalid-privacy-policy-version',
+        //             message: `Privacy policy version ${createSignUpDto.privacyPolicyVersion} not found`,
+        //         });
+        //     }
+        // } else {
+        //     // Get the active privacy policy version
+        //     try {
+        //         const activePrivacyPolicy = await this.legalDocumentService.getActiveDocumentByType(
+        //             LegalDocumentType.PRIVACY_POLICY,
+        //         );
+        //         createSignUpDto.privacyPolicyVersion = activePrivacyPolicy.version;
+        //     } catch (error) {
+        //         // If no active privacy policy, use default version
+        //         createSignUpDto.privacyPolicyVersion = '1.0';
+        //     }
+        // }
 
         const signUp = this.signUpRepository.create({
             companyName: createSignUpDto.companyName,
@@ -231,7 +230,7 @@ export class SignUpService {
 
         const updatedSignUp = await this.findOne(id);
 
-        await this.emailService.sendMail({
+        this.emailService.sendMail({
             subject: 'Complete seu cadastro no Tasky System',
             html: this.emailService.compileTemplate('complete-your-sign-up', {
                 companyName: updatedSignUp.companyName,
@@ -265,7 +264,7 @@ export class SignUpService {
 
         const updatedSignUp = await this.findOne(id);
 
-        await this.emailService.sendMail({
+        this.emailService.sendMail({
             subject: 'Sobre sua solicitação de cadastro no Tasky System',
             html: this.emailService.compileTemplate('sign-up-rejected', {
                 companyName: updatedSignUp.companyName,
@@ -344,7 +343,7 @@ export class SignUpService {
             completedAt: new Date(),
         });
 
-        await this.emailService.sendMail({
+        this.emailService.sendMail({
             subject: 'Bem-vindo ao Tasky System',
             html: this.emailService.compileTemplate('sign-up-completed', {
                 companyName: signUp.companyName,
