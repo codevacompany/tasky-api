@@ -3,9 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { CnpjModule } from '../../shared/services/cnpj/cnpj.module';
 import { EmailModule } from '../../shared/services/email/email.module';
+import { TokenModule } from '../../shared/services/token/token.module';
 import { DepartmentModule } from '../department/department.module';
 import { LegalDocumentModule } from '../legal-document/legal-document.module';
 import { RoleModule } from '../role/role.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { UserModule } from '../user/user.module';
 import { SignUp } from './entities/sign-up.entity';
@@ -23,6 +25,8 @@ import { SignUpService } from './sign-up.service';
         RoleModule,
         DepartmentModule,
         LegalDocumentModule,
+        SubscriptionModule,
+        TokenModule,
     ],
     controllers: [SignUpController],
     providers: [SignUpService, SignUpRepository, GlobalAdminGuard],

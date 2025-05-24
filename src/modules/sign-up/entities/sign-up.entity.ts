@@ -2,10 +2,10 @@ import { Column, Entity } from 'typeorm';
 import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
 
 export enum SignUpStatus {
-    PENDING = 'pending',
-    APPROVED = 'approved',
-    REJECTED = 'rejected',
-    COMPLETED = 'completed',
+    PENDING = 'pendente',
+    APPROVED = 'aprovado',
+    REJECTED = 'rejeitado',
+    COMPLETED = 'completo',
 }
 
 @Entity()
@@ -15,6 +15,9 @@ export class SignUp extends IdTimestampBaseEntity {
 
     @Column({ default: '' })
     email: string;
+
+    @Column({ nullable: true })
+    cnpj: string;
 
     @Column({ nullable: true })
     phoneNumber: string;
@@ -58,8 +61,12 @@ export class SignUp extends IdTimestampBaseEntity {
     @Column()
     contactPhone: string;
 
-    @Column({ default: 'pending' })
-    status: string;
+    @Column({
+        type: 'enum',
+        enum: SignUpStatus,
+        default: SignUpStatus.PENDING,
+    })
+    status: SignUpStatus;
 
     @Column({ nullable: true })
     activationToken: string;

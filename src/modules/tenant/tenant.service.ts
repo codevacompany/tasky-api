@@ -42,6 +42,14 @@ export class TenantService {
         };
     }
 
+    async findByCnpj(cnpj: string): Promise<Tenant> {
+        return await this.tenantRepository.findOne({
+            where: {
+                cnpj,
+            },
+        });
+    }
+
     async findByName(name: string): Promise<Tenant> {
         return await this.tenantRepository.findOne({
             where: {

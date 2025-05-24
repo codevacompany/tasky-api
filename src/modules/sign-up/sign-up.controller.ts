@@ -62,7 +62,6 @@ export class SignUpController {
     }
 
     @Post('complete/:token')
-    @HttpCode(HttpStatus.NO_CONTENT)
     completeSignUp(@Param('token') token: string, @Body() completeSignUpDto: CompleteSignUpDto) {
         return this.signUpService.completeSignUp(
             token,

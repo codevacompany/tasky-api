@@ -18,6 +18,10 @@ export class CreateTenantDto {
 
     @IsOptional()
     @IsString()
+    cnpj?: string;
+
+    @IsOptional()
+    @IsString()
     phoneNumber?: string;
 
     @IsOptional()

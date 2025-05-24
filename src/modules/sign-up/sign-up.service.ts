@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ILike } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { AccessProfile } from '../../shared/common/access-profile';
@@ -8,11 +8,14 @@ import {
 } from '../../shared/exceptions/http-exception';
 import { CnpjService } from '../../shared/services/cnpj/cnpj.service';
 import { EmailService } from '../../shared/services/email/email.service';
+import { TokenService } from '../../shared/services/token/token.service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
 import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { RoleName } from '../role/entities/role.entity';
 import { RoleRepository } from '../role/role.repository';
+import { SubscriptionType } from '../subscription/entities/subscription.entity';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { TenantService } from '../tenant/tenant.service';
 import { UserService } from '../user/user.service';
 import { CreateSignUpDto } from './dtos/create-sign-up.dto';
@@ -26,13 +29,25 @@ export class SignUpService {
         private readonly tenantService: TenantService,
         private readonly emailService: EmailService,
         private readonly cnpjService: CnpjService,
+        @Inject(forwardRef(() => UserService))
         private readonly userService: UserService,
         private readonly roleRepository: RoleRepository,
         private readonly departmentService: DepartmentService,
         private readonly legalDocumentService: LegalDocumentService,
+        private readonly subscriptionService: SubscriptionService,
+        private readonly tokenService: TokenService,
     ) {}
 
     async create(createSignUpDto: CreateSignUpDto): Promise<SignUp> {
+        const signUpExists = await this.findByCnpj(createSignUpDto.cnpj);
+
+        if (signUpExists) {
+            throw new CustomBadRequestException({
+                code: 'sign-up-already-exists',
+                message: 'Sign-up already exists',
+            });
+        }
+
         const cnpjData = await this.cnpjService.validateAndFetchData(createSignUpDto.cnpj);
 
         if (!createSignUpDto.termsAccepted) {
@@ -109,7 +124,7 @@ export class SignUpService {
             contactEmail: createSignUpDto.contactEmail,
             contactPhone: createSignUpDto.contactPhone,
             status: SignUpStatus.PENDING,
-
+            cnpj: createSignUpDto.cnpj,
             cep: cnpjData.cep,
             state: cnpjData.uf,
             city: cnpjData.municipio,
@@ -172,6 +187,14 @@ export class SignUpService {
             limit: options.limit,
             totalPages: Math.ceil(total / options.limit),
         };
+    }
+
+    async findByCnpj(cnpj: string): Promise<SignUp> {
+        const signUp = await this.signUpRepository.findOne({
+            where: { cnpj },
+        });
+
+        return signUp;
     }
 
     async findOne(id: number): Promise<SignUp> {
@@ -276,7 +299,7 @@ export class SignUpService {
         return updatedSignUp;
     }
 
-    async completeSignUp(token: string, customKey: string, password: string): Promise<void> {
+    async completeSignUp(token: string, customKey: string, password: string) {
         const signUp = await this.findByActivationToken(token);
 
         if (signUp.status !== SignUpStatus.APPROVED) {
@@ -290,6 +313,7 @@ export class SignUpService {
             name: signUp.companyName,
             customKey,
             email: signUp.email,
+            cnpj: signUp.cnpj,
             phoneNumber: signUp.phoneNumber,
             cep: signUp.cep,
             state: signUp.state,
@@ -309,7 +333,20 @@ export class SignUpService {
         });
 
         const accessProfile = new AccessProfile();
+        accessProfile.roleId = 1; // Set as superuser to create subscription
         accessProfile.tenantId = tenant.id;
+
+        // Create a 14-day trial subscription
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + 14);
+
+        await this.subscriptionService.create(accessProfile, {
+            tenantId: tenant.id,
+            startDate,
+            endDate,
+            type: SubscriptionType.TRIAL,
+        });
 
         const tenantAdminRole = await this.roleRepository.findOneBy({
             name: RoleName.TenantAdmin,
@@ -326,7 +363,7 @@ export class SignUpService {
             name: 'Diretoria',
         });
 
-        await this.userService.superAdminCreate(accessProfile, {
+        const userData = await this.userService.superAdminCreate(accessProfile, {
             tenantId: tenant.id,
             firstName: signUp.contactName.split(' ')[0],
             lastName: signUp.contactName.split(' ').slice(1).join(' ') || '',
@@ -343,16 +380,19 @@ export class SignUpService {
             completedAt: new Date(),
         });
 
-        this.emailService.sendMail({
+        await this.emailService.sendMail({
             subject: 'Bem-vindo ao Tasky System',
             html: this.emailService.compileTemplate('sign-up-completed', {
                 companyName: signUp.companyName,
                 contactName: signUp.contactName,
                 customKey,
                 frontendUrl: process.env.FRONTEND_URL,
+                trialDays: 14, // Add trial period to the email
             }),
             to: signUp.contactEmail,
         });
+
+        return userData;
     }
 
     private buildQuery(where?: { companyName?: string; status?: string }) {
