@@ -13,9 +13,10 @@ import { AuthGuard } from '@nestjs/passport';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
 import { CreateTenantDto } from './dtos/create-tenant.dto';
+import { UpdateTenantConsentDto } from './dtos/update-tenant-consent.dto';
 import { UpdateTenantDto } from './dtos/update-tenant.dto';
-import { TenantService } from './tenant.service';
 import { Tenant } from './entities/tenant.entity';
+import { TenantService } from './tenant.service';
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('tenants')
@@ -38,10 +39,15 @@ export class TenantController {
     }
 
     @Patch(':id')
-    async update(
-        @Param('id', ParseIntPipe) id: number,
-        @Body() updateTenantDto: UpdateTenantDto,
-    ) {
+    async update(@Param('id', ParseIntPipe) id: number, @Body() updateTenantDto: UpdateTenantDto) {
         return this.tenantService.update(id, updateTenantDto);
+    }
+
+    @Patch(':id/consent')
+    async updateConsent(
+        @Param('id', ParseIntPipe) id: number,
+        @Body() updateTenantConsentDto: UpdateTenantConsentDto,
+    ) {
+        return this.tenantService.updateConsent(id, updateTenantConsentDto);
     }
 }

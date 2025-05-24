@@ -1,25 +1,26 @@
 import { Column, Entity } from 'typeorm';
 import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
 
+export enum SignUpStatus {
+    PENDING = 'pendente',
+    APPROVED = 'aprovado',
+    REJECTED = 'rejeitado',
+    COMPLETED = 'completo',
+}
+
 @Entity()
-export class Tenant extends IdTimestampBaseEntity {
+export class SignUp extends IdTimestampBaseEntity {
     @Column()
-    name: string;
+    companyName: string;
 
     @Column({ default: '' })
     email: string;
 
     @Column({ nullable: true })
-    phoneNumber: string;
-
-    @Column()
-    customKey: string;
-
-    @Column({ nullable: true })
     cnpj: string;
 
-    @Column({ default: false })
-    isInternal: boolean;
+    @Column({ nullable: true })
+    phoneNumber: string;
 
     @Column({ nullable: true })
     cep: string;
@@ -47,6 +48,31 @@ export class Tenant extends IdTimestampBaseEntity {
 
     @Column({ nullable: true })
     mainActivity: string;
+
+    @Column()
+    contactName: string;
+
+    @Column()
+    contactCpf: string;
+
+    @Column()
+    contactEmail: string;
+
+    @Column()
+    contactPhone: string;
+
+    @Column({
+        type: 'enum',
+        enum: SignUpStatus,
+        default: SignUpStatus.PENDING,
+    })
+    status: SignUpStatus;
+
+    @Column({ nullable: true })
+    activationToken: string;
+
+    @Column({ type: 'timestamp', nullable: true })
+    completedAt: Date;
 
     // Consent tracking fields
     @Column({ default: false })

@@ -7,9 +7,12 @@ import { AwsModule } from './modules/aws/aws.module';
 import { CategoryModule } from './modules/category/category.module';
 import { CorrectionRequestModule } from './modules/correction-request-reason/correction-request-reason.module';
 import { DepartmentModule } from './modules/department/department.module';
+import { LegalDocumentModule } from './modules/legal-document/legal-document.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { RoleModule } from './modules/role/role.module';
+import { SignUpModule } from './modules/sign-up/sign-up.module';
 import { StatsModule } from './modules/stats/stats.module';
+import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { TicketCancellationReasonModule } from './modules/ticket-cancellation-reason/ticket-cancellation-reason.module';
 import { TicketCommentModule } from './modules/ticket-comment/ticket-comment.module';
@@ -39,10 +42,13 @@ import { VerificationCodeModule } from './modules/verification-code/verification
         TicketDisapprovalReasonModule,
         CorrectionRequestModule,
         TenantModule,
+        SignUpModule,
         RoleModule,
         AwsModule,
         TicketFileModule,
         StatsModule,
+        LegalDocumentModule,
+        SubscriptionModule,
     ],
     controllers: [],
     providers: [DatabaseSeederService],
