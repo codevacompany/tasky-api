@@ -34,7 +34,6 @@ export class UserController {
         return this.userService.findManyUsers(accessProfile, { name }, options);
     }
 
-    //TODO: add a role/permission validation decorator
     @Get('all')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {

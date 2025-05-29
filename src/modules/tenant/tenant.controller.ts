@@ -17,6 +17,7 @@ import { UpdateTenantConsentDto } from './dtos/update-tenant-consent.dto';
 import { UpdateTenantDto } from './dtos/update-tenant.dto';
 import { Tenant } from './entities/tenant.entity';
 import { TenantService } from './tenant.service';
+import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('tenants')
@@ -24,16 +25,19 @@ export class TenantController {
     constructor(private readonly tenantService: TenantService) {}
 
     @Get()
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async findAll(@GetQueryOptions() options: QueryOptions<Tenant>, @Query('name') name?: string) {
         return this.tenantService.findAll({ name }, options);
     }
 
     @Get(':name')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async findByName(@Param('name') name: string) {
         return this.tenantService.findByName(name);
     }
 
     @Post()
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async create(@Body() createTenantDto: CreateTenantDto) {
         return this.tenantService.create(createTenantDto);
     }

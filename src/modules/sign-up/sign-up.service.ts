@@ -4,14 +4,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { AccessProfile } from '../../shared/common/access-profile';
 import {
     CustomBadRequestException,
+    CustomConflictException,
     CustomNotFoundException,
 } from '../../shared/exceptions/http-exception';
 import { CnpjService } from '../../shared/services/cnpj/cnpj.service';
 import { EmailService } from '../../shared/services/email/email.service';
-import { TokenService } from '../../shared/services/token/token.service';
+// import { TokenService } from '../../shared/services/token/token.service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
-import { LegalDocumentService } from '../legal-document/legal-document.service';
+// import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { RoleName } from '../role/entities/role.entity';
 import { RoleRepository } from '../role/role.repository';
 import { SubscriptionType } from '../subscription/entities/subscription.entity';
@@ -33,16 +34,16 @@ export class SignUpService {
         private readonly userService: UserService,
         private readonly roleRepository: RoleRepository,
         private readonly departmentService: DepartmentService,
-        private readonly legalDocumentService: LegalDocumentService,
+        // private readonly legalDocumentService: LegalDocumentService,
         private readonly subscriptionService: SubscriptionService,
-        private readonly tokenService: TokenService,
+        // private readonly tokenService: TokenService,
     ) {}
 
     async create(createSignUpDto: CreateSignUpDto): Promise<SignUp> {
         const signUpExists = await this.findByCnpj(createSignUpDto.cnpj);
 
         if (signUpExists) {
-            throw new CustomBadRequestException({
+            throw new CustomConflictException({
                 code: 'sign-up-already-exists',
                 message: 'Sign-up already exists',
             });
