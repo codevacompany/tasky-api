@@ -22,6 +22,7 @@ export enum StatsPeriod {
 export class StatsController {
     constructor(private readonly ticketStatsService: TicketStatsService) {}
 
+    //TODO: Add global admin guard if needed
     @Get('/by-tenant')
     async getTenantStats(
         @GetAccessProfile() accessProfile: AccessProfile,
