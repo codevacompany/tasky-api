@@ -3,20 +3,25 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
     endOfDay,
     endOfMonth,
+    endOfQuarter,
     endOfWeek,
+    getQuarter,
     startOfDay,
     startOfMonth,
+    startOfQuarter,
     startOfWeek,
     subDays,
     subMonths,
+    subQuarters,
     subWeeks,
 } from 'date-fns';
-import { IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
 import { TicketUpdate } from '../ticket-updates/entities/ticket-update.entity';
 import { Ticket, TicketPriority, TicketStatus } from '../ticket/entities/ticket.entity';
+import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
 import { StatusDurationDto, StatusDurationResponseDto } from './dtos/status-duration.dto';
 import {
     TicketPriorityCountDto,
@@ -456,9 +461,8 @@ export class TicketStatsService {
 
     private calculateAverage(values: (number | string | null | undefined)[]): number {
         const validValues = values
-            .filter((val) => val !== null && val !== undefined)
-            .map((val) => (typeof val === 'string' ? parseFloat(val) : val))
-            .filter((val) => !isNaN(val as number));
+            .filter((val) => val !== null && val !== undefined && val !== 0)
+            .map((val) => (typeof val === 'string' ? parseFloat(val) : val));
 
         if (validValues.length === 0) return 0;
 
@@ -683,5 +687,154 @@ export class TicketStatsService {
         return {
             statusDurations,
         };
+    }
+
+    async getResolutionTimeData(accessProfile: AccessProfile): Promise<ResolutionTimeResponseDto> {
+        const now = new Date();
+
+        const [weeklyData, monthlyData, quarterlyData] = await Promise.all([
+            this.getWeeklyResolutionTime(accessProfile, now),
+            this.getMonthlyResolutionTime(accessProfile, now),
+            this.getQuarterlyResolutionTime(accessProfile, now),
+        ]);
+
+        const weekAverage = this.calculateAverage(weeklyData.map((item) => item.value));
+        const monthAverage = this.calculateAverage(monthlyData.map((item) => item.value));
+        const quarterAverage = this.calculateAverage(quarterlyData.map((item) => item.value));
+
+        return {
+            data: {
+                week: weeklyData,
+                month: monthlyData,
+                quarter: quarterlyData,
+            },
+            average: {
+                week: weekAverage,
+                month: monthAverage,
+                quarter: quarterAverage,
+            },
+        };
+    }
+
+    private async getWeeklyResolutionTime(accessProfile: AccessProfile, endDate: Date) {
+        const weeks = 6;
+        const weekData = [];
+
+        for (let i = weeks - 1; i >= 0; i--) {
+            const startDate = startOfWeek(subWeeks(endDate, i));
+            const endDateOfWeek = endOfWeek(startDate);
+
+            const label = `${startDate.getDate().toString().padStart(2, '0')}/${(startDate.getMonth() + 1).toString().padStart(2, '0')} - ${endDateOfWeek.getDate().toString().padStart(2, '0')}/${(endDateOfWeek.getMonth() + 1).toString().padStart(2, '0')}`;
+
+            const averageResolutionTime = await this.getAverageResolutionTimeForPeriod(
+                accessProfile,
+                startDate,
+                endDateOfWeek,
+            );
+
+            weekData.push({
+                label,
+                value: averageResolutionTime,
+            });
+        }
+
+        return weekData;
+    }
+
+    private async getMonthlyResolutionTime(accessProfile: AccessProfile, endDate: Date) {
+        const months = 6;
+        const monthData = [];
+
+        const ptMonthNames = [
+            'Jan',
+            'Fev',
+            'Mar',
+            'Abr',
+            'Mai',
+            'Jun',
+            'Jul',
+            'Ago',
+            'Set',
+            'Out',
+            'Nov',
+            'Dez',
+        ];
+
+        for (let i = months - 1; i >= 0; i--) {
+            const startDate = startOfMonth(subMonths(endDate, i));
+            const endDateOfMonth = endOfMonth(startDate);
+
+            const monthIndex = startDate.getMonth();
+            const label = `${ptMonthNames[monthIndex]}/${startDate.getFullYear().toString().substr(2)}`;
+
+            const averageResolutionTime = await this.getAverageResolutionTimeForPeriod(
+                accessProfile,
+                startDate,
+                endDateOfMonth,
+            );
+
+            monthData.push({
+                label,
+                value: averageResolutionTime,
+            });
+        }
+
+        return monthData;
+    }
+
+    private async getQuarterlyResolutionTime(accessProfile: AccessProfile, endDate: Date) {
+        const quarters = 4;
+        const quarterData = [];
+
+        for (let i = quarters - 1; i >= 0; i--) {
+            const startDate = startOfQuarter(subQuarters(endDate, i));
+            const endDateOfQuarter = endOfQuarter(startDate);
+
+            const quarter = getQuarter(startDate);
+            const year = startDate.getFullYear();
+            const label = `T${quarter}/${year.toString().substr(2)}`;
+
+            const averageResolutionTime = await this.getAverageResolutionTimeForPeriod(
+                accessProfile,
+                startDate,
+                endDateOfQuarter,
+            );
+
+            quarterData.push({
+                label,
+                value: averageResolutionTime,
+            });
+        }
+
+        return quarterData;
+    }
+
+    private async getAverageResolutionTimeForPeriod(
+        accessProfile: AccessProfile,
+        startDate: Date,
+        endDate: Date,
+    ): Promise<number> {
+        const ticketStats = await this.ticketStatsRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                isResolved: true,
+                resolutionTimeSeconds: Not(IsNull()),
+                createdAt: MoreThanOrEqual(startDate),
+                updatedAt: LessThanOrEqual(endDate),
+            },
+        });
+
+        if (ticketStats.length === 0) {
+            return 0;
+        }
+
+        const totalResolutionTimeSeconds = ticketStats.reduce(
+            (sum, stat) => sum + Number(stat.resolutionTimeSeconds),
+            0,
+        );
+
+        const avgResolutionTimeHours = totalResolutionTimeSeconds / ticketStats.length / 3600;
+
+        return Math.round(avgResolutionTimeHours * 10) / 10;
     }
 }

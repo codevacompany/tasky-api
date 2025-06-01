@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
+import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
 import { StatusDurationResponseDto } from './dtos/status-duration.dto';
 import { TicketPriorityCountResponseDto } from './dtos/ticket-priority-count.dto';
 import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
@@ -74,5 +75,12 @@ export class StatsController {
         @Query('period') period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<DepartmentStatsDto[]> {
         return this.ticketStatsService.getDepartmentStats(profile, period);
+    }
+
+    @Get('resolution-time')
+    async getResolutionTimeData(
+        @GetAccessProfile() profile: AccessProfile,
+    ): Promise<ResolutionTimeResponseDto> {
+        return this.ticketStatsService.getResolutionTimeData(profile);
     }
 }
