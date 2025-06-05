@@ -19,7 +19,6 @@ import { Tenant } from './entities/tenant.entity';
 import { TenantService } from './tenant.service';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 
-@UseGuards(AuthGuard('jwt'))
 @Controller('tenants')
 export class TenantController {
     constructor(private readonly tenantService: TenantService) {}
