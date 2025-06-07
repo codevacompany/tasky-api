@@ -72,12 +72,19 @@ export class TicketController {
         @GetQueryOptions() options: QueryOptions<Ticket>,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        options.where = {
+        // Create the base where clause with departmentId
+        const whereClause: any = {
             ...options.where,
             departmentId,
             isPrivate: false,
-            status: Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled])),
         };
+
+        // Only apply the default status filter if no status filter is provided
+        if (!options.where || options.where.status === undefined) {
+            whereClause.status = Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]));
+        }
+
+        options.where = whereClause;
 
         return this.ticketService.findBy(accessProfile, options);
     }
@@ -88,11 +95,18 @@ export class TicketController {
         @GetQueryOptions() options: QueryOptions<Ticket>,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        options.where = {
+        // Create the base where clause with requesterId
+        const whereClause: any = {
             ...options.where,
             requesterId,
-            status: Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled])),
         };
+
+        // Only apply the default status filter if no status filter is provided
+        if (!options.where || options.where.status === undefined) {
+            whereClause.status = Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]));
+        }
+
+        options.where = whereClause;
 
         return this.ticketService.findBy(accessProfile, options);
     }
@@ -103,11 +117,20 @@ export class TicketController {
         @GetQueryOptions() options: QueryOptions<Ticket>,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        options.where = {
+        // Create the base where clause with targetUserId
+        const whereClause: any = {
             ...options.where,
             targetUserId: userId,
-            status: Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled])),
         };
+
+        // Only apply the default status filter if no status filter is provided
+        if (!options.where || options.where.status === undefined) {
+            whereClause.status = Not(
+                In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]),
+            );
+        }
+
+        options.where = whereClause;
 
         return this.ticketService.findBy(accessProfile, options);
     }
