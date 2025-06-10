@@ -104,7 +104,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         accessProfile: AccessProfile,
         options?: QueryOptions<Ticket>,
     ): Promise<PaginatedResponse<Ticket>> {
-        console.log(options.where);
         const queryOptions = {
             ...options,
             where: this.buildQueryWhere(options.where),

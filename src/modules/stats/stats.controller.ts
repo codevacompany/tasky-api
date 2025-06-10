@@ -2,12 +2,16 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
-import { StatusDurationResponseDto } from './dtos/status-duration.dto';
+import {
+    StatusDurationResponseDto,
+    StatusDurationTimeSeriesResponseDto,
+} from './dtos/status-duration.dto';
 import { TicketPriorityCountResponseDto } from './dtos/ticket-priority-count.dto';
 import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
 import { TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto } from './dtos/ticket-trends.dto';
 import { TicketStatsService } from './ticket-stats.service';
+import { TicketStatus } from '../ticket/entities/ticket.entity';
 
 export enum StatsPeriod {
     WEEKLY = 'weekly',
@@ -82,5 +86,13 @@ export class StatsController {
         @GetAccessProfile() profile: AccessProfile,
     ): Promise<ResolutionTimeResponseDto> {
         return this.ticketStatsService.getResolutionTimeData(profile);
+    }
+
+    @Get('status-duration-time-series')
+    async getStatusDurationTimeSeries(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('status') status: TicketStatus,
+    ): Promise<StatusDurationTimeSeriesResponseDto> {
+        return this.ticketStatsService.getStatusDurationTimeSeries(accessProfile, status);
     }
 }

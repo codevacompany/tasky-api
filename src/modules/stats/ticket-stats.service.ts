@@ -22,7 +22,12 @@ import { DepartmentService } from '../department/department.service';
 import { TicketUpdate } from '../ticket-updates/entities/ticket-update.entity';
 import { Ticket, TicketPriority, TicketStatus } from '../ticket/entities/ticket.entity';
 import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
-import { StatusDurationDto, StatusDurationResponseDto } from './dtos/status-duration.dto';
+import {
+    StatusDurationDto,
+    StatusDurationResponseDto,
+    StatusDurationTimeSeriesResponseDto,
+    StatusDurationTimePointDto,
+} from './dtos/status-duration.dto';
 import {
     TicketPriorityCountDto,
     TicketPriorityCountResponseDto,
@@ -836,5 +841,87 @@ export class TicketStatsService {
         const avgResolutionTimeHours = totalResolutionTimeSeconds / ticketStats.length / 3600;
 
         return Math.round(avgResolutionTimeHours * 10) / 10;
+    }
+
+    async getStatusDurationTimeSeries(
+        accessProfile: AccessProfile,
+        status: TicketStatus,
+    ): Promise<StatusDurationTimeSeriesResponseDto> {
+        const now = new Date();
+        const months = 6;
+        const monthlyData: StatusDurationTimePointDto[] = [];
+
+        const ptMonthNames = [
+            'Jan',
+            'Fev',
+            'Mar',
+            'Abr',
+            'Mai',
+            'Jun',
+            'Jul',
+            'Ago',
+            'Set',
+            'Out',
+            'Nov',
+            'Dez',
+        ];
+
+        // Calculate data for each of the last 6 months
+        for (let i = months - 1; i >= 0; i--) {
+            const startDate = startOfMonth(subMonths(now, i));
+            const endDate = endOfMonth(startDate);
+
+            const monthIndex = startDate.getMonth();
+            const monthLabel = `${ptMonthNames[monthIndex]}/${startDate.getFullYear().toString().substr(2)}`;
+
+            // Get all ticket updates for this month where the status changed from the requested status
+            const ticketUpdates = await this.ticketUpdateRepository.find({
+                where: {
+                    tenantId: accessProfile.tenantId,
+                    fromStatus: status,
+                    timeSecondsInLastStatus: Not(IsNull()),
+                    createdAt: MoreThanOrEqual(startDate),
+                    updatedAt: LessThanOrEqual(endDate),
+                },
+            });
+
+            // Calculate average time spent in the status for this month
+            let totalDurationSeconds = 0;
+            const count = ticketUpdates.length;
+
+            if (count > 0) {
+                totalDurationSeconds = ticketUpdates.reduce(
+                    (sum, update) => sum + Number(update.timeSecondsInLastStatus || 0),
+                    0,
+                );
+
+                // Convert seconds to hours for the average
+                const averageDurationHours = totalDurationSeconds / count / 3600;
+
+                monthlyData.push({
+                    month: monthLabel,
+                    value: Math.round(averageDurationHours * 10) / 10, // Round to 1 decimal place
+                    count,
+                });
+            } else {
+                // If no data for this month, add zero
+                monthlyData.push({
+                    month: monthLabel,
+                    value: 0,
+                    count: 0,
+                });
+            }
+        }
+
+        // Calculate the overall average
+        const totalValues = monthlyData.reduce((sum, item) => sum + item.value * item.count, 0);
+        const totalCount = monthlyData.reduce((sum, item) => sum + item.count, 0);
+        const averageDuration = totalCount > 0 ? totalValues / totalCount : 0;
+
+        return {
+            status,
+            data: monthlyData,
+            averageDuration: Math.round(averageDuration * 10) / 10, // Round to 1 decimal place
+        };
     }
 }
