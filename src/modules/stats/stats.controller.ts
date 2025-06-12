@@ -10,6 +10,7 @@ import { TicketPriorityCountResponseDto } from './dtos/ticket-priority-count.dto
 import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
 import { TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto } from './dtos/ticket-trends.dto';
+import { UserRankingResponseDto } from './dtos/user-ranking.dto';
 import { TicketStatsService } from './ticket-stats.service';
 import { TicketStatus } from '../ticket/entities/ticket.entity';
 
@@ -94,5 +95,13 @@ export class StatsController {
         @Query('status') status: TicketStatus,
     ): Promise<StatusDurationTimeSeriesResponseDto> {
         return this.ticketStatsService.getStatusDurationTimeSeries(accessProfile, status);
+    }
+
+    @Get('top-users')
+    async getTopUsers(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('limit') limit: number = 5,
+    ): Promise<UserRankingResponseDto> {
+        return this.ticketStatsService.getUserRanking(accessProfile, limit);
     }
 }

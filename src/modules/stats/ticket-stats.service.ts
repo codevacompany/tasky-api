@@ -19,6 +19,7 @@ import { IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeo
 import { AccessProfile } from '../../shared/common/access-profile';
 import { QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
+import { User } from '../user/entities/user.entity';
 import { TicketUpdate } from '../ticket-updates/entities/ticket-update.entity';
 import { Ticket, TicketPriority, TicketStatus } from '../ticket/entities/ticket.entity';
 import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
@@ -35,6 +36,7 @@ import {
 import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
 import { TicketStatusCountDto, TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto, TrendDataPointDto } from './dtos/ticket-trends.dto';
+import { UserRankingItemDto, UserRankingResponseDto } from './dtos/user-ranking.dto';
 import { TicketStats } from './entities/ticket-stats.entity';
 import { StatsPeriod } from './stats.controller';
 
@@ -48,6 +50,8 @@ export class TicketStatsService {
         private readonly ticketRepository: Repository<Ticket>,
         @InjectRepository(TicketUpdate)
         private readonly ticketUpdateRepository: Repository<TicketUpdate>,
+        @InjectRepository(User)
+        private readonly userRepository: Repository<User>,
     ) {}
 
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<TicketStats>) {
@@ -923,5 +927,87 @@ export class TicketStatsService {
             data: monthlyData,
             averageDuration: Math.round(averageDuration * 10) / 10, // Round to 1 decimal place
         };
+    }
+
+    async getUserRanking(
+        accessProfile: AccessProfile,
+        limit: number = 5,
+    ): Promise<UserRankingResponseDto> {
+        const now = new Date();
+        const threeMonthsAgo = startOfDay(subMonths(now, 3));
+
+        const ticketStats = await this.ticketStatsRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                createdAt: MoreThanOrEqual(threeMonthsAgo),
+                targetUserId: Not(IsNull()),
+            },
+        });
+
+        const allUsers = await this.userRepository.find({
+            where: { tenantId: accessProfile.tenantId },
+            relations: ['department'],
+        });
+
+        // Create a map of users for quick lookup
+        const userMap = new Map<number, User>();
+        allUsers.forEach((user) => userMap.set(user.id, user));
+
+        // Initialize stats for all users
+        const userStatsMap = new Map<number, UserRankingItemDto>();
+
+        // First, initialize entries for all users (even those without tickets)
+        for (const user of allUsers) {
+            userStatsMap.set(user.id, {
+                userId: user.id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                departmentName: user.department?.name || 'N/A',
+                totalTickets: 0,
+                resolvedTickets: 0,
+                resolutionRate: 0,
+                avatarUrl: null,
+            });
+        }
+
+        // Then count tickets for users who have them
+        for (const stat of ticketStats) {
+            const userId = stat.targetUserId;
+
+            // Skip if we don't have this user (unlikely but as a safeguard)
+            if (!userStatsMap.has(userId)) continue;
+
+            const userStats = userStatsMap.get(userId);
+            userStats.totalTickets++;
+
+            if (stat.isResolved) {
+                userStats.resolvedTickets++;
+            }
+        }
+
+        // Calculate resolution rate and sort by the three criteria
+        const rankedUsers = Array.from(userStatsMap.values())
+            .map((user) => {
+                user.resolutionRate =
+                    user.totalTickets > 0
+                        ? parseFloat((user.resolvedTickets / user.totalTickets).toFixed(2))
+                        : 0;
+                return user;
+            })
+            .sort((a, b) => {
+                // First sort by resolved tickets
+                if (b.resolvedTickets !== a.resolvedTickets) {
+                    return b.resolvedTickets - a.resolvedTickets;
+                }
+
+                // If resolved tickets are equal, sort by resolution rate
+                if (b.resolutionRate !== a.resolutionRate) {
+                    return b.resolutionRate - a.resolutionRate;
+                }
+            })
+            .slice(0, limit);
+
+        return { users: rankedUsers };
     }
 }
