@@ -19,10 +19,16 @@ import { IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeo
 import { AccessProfile } from '../../shared/common/access-profile';
 import { QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
+import { User } from '../user/entities/user.entity';
 import { TicketUpdate } from '../ticket-updates/entities/ticket-update.entity';
 import { Ticket, TicketPriority, TicketStatus } from '../ticket/entities/ticket.entity';
 import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
-import { StatusDurationDto, StatusDurationResponseDto } from './dtos/status-duration.dto';
+import {
+    StatusDurationDto,
+    StatusDurationResponseDto,
+    StatusDurationTimeSeriesResponseDto,
+    StatusDurationTimePointDto,
+} from './dtos/status-duration.dto';
 import {
     TicketPriorityCountDto,
     TicketPriorityCountResponseDto,
@@ -30,6 +36,7 @@ import {
 import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
 import { TicketStatusCountDto, TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto, TrendDataPointDto } from './dtos/ticket-trends.dto';
+import { UserRankingItemDto, UserRankingResponseDto } from './dtos/user-ranking.dto';
 import { TicketStats } from './entities/ticket-stats.entity';
 import { StatsPeriod } from './stats.controller';
 
@@ -43,6 +50,8 @@ export class TicketStatsService {
         private readonly ticketRepository: Repository<Ticket>,
         @InjectRepository(TicketUpdate)
         private readonly ticketUpdateRepository: Repository<TicketUpdate>,
+        @InjectRepository(User)
+        private readonly userRepository: Repository<User>,
     ) {}
 
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<TicketStats>) {
@@ -836,5 +845,172 @@ export class TicketStatsService {
         const avgResolutionTimeHours = totalResolutionTimeSeconds / ticketStats.length / 3600;
 
         return Math.round(avgResolutionTimeHours * 10) / 10;
+    }
+
+    async getStatusDurationTimeSeries(
+        accessProfile: AccessProfile,
+        status: TicketStatus,
+    ): Promise<StatusDurationTimeSeriesResponseDto> {
+        const now = new Date();
+        const months = 6;
+        const monthlyData: StatusDurationTimePointDto[] = [];
+
+        const ptMonthNames = [
+            'Jan',
+            'Fev',
+            'Mar',
+            'Abr',
+            'Mai',
+            'Jun',
+            'Jul',
+            'Ago',
+            'Set',
+            'Out',
+            'Nov',
+            'Dez',
+        ];
+
+        // Calculate data for each of the last 6 months
+        for (let i = months - 1; i >= 0; i--) {
+            const startDate = startOfMonth(subMonths(now, i));
+            const endDate = endOfMonth(startDate);
+
+            const monthIndex = startDate.getMonth();
+            const monthLabel = `${ptMonthNames[monthIndex]}/${startDate.getFullYear().toString().substr(2)}`;
+
+            // Get all ticket updates for this month where the status changed from the requested status
+            const ticketUpdates = await this.ticketUpdateRepository.find({
+                where: {
+                    tenantId: accessProfile.tenantId,
+                    fromStatus: status,
+                    timeSecondsInLastStatus: Not(IsNull()),
+                    createdAt: MoreThanOrEqual(startDate),
+                    updatedAt: LessThanOrEqual(endDate),
+                },
+            });
+
+            // Calculate average time spent in the status for this month
+            let totalDurationSeconds = 0;
+            const count = ticketUpdates.length;
+
+            if (count > 0) {
+                totalDurationSeconds = ticketUpdates.reduce(
+                    (sum, update) => sum + Number(update.timeSecondsInLastStatus || 0),
+                    0,
+                );
+
+                // Keep the duration in seconds instead of converting to hours
+                const averageDurationSeconds = totalDurationSeconds / count;
+
+                monthlyData.push({
+                    month: monthLabel,
+                    value: Math.round(averageDurationSeconds), // Round to whole seconds
+                    count,
+                });
+            } else {
+                // If no data for this month, add zero
+                monthlyData.push({
+                    month: monthLabel,
+                    value: 0,
+                    count: 0,
+                });
+            }
+        }
+
+        // Calculate the overall average in seconds
+        const totalDurationSecondsOverall = monthlyData.reduce(
+            (sum, item) => sum + item.value * item.count,
+            0,
+        );
+        const totalCount = monthlyData.reduce((sum, item) => sum + item.count, 0);
+        const averageDuration = totalCount > 0 ? totalDurationSecondsOverall / totalCount : 0;
+
+        return {
+            status,
+            data: monthlyData,
+            averageDuration: Math.round(averageDuration), // Round to whole seconds
+        };
+    }
+
+    async getUserRanking(
+        accessProfile: AccessProfile,
+        limit: number = 5,
+    ): Promise<UserRankingResponseDto> {
+        const now = new Date();
+        const threeMonthsAgo = startOfDay(subMonths(now, 3));
+
+        const ticketStats = await this.ticketStatsRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                createdAt: MoreThanOrEqual(threeMonthsAgo),
+                targetUserId: Not(IsNull()),
+            },
+        });
+
+        const allUsers = await this.userRepository.find({
+            where: { tenantId: accessProfile.tenantId },
+            relations: ['department'],
+        });
+
+        // Create a map of users for quick lookup
+        const userMap = new Map<number, User>();
+        allUsers.forEach((user) => userMap.set(user.id, user));
+
+        // Initialize stats for all users
+        const userStatsMap = new Map<number, UserRankingItemDto>();
+
+        // First, initialize entries for all users (even those without tickets)
+        for (const user of allUsers) {
+            userStatsMap.set(user.id, {
+                userId: user.id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                departmentName: user.department?.name || 'N/A',
+                totalTickets: 0,
+                resolvedTickets: 0,
+                resolutionRate: 0,
+                avatarUrl: null,
+            });
+        }
+
+        // Then count tickets for users who have them
+        for (const stat of ticketStats) {
+            const userId = stat.targetUserId;
+
+            // Skip if we don't have this user (unlikely but as a safeguard)
+            if (!userStatsMap.has(userId)) continue;
+
+            const userStats = userStatsMap.get(userId);
+            userStats.totalTickets++;
+
+            if (stat.isResolved) {
+                userStats.resolvedTickets++;
+            }
+        }
+
+        // Calculate resolution rate and sort by the three criteria
+        const rankedUsers = Array.from(userStatsMap.values())
+            .map((user) => {
+                user.resolutionRate =
+                    user.totalTickets > 0
+                        ? parseFloat((user.resolvedTickets / user.totalTickets).toFixed(2))
+                        : 0;
+                return user;
+            })
+            .sort((a, b) => {
+                // First sort by resolved tickets
+                if (b.resolvedTickets !== a.resolvedTickets) {
+                    return b.resolvedTickets - a.resolvedTickets;
+                }
+
+                // If resolved tickets are equal, sort by resolution rate
+                if (b.resolutionRate !== a.resolutionRate) {
+                    return b.resolutionRate - a.resolutionRate;
+                }
+            })
+            .slice(0, limit);
+
+        return { users: rankedUsers };
     }
 }
