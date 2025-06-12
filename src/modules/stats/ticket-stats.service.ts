@@ -899,12 +899,12 @@ export class TicketStatsService {
                     0,
                 );
 
-                // Convert seconds to hours for the average
-                const averageDurationHours = totalDurationSeconds / count / 3600;
+                // Keep the duration in seconds instead of converting to hours
+                const averageDurationSeconds = totalDurationSeconds / count;
 
                 monthlyData.push({
                     month: monthLabel,
-                    value: Math.round(averageDurationHours * 10) / 10, // Round to 1 decimal place
+                    value: Math.round(averageDurationSeconds), // Round to whole seconds
                     count,
                 });
             } else {
@@ -917,15 +917,18 @@ export class TicketStatsService {
             }
         }
 
-        // Calculate the overall average
-        const totalValues = monthlyData.reduce((sum, item) => sum + item.value * item.count, 0);
+        // Calculate the overall average in seconds
+        const totalDurationSecondsOverall = monthlyData.reduce(
+            (sum, item) => sum + item.value * item.count,
+            0,
+        );
         const totalCount = monthlyData.reduce((sum, item) => sum + item.count, 0);
-        const averageDuration = totalCount > 0 ? totalValues / totalCount : 0;
+        const averageDuration = totalCount > 0 ? totalDurationSecondsOverall / totalCount : 0;
 
         return {
             status,
             data: monthlyData,
-            averageDuration: Math.round(averageDuration * 10) / 10, // Round to 1 decimal place
+            averageDuration: Math.round(averageDuration), // Round to whole seconds
         };
     }
 
