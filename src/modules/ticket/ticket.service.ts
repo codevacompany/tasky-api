@@ -282,7 +282,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             message: '<p><span>user</span> atualizou o ticket <span>resource</span>.</p>',
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
-            targetUserId: ticketResponse.requester.id,
+            targetUserId: ticketResponse.targetUser.id,
             resourceId: ticketResponse.id,
             resourceCustomId: ticketResponse.customId,
         });
