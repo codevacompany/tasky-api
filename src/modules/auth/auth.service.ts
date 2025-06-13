@@ -14,6 +14,7 @@ import { UserService } from '../user/user.service';
 import { VerificationCodeService } from '../verification-code/verification-code.service';
 import { LoginDto } from './dtos/login.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
+import { ChangePasswordDto } from './dtos/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -158,6 +159,10 @@ export class AuthService {
             verificationCode: validCode,
             token,
         };
+    }
+
+    async changePassword(accessProfile: AccessProfile, changePasswordDto: ChangePasswordDto) {
+        return this.userService.changePassword(accessProfile.userId, changePasswordDto);
     }
 
     // async resetPassword(bearerToken: string, password: string) {

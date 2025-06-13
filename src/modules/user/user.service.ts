@@ -13,6 +13,7 @@ import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { User } from './entities/user.entity';
 import { UserRepository } from './user.repository';
+import { ChangePasswordDto } from './dtos/change-password.dto';
 
 @Injectable()
 export class UserService extends TenantBoundBaseService<User> {
@@ -204,5 +205,39 @@ export class UserService extends TenantBoundBaseService<User> {
         }
 
         return super.update(accessProfile, id, data, false);
+    }
+
+    async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
+        const user = await this.userRepository.findOne({
+            where: { id: userId },
+            select: ['id', 'password', 'email'],
+        });
+
+        if (!user) {
+            throw new CustomConflictException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        const isCurrentPasswordValid = this.encryptionService.compareSync(
+            changePasswordDto.currentPassword,
+            user.password,
+        );
+
+        if (!isCurrentPasswordValid) {
+            throw new CustomConflictException({
+                code: 'invalid-current-password',
+                message: 'Current password is incorrect',
+            });
+        }
+
+        const hashedNewPassword = this.encryptionService.hashSync(changePasswordDto.newPassword);
+
+        await this.userRepository.update(userId, {
+            password: hashedNewPassword,
+        });
+
+        return { message: 'Password changed successfully' };
     }
 }
