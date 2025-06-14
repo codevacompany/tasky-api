@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ILike } from 'typeorm';
+import { ILike, Between } from 'typeorm';
 import {
     CustomBadRequestException,
     CustomConflictException,
@@ -11,14 +11,30 @@ import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { CreateTenantDto } from './dtos/create-tenant.dto';
 import { UpdateTenantConsentDto } from './dtos/update-tenant-consent.dto';
 import { UpdateTenantDto } from './dtos/update-tenant.dto';
+import { TenantWithStatsDto, TenantStatsResponseDto } from './dtos/tenant-with-stats.dto';
 import { Tenant } from './entities/tenant.entity';
 import { TenantRepository } from './tenant.repository';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../user/entities/user.entity';
+import { Ticket } from '../ticket/entities/ticket.entity';
+import { Department } from '../department/entities/department.entity';
+import { Role } from '../role/entities/role.entity';
+import { startOfMonth, endOfMonth } from 'date-fns';
 
 @Injectable()
 export class TenantService {
     constructor(
         private tenantRepository: TenantRepository,
         private legalDocumentService: LegalDocumentService,
+        @InjectRepository(User)
+        private userRepository: Repository<User>,
+        @InjectRepository(Ticket)
+        private ticketRepository: Repository<Ticket>,
+        @InjectRepository(Department)
+        private departmentRepository: Repository<Department>,
+        @InjectRepository(Role)
+        private roleRepository: Repository<Role>,
     ) {}
 
     async findAll(
@@ -142,7 +158,96 @@ export class TenantService {
         };
     }
 
-    private buildQuery(where: { name: string }) {
+    //TODO: Refactor to get the name from the options.where
+    async findWithStats(
+        where?: { name?: string },
+        options?: QueryOptions<Tenant>,
+    ): Promise<TenantStatsResponseDto> {
+        const query = this.buildQuery(where || {});
+
+        const [tenants, total] = await this.tenantRepository.findAndCount({
+            where: query.where,
+            skip: ((options?.page || 1) - 1) * (options?.limit || 10),
+            take: options?.limit || 10,
+            order: { name: 'ASC' },
+        });
+
+        const now = new Date();
+        const monthStart = startOfMonth(now);
+        const monthEnd = endOfMonth(now);
+
+        const [totalUsers, totalMonthlyTickets] = await Promise.all([
+            this.userRepository.count(),
+            this.ticketRepository.count({
+                where: {
+                    createdAt: Between(monthStart, monthEnd),
+                },
+            }),
+        ]);
+
+        // Process each tenant in parallel
+        const tenantsWithStatsPromises = tenants.map(async (tenant) => {
+            // Execute all tenant-specific queries in parallel
+            const [users, allTickets, ticketsThisMonth] = await Promise.all([
+                this.userRepository.find({
+                    where: { tenantId: tenant.id },
+                    relations: ['department', 'role'],
+                }),
+                this.ticketRepository.find({
+                    where: { tenantId: tenant.id },
+                }),
+                this.ticketRepository.count({
+                    where: {
+                        tenantId: tenant.id,
+                        createdAt: Between(monthStart, monthEnd),
+                    },
+                }),
+            ]);
+
+            const userStats = users.map((user) => ({
+                id: user.id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                departmentName: user.department?.name || 'N/A',
+                role: user.role?.name || 'N/A',
+                isActive: user.isActive,
+            }));
+
+            return {
+                id: tenant.id,
+                name: tenant.name,
+                cnpj: tenant.cnpj,
+                email: tenant.email,
+                customKey: tenant.customKey,
+                isActive: true,
+                createdAt: tenant.createdAt?.toISOString() || '',
+                updatedAt: tenant.updatedAt?.toISOString() || '',
+                totalUsers: users.length,
+                activeUsers: users.filter((user) => user.isActive).length,
+                totalTickets: allTickets.length,
+                ticketsThisMonth,
+                users: userStats,
+            };
+        });
+
+        const tenantsWithStats = await Promise.all(tenantsWithStatsPromises);
+
+        return {
+            items: tenantsWithStats,
+            total,
+            page: options?.page || 1,
+            limit: options?.limit || 10,
+            totalPages: Math.ceil(total / (options?.limit || 10)),
+            globalStats: {
+                totalActiveClients: total, // All tenants are considered active for now
+                totalUsers,
+                totalMonthlyTickets,
+            },
+        };
+    }
+
+    private buildQuery(where: { name?: string }) {
         const queryWhere: any = { ...where };
 
         if (where.name) {

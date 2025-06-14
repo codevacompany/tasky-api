@@ -15,6 +15,7 @@ import { QueryOptions } from '../../shared/types/http';
 import { CreateTenantDto } from './dtos/create-tenant.dto';
 import { UpdateTenantConsentDto } from './dtos/update-tenant-consent.dto';
 import { UpdateTenantDto } from './dtos/update-tenant.dto';
+import { TenantStatsResponseDto } from './dtos/tenant-with-stats.dto';
 import { Tenant } from './entities/tenant.entity';
 import { TenantService } from './tenant.service';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
@@ -27,6 +28,15 @@ export class TenantController {
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async findAll(@GetQueryOptions() options: QueryOptions<Tenant>, @Query('name') name?: string) {
         return this.tenantService.findAll({ name }, options);
+    }
+
+    @Get('with-stats')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async findWithStats(
+        @GetQueryOptions() options: QueryOptions<Tenant>,
+        @Query('name') name?: string,
+    ): Promise<TenantStatsResponseDto> {
+        return this.tenantService.findWithStats({ name }, options);
     }
 
     @Get(':name')
