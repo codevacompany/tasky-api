@@ -297,6 +297,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     ) {
         return this.dataSource.transaction(async () => {
             const ticket = await this.findById(accessProfile, customId);
+            const currentStatus = ticket.status;
 
             if (!ticket) {
                 throw new CustomNotFoundException({
@@ -354,6 +355,162 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
                 this.emailService.sendMail({
                     subject: `O ticket ${ticket.customId} está pronto para verificação.`,
+                    html: this.emailService.compileTemplate('ticket-update', { message }),
+                    to: ticket.requester.email,
+                });
+            } else if (
+                ticketUpdate.status === TicketStatus.InProgress &&
+                currentStatus === TicketStatus.AwaitingVerification
+            ) {
+                let timeSecondsInLastStatus = null;
+
+                const lastStatusUpdate = await this.findLastStatusUpdate(
+                    ticket.id,
+                    TicketStatus.AwaitingVerification,
+                );
+
+                if (lastStatusUpdate) {
+                    timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                        lastStatusUpdate.createdAt,
+                        new Date(),
+                    );
+                }
+
+                await Promise.all([
+                    this.ticketUpdateRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        ticketId: ticket.id,
+                        ticketCustomId: ticket.customId,
+                        performedById: ticket.targetUser.id,
+                        createdById: ticket.targetUser.id,
+                        updatedById: ticket.targetUser.id,
+                        action: TicketActionType.StatusUpdate,
+                        fromStatus: TicketStatus.AwaitingVerification,
+                        toStatus: TicketStatus.InProgress,
+                        timeSecondsInLastStatus,
+                        description: '<p><span>user</span> cancelou o envio para verificação.</p>',
+                    }),
+                    this.notificationRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.StatusUpdate,
+                        message:
+                            '<p><span>user</span> cancelou o envio do ticket <span>resource</span> para verificação.</p>',
+                        createdById: ticket.targetUser.id,
+                        updatedById: ticket.targetUser.id,
+                        targetUserId: ticket.requester.id,
+                        resourceId: ticket.id,
+                        resourceCustomId: ticket.customId,
+                    }),
+                ]);
+
+                const message = `<span style="font-weight: 600;">${ticket.targetUser.firstName} ${ticket.targetUser.lastName}</span> cancelou o envio do ticket <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
+
+                this.emailService.sendMail({
+                    subject: `Envio do ticket ${ticket.customId} para verificação foi cancelado`,
+                    html: this.emailService.compileTemplate('ticket-update', { message }),
+                    to: ticket.requester.email,
+                });
+            } else if (
+                ticketUpdate.status === TicketStatus.UnderVerification &&
+                currentStatus === TicketStatus.AwaitingVerification
+            ) {
+                let timeSecondsInLastStatus = null;
+
+                const lastStatusUpdate = await this.findLastStatusUpdate(
+                    ticket.id,
+                    TicketStatus.AwaitingVerification,
+                );
+
+                if (lastStatusUpdate) {
+                    timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                        lastStatusUpdate.createdAt,
+                        new Date(),
+                    );
+                }
+
+                await Promise.all([
+                    this.ticketUpdateRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        ticketId: ticket.id,
+                        ticketCustomId: ticket.customId,
+                        performedById: ticket.requester.id,
+                        createdById: ticket.requester.id,
+                        updatedById: ticket.requester.id,
+                        action: TicketActionType.StatusUpdate,
+                        fromStatus: TicketStatus.AwaitingVerification,
+                        toStatus: TicketStatus.UnderVerification,
+                        timeSecondsInLastStatus,
+                        description: '<p><span>user</span> iniciou a verificação do ticket.</p>',
+                    }),
+                    this.notificationRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.StatusUpdate,
+                        message:
+                            '<p><span>user</span> iniciou a verificação do ticket <span>resource</span>.</p>',
+                        createdById: ticket.requester.id,
+                        updatedById: ticket.requester.id,
+                        targetUserId: ticket.targetUser.id,
+                        resourceId: ticket.id,
+                        resourceCustomId: ticket.customId,
+                    }),
+                ]);
+
+                const message = `<span style="font-weight: 600;">${ticket.requester.firstName} ${ticket.requester.lastName}</span> iniciou a verificação do ticket <span style="font-weight: 600;">${ticket.customId}</span>.`;
+
+                this.emailService.sendMail({
+                    subject: `Verificação do ticket ${ticket.customId} foi iniciada`,
+                    html: this.emailService.compileTemplate('ticket-update', { message }),
+                    to: ticket.targetUser.email,
+                });
+            } else if (
+                ticketUpdate.status === TicketStatus.InProgress &&
+                currentStatus === TicketStatus.Returned
+            ) {
+                let timeSecondsInLastStatus = null;
+
+                const lastStatusUpdate = await this.findLastStatusUpdate(
+                    ticket.id,
+                    TicketStatus.Returned,
+                );
+
+                if (lastStatusUpdate) {
+                    timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                        lastStatusUpdate.createdAt,
+                        new Date(),
+                    );
+                }
+
+                await Promise.all([
+                    this.ticketUpdateRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        ticketId: ticket.id,
+                        ticketCustomId: ticket.customId,
+                        performedById: ticket.targetUser.id,
+                        createdById: ticket.targetUser.id,
+                        updatedById: ticket.targetUser.id,
+                        action: TicketActionType.StatusUpdate,
+                        fromStatus: TicketStatus.Returned,
+                        toStatus: TicketStatus.InProgress,
+                        timeSecondsInLastStatus,
+                        description: '<p><span>user</span> iniciou a correção do ticket.</p>',
+                    }),
+                    this.notificationRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.StatusUpdate,
+                        message:
+                            '<p><span>user</span> iniciou a correção do ticket <span>resource</span>.</p>',
+                        createdById: ticket.targetUser.id,
+                        updatedById: ticket.targetUser.id,
+                        targetUserId: ticket.requester.id,
+                        resourceId: ticket.id,
+                        resourceCustomId: ticket.customId,
+                    }),
+                ]);
+
+                const message = `<span style="font-weight: 600;">${ticket.targetUser.firstName} ${ticket.targetUser.lastName}</span> iniciou a correção do ticket <span style="font-weight: 600;">${ticket.customId}</span>.`;
+
+                this.emailService.sendMail({
+                    subject: `Correção do ticket ${ticket.customId} foi iniciada`,
                     html: this.emailService.compileTemplate('ticket-update', { message }),
                     to: ticket.requester.email,
                 });
