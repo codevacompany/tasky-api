@@ -1,9 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { ILike } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { ILike, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
-import { CustomConflictException } from '../../shared/exceptions/http-exception';
+import {
+    CustomBadRequestException,
+    CustomConflictException,
+} from '../../shared/exceptions/http-exception';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
+import { User } from '../user/entities/user.entity';
 import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dtos/create-department.dto';
 import { UpdateDepartmentDto } from './dtos/update-department.dto';
@@ -11,7 +16,11 @@ import { Department } from './entities/department.entity';
 
 @Injectable()
 export class DepartmentService extends TenantBoundBaseService<Department> {
-    constructor(private departmentRepository: DepartmentRepository) {
+    constructor(
+        private departmentRepository: DepartmentRepository,
+        @InjectRepository(User)
+        private userRepository: Repository<User>,
+    ) {
         super(departmentRepository);
     }
 
@@ -54,6 +63,21 @@ export class DepartmentService extends TenantBoundBaseService<Department> {
     }
 
     async delete(acessProfile: AccessProfile, id: number): Promise<void> {
-        return this.delete(acessProfile, id);
+        // Check if there are users assigned to this department
+        const usersInDepartment = await this.userRepository.count({
+            where: {
+                departmentId: id,
+                tenantId: acessProfile.tenantId,
+            },
+        });
+
+        if (usersInDepartment > 0) {
+            throw new CustomBadRequestException({
+                code: 'department-in-use',
+                message: `Cannot delete department because it has ${usersInDepartment} user(s) assigned`,
+            });
+        }
+
+        await super.delete(acessProfile, id);
     }
 }
