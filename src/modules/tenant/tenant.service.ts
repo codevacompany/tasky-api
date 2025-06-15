@@ -11,15 +11,13 @@ import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { CreateTenantDto } from './dtos/create-tenant.dto';
 import { UpdateTenantConsentDto } from './dtos/update-tenant-consent.dto';
 import { UpdateTenantDto } from './dtos/update-tenant.dto';
-import { TenantWithStatsDto, TenantStatsResponseDto } from './dtos/tenant-with-stats.dto';
+import { TenantStatsResponseDto } from './dtos/tenant-with-stats.dto';
 import { Tenant } from './entities/tenant.entity';
 import { TenantRepository } from './tenant.repository';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../user/entities/user.entity';
 import { Ticket } from '../ticket/entities/ticket.entity';
-import { Department } from '../department/entities/department.entity';
-import { Role } from '../role/entities/role.entity';
 import { startOfMonth, endOfMonth } from 'date-fns';
 
 @Injectable()
@@ -31,10 +29,6 @@ export class TenantService {
         private userRepository: Repository<User>,
         @InjectRepository(Ticket)
         private ticketRepository: Repository<Ticket>,
-        @InjectRepository(Department)
-        private departmentRepository: Repository<Department>,
-        @InjectRepository(Role)
-        private roleRepository: Repository<Role>,
     ) {}
 
     async findAll(
