@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { VerificationCodeService } from '../verification-code/verification-code.service';
 import { AuthService } from './auth.service';
@@ -8,12 +8,14 @@ import { ResetPasswordRequestDto } from './dtos/reset-password-request.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { ChangePasswordDto } from './dtos/change-password.dto';
+import { UserService } from '../user/user.service';
 
 @Controller('auth')
 export class AuthController {
     constructor(
         private readonly authService: AuthService,
         private readonly verificationCodeService: VerificationCodeService,
+        private readonly userService: UserService,
     ) {}
 
     @Post('login')
@@ -23,9 +25,10 @@ export class AuthController {
 
     @Get('whoami')
     @UseGuards(AuthGuard('jwt'))
-    whoami(@Request() req) {
-        const user = req.user;
-        return user;
+    async whoami(@GetAccessProfile() accessProfile: AccessProfile) {
+        const user = await this.userService.findById(accessProfile.userId);
+        delete user.password;
+        return { user };
     }
 
     //TODO: This endpoint is to be used when a user forgets their password
