@@ -190,6 +190,14 @@ export class UserService extends TenantBoundBaseService<User> {
     }
 
     async update(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
+        // Prevent users from deactivating themselves
+        if (data.isActive === false && accessProfile.userId === id) {
+            throw new CustomConflictException({
+                code: 'cannot-deactivate-self',
+                message: 'Users cannot deactivate their own accounts',
+            });
+        }
+
         if (data.password) {
             const hashedPassword = this.encryptionService.hashSync(data.password);
             data.password = hashedPassword;
