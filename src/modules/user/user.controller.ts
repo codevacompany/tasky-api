@@ -19,6 +19,7 @@ import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { User } from './entities/user.entity';
 import { UserService } from './user.service';
+import { TenantAdminGuard } from 'src/shared/guards/tenant-admin.guard';
 
 @Controller('users')
 export class UserController {
@@ -89,5 +90,23 @@ export class UserController {
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.userService.update(accessProfile, id, updateUserDto);
+    }
+
+    @Patch(':id/deactivate')
+    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    async deactivateUser(
+        @Param('id', ParseIntPipe) id: number,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.userService.update(accessProfile, id, { isActive: false });
+    }
+
+    @Patch(':id/activate')
+    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    async activateUser(
+        @Param('id', ParseIntPipe) id: number,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.userService.update(accessProfile, id, { isActive: true });
     }
 }
