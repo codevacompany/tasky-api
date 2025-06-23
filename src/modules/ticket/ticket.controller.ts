@@ -21,6 +21,7 @@ import { AddTicketFilesDto } from './dtos/add-ticket-files.dto';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
+import { UpdateTicketAssigneeDto } from './dtos/update-ticket-assignee.dto';
 import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketService } from './ticket.service';
 
@@ -81,7 +82,9 @@ export class TicketController {
 
         // Only apply the default status filter if no status filter is provided
         if (!options.where || options.where.status === undefined) {
-            whereClause.status = Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]));
+            whereClause.status = Not(
+                In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]),
+            );
         }
 
         options.where = whereClause;
@@ -103,7 +106,9 @@ export class TicketController {
 
         // Only apply the default status filter if no status filter is provided
         if (!options.where || options.where.status === undefined) {
-            whereClause.status = Not(In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]));
+            whereClause.status = Not(
+                In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]),
+            );
         }
 
         options.where = whereClause;
@@ -205,6 +210,19 @@ export class TicketController {
             accessProfile,
             customId,
             createCorrectionRequestDto,
+        );
+    }
+
+    @Patch(':id/assignee')
+    updateAssignee(
+        @Param('id') customId: string,
+        @Body() updateAssigneeDto: UpdateTicketAssigneeDto,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.updateAssignee(
+            accessProfile,
+            customId,
+            updateAssigneeDto.targetUserId,
         );
     }
 }
