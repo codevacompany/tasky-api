@@ -76,6 +76,7 @@ export class UserService extends TenantBoundBaseService<User> {
                 qb.andWhere('user.departmentId = :departmentId', {
                     departmentId: options.where.departmentId,
                 });
+                qb.andWhere('user.isActive = :isActive', { isActive: true });
             }
         }
 

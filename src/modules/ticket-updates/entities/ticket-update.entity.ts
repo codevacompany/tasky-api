@@ -9,6 +9,7 @@ export enum TicketActionType {
     Completion = 'finalização',
     Update = 'atualização',
     Cancellation = 'cancelamento',
+    AssigneeChange = 'mudança_de_responsável',
 }
 
 enum TicketUpdateTicketStatus {

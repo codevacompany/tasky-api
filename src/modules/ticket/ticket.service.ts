@@ -56,6 +56,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'requester',
                 'targetUser',
                 'department',
+                'category',
                 'files',
                 'cancellationReason',
                 'disapprovalReason',
@@ -74,6 +75,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'requester',
                 'targetUser',
                 'department',
+                'category',
                 'files',
                 'updates',
                 'cancellationReason',
@@ -92,6 +94,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'requester',
                 'targetUser',
                 'department',
+                'category',
                 'files',
                 'cancellationReason',
                 'disapprovalReason',
@@ -111,6 +114,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'requester',
                 'targetUser',
                 'department',
+                'category',
                 'files',
                 'cancellationReason',
                 'disapprovalReason',
@@ -1047,6 +1051,101 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 subject: `Uma correção foi solicitada no ticket ${ticket.customId}.`,
                 html: this.emailService.compileTemplate('ticket-update', { message }),
                 to: targetUser.email,
+            });
+        }
+
+        return this.findById(accessProfile, customId);
+    }
+
+    async updateAssignee(accessProfile: AccessProfile, customId: string, newTargetUserId: number) {
+        const ticket = await this.findById(accessProfile, customId);
+
+        const newTargetUser = await this.userRepository.findOne({
+            where: {
+                id: newTargetUserId,
+                tenantId: accessProfile.tenantId,
+                isActive: true,
+            },
+        });
+
+        if (!newTargetUser) {
+            throw new CustomNotFoundException({
+                message: 'Target user not found or inactive',
+                code: 'target-user-not-found',
+            });
+        }
+
+        const assigningUser = await this.userRepository.findOne({
+            where: { id: accessProfile.userId, tenantId: accessProfile.tenantId },
+        });
+
+        if (!assigningUser) {
+            throw new CustomNotFoundException({
+                message: 'Assigning user not found',
+                code: 'assigning-user-not-found',
+            });
+        }
+
+        const previousTargetUser = ticket.targetUser;
+
+        await this.repository.update(ticket.id, {
+            targetUserId: newTargetUserId,
+        });
+
+        await this.ticketUpdateRepository.save({
+            tenantId: accessProfile.tenantId,
+            ticketId: ticket.id,
+            ticketCustomId: ticket.customId,
+            performedById: accessProfile.userId,
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
+            action: TicketActionType.AssigneeChange,
+            description: `<p><span>user</span> atribuiu este ticket para ${newTargetUser.firstName} ${newTargetUser.lastName}.</p>`,
+        });
+
+        // Create notification for the new assignee
+        await this.notificationRepository.save({
+            tenantId: accessProfile.tenantId,
+            type: NotificationType.Open,
+            message: '<p><span>user</span> atribuiu um ticket a você.</p>',
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
+            targetUserId: newTargetUserId,
+            resourceId: ticket.id,
+            resourceCustomId: ticket.customId,
+        });
+
+        // Send email to the new assignee
+        const message = `<span style="font-weight: 600;">${assigningUser.firstName} ${assigningUser.lastName}</span> atribuiu um ticket a você.`;
+
+        this.emailService.sendMail({
+            subject: `Um ticket foi atribuído a você.`,
+            html: this.emailService.compileTemplate('ticket-update', { message }),
+            to: newTargetUser.email,
+        });
+
+        // If there was a previous assignee and it's different from the new one, notify them too
+        if (previousTargetUser && previousTargetUser.id !== newTargetUserId) {
+            await this.notificationRepository.save({
+                tenantId: accessProfile.tenantId,
+                type: NotificationType.StatusUpdate,
+                message:
+                    '<p><span>user</span> reatribuiu o ticket <span>resource</span> para outro usuário.</p>',
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                targetUserId: previousTargetUser.id,
+                resourceId: ticket.id,
+                resourceCustomId: ticket.customId,
+            });
+
+            const previousMessage = `<span style="font-weight: 600;">${assigningUser.firstName} ${assigningUser.lastName}</span> reatribuiu o ticket <span style="font-weight: 600;">${ticket.customId}</span> para outro usuário.`;
+
+            this.emailService.sendMail({
+                subject: `O ticket ${ticket.customId} foi reatribuído.`,
+                html: this.emailService.compileTemplate('ticket-update', {
+                    message: previousMessage,
+                }),
+                to: previousTargetUser.email,
             });
         }
 
