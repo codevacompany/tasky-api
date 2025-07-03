@@ -249,4 +249,27 @@ export class UserService extends TenantBoundBaseService<User> {
 
         return { message: 'Password changed successfully' };
     }
+
+    async getActiveUserCount(tenantId: number): Promise<number> {
+        return this.userRepository.count({
+            where: {
+                tenantId,
+                isActive: true,
+            },
+        });
+    }
+
+    async getUserStatistics(tenantId: number) {
+        const [totalUsers, activeUsers, inactiveUsers] = await Promise.all([
+            this.userRepository.count({ where: { tenantId } }),
+            this.userRepository.count({ where: { tenantId, isActive: true } }),
+            this.userRepository.count({ where: { tenantId, isActive: false } }),
+        ]);
+
+        return {
+            totalUsers,
+            activeUsers,
+            inactiveUsers,
+        };
+    }
 }
