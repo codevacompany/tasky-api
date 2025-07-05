@@ -9,6 +9,6 @@ export enum RoleName {
 
 @Entity()
 export class Role extends IdTimestampBaseEntity {
-    @Column()
+    @Column({ unique: true })
     name: string;
 }

@@ -58,14 +58,14 @@ export class TenantSubscriptionService {
         return this.userService.getActiveUserCount(tenantId);
     }
 
-    async createTrialSubscription(tenantId: number, planSlug: string = 'iniciante') {
+    async createTrialSubscription(tenantId: number, planSlug: string = 'profissional') {
         const plan = await this.subscriptionPlanService.findBySlug(planSlug);
         if (!plan) {
             throw new Error('Subscription plan not found');
         }
 
         const trialEndDate = new Date();
-        trialEndDate.setDate(trialEndDate.getDate() + 15); // 15 days trial
+        trialEndDate.setDate(trialEndDate.getDate() + 30); // 30 days trial
 
         const subscription = this.tenantSubscriptionRepository.create({
             tenantId,
@@ -84,10 +84,8 @@ export class TenantSubscriptionService {
             throw new Error('Subscription plan not found');
         }
 
-        // Deactivate current subscription
         await this.tenantSubscriptionRepository.update({ tenantId }, { cancelledAt: new Date() });
 
-        // Create new active subscription
         const subscription = this.tenantSubscriptionRepository.create({
             tenantId,
             subscriptionPlanId: plan.id,
@@ -110,7 +108,6 @@ export class TenantSubscriptionService {
 
         const maxUsers = subscription.subscriptionPlan.maxUsers;
 
-        // If maxUsers is null, it means unlimited users
         if (maxUsers === null) {
             return { isValid: true, currentUsers, maxUsers };
         }
