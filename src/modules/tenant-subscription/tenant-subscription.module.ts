@@ -1,16 +1,27 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantSubscription } from './entities/tenant-subscription.entity';
 import { TenantSubscriptionService } from './tenant-subscription.service';
 import { TenantSubscriptionRepository } from './tenant-subscription.repository';
 import { SubscriptionPlanModule } from '../subscription-plan/subscription-plan.module';
 import { UserModule } from '../user/user.module';
+import { RoleModule } from '../role/role.module';
+import { PermissionModule } from '../permission/permission.module';
+import { TenantModule } from '../tenant/tenant.module';
+import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { TenantSubscriptionController } from './tenant-subscription.controller';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([TenantSubscription]), SubscriptionPlanModule, UserModule],
+    imports: [
+        TypeOrmModule.forFeature([TenantSubscription]),
+        SubscriptionPlanModule,
+        RoleModule,
+        PermissionModule,
+        forwardRef(() => TenantModule),
+        forwardRef(() => UserModule),
+    ],
     controllers: [TenantSubscriptionController],
-    providers: [TenantSubscriptionService, TenantSubscriptionRepository],
+    providers: [TenantSubscriptionService, TenantSubscriptionRepository, GlobalAdminGuard],
     exports: [TenantSubscriptionService],
 })
 export class TenantSubscriptionModule {}

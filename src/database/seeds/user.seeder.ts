@@ -84,7 +84,7 @@ export class UserSeeder extends Seeder {
         console.log(`✅ Created/updated ${createdDepartments.length} departments`);
 
         // Create users
-        const hashedPassword = await bcrypt.hash('123456', 10);
+        const hashedPassword = await bcrypt.hash('User@1234', 10);
 
         const globalAdminRole = createdRoles.find((r) => r.name === RoleName.GlobalAdmin);
         const tenantAdminRole = createdRoles.find((r) => r.name === RoleName.TenantAdmin);
@@ -100,7 +100,6 @@ export class UserSeeder extends Seeder {
 
         if (internalTenant && internalAdminDept) {
             if (process.env.NODE_ENV === 'production') {
-                // In production, only create Isaac Silva
                 usersData.push({
                     firstName: 'Isaac',
                     lastName: 'Silva',
@@ -112,7 +111,6 @@ export class UserSeeder extends Seeder {
                     tenantId: internalTenant.id,
                 });
             } else {
-                // In dev/test, create the global admin
                 usersData.push({
                     firstName: 'Admin',
                     lastName: 'Global',
@@ -126,7 +124,6 @@ export class UserSeeder extends Seeder {
             }
         }
 
-        // Create tenant admins and users for each tenant (only in dev/test)
         if (process.env.NODE_ENV !== 'production') {
             for (const tenant of tenants) {
                 const tenantDepartments = createdDepartments.filter(

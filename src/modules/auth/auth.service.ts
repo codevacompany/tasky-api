@@ -12,6 +12,7 @@ import { EncryptionService } from '../../shared/services/encryption/encryption.s
 import { TokenService } from '../../shared/services/token/token.service';
 import { UserService } from '../user/user.service';
 import { VerificationCodeService } from '../verification-code/verification-code.service';
+import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { LoginDto } from './dtos/login.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
 import { ChangePasswordDto } from './dtos/change-password.dto';
@@ -26,6 +27,7 @@ export class AuthService {
         private verificationCodeService: VerificationCodeService,
         private emailService: EmailService,
         private readonly jwtService: JwtService,
+        private tenantSubscriptionService: TenantSubscriptionService,
     ) {}
     async login(body: LoginDto) {
         const accessProfile = new AccessProfile();
@@ -50,6 +52,13 @@ export class AuthService {
             });
         }
 
+        console.log(passwordMatch);
+
+        // Get tenant permissions based on current subscription
+        const tenantPermissions = await this.tenantSubscriptionService.getTenantPermissions(
+            user.tenantId,
+        );
+
         const tokenSub: Record<string, unknown> = {
             userId: user.id,
             tenantId: user.tenantId,
@@ -59,7 +68,10 @@ export class AuthService {
 
         delete user.password;
 
-        return { token, user };
+        return {
+            token,
+            user: { ...user, permissions: tenantPermissions },
+        };
     }
 
     async refreshToken(refreshToken: string) {

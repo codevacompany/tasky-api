@@ -13,6 +13,9 @@ export class Permission extends IdTimestampBaseEntity {
     @Column({ type: 'text', nullable: true })
     description: string;
 
+    @Column({ default: true })
+    isActive: boolean;
+
     @OneToMany(() => SubscriptionPlanPermission, (spp) => spp.permission)
     subscriptionPlanPermissions: SubscriptionPlanPermission[];
 }

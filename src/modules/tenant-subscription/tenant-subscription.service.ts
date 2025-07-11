@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { TenantSubscriptionRepository } from './tenant-subscription.repository';
 import { SubscriptionPlanService } from '../subscription-plan/subscription-plan.service';
 import { UserService } from '../user/user.service';
+import { PermissionService } from '../permission/permission.service';
+import { TenantService } from '../tenant/tenant.service';
 import { SubscriptionStatus } from './entities/tenant-subscription.entity';
 
 @Injectable()
@@ -9,7 +11,11 @@ export class TenantSubscriptionService {
     constructor(
         private tenantSubscriptionRepository: TenantSubscriptionRepository,
         private subscriptionPlanService: SubscriptionPlanService,
+        @Inject(forwardRef(() => UserService))
         private userService: UserService,
+        private permissionService: PermissionService,
+        @Inject(forwardRef(() => TenantService))
+        private tenantService: TenantService,
     ) {}
 
     async findActiveTenantSubscription(tenantId: number) {
@@ -43,6 +49,15 @@ export class TenantSubscriptionService {
     }
 
     async getTenantPermissions(tenantId: number): Promise<string[]> {
+        const tenant = await this.tenantService.findById(tenantId);
+
+        if (tenant.isInternal) {
+            const allPermissions = await this.permissionService.findAll();
+            return allPermissions
+                .filter((permission) => permission.isActive)
+                .map((permission) => permission.key);
+        }
+
         const subscription = await this.findCurrentTenantSubscription(tenantId);
 
         if (!subscription || !subscription.subscriptionPlan) {

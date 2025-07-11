@@ -68,6 +68,14 @@ export class TenantService {
         });
     }
 
+    async findByCustomKey(customKey: string): Promise<Tenant> {
+        return await this.tenantRepository.findOne({
+            where: {
+                customKey,
+            },
+        });
+    }
+
     async findById(id: number): Promise<Tenant> {
         const tenant = await this.tenantRepository.findOne({
             where: {

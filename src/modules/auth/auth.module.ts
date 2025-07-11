@@ -6,6 +6,7 @@ import { EncryptionModule } from '../../shared/services/encryption/encryption.mo
 import { TokenModule } from '../../shared/services/token/token.module';
 import { UserModule } from '../user/user.module';
 import { VerificationCodeModule } from '../verification-code/verification-code.module';
+import { TenantSubscriptionModule } from '../tenant-subscription/tenant-subscription.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 
@@ -16,6 +17,7 @@ import { AuthService } from './auth.service';
         forwardRef(() => UserModule),
         VerificationCodeModule,
         EmailModule,
+        TenantSubscriptionModule,
         JwtModule.registerAsync({
             useFactory: () => ({
                 secret: process.env.TOKEN_SECRET,
