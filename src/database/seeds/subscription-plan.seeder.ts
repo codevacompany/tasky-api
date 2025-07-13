@@ -30,7 +30,7 @@ export class SubscriptionPlanSeeder extends Seeder {
                 priceMonthly: 99.0,
                 priceYearly: 950.0,
                 description: 'Ideal para microempresas e startups',
-                permissions: ['view_basic_analytics'],
+                permissions: [],
             },
             {
                 name: 'Plano Crescer',

@@ -138,7 +138,7 @@ export class UserSeeder extends Seeder {
                     usersData.push({
                         firstName: 'Admin',
                         lastName: tenant.name.split(' ')[0],
-                        email: `admin@${tenant.customKey}.com.br`,
+                        email: `admin@${tenant.customKey.toLowerCase()}.com.br`,
                         password: hashedPassword,
                         isActive: true,
                         departmentId: adminDept.id,
@@ -151,7 +151,7 @@ export class UserSeeder extends Seeder {
                         {
                             firstName: 'João',
                             lastName: 'Silva',
-                            email: `joao@${tenant.customKey}.com.br`,
+                            email: `joao@${tenant.customKey.toLowerCase()}.com.br`,
                             password: hashedPassword,
                             isActive: true,
                             departmentId: devDept.id,
@@ -161,7 +161,7 @@ export class UserSeeder extends Seeder {
                         {
                             firstName: 'Maria',
                             lastName: 'Santos',
-                            email: `maria@${tenant.customKey}.com.br`,
+                            email: `maria@${tenant.customKey.toLowerCase()}.com.br`,
                             password: hashedPassword,
                             isActive: true,
                             departmentId: supportDept.id,
@@ -171,7 +171,7 @@ export class UserSeeder extends Seeder {
                         {
                             firstName: 'Pedro',
                             lastName: 'Costa',
-                            email: `pedro@${tenant.customKey}.com.br`,
+                            email: `pedro@${tenant.customKey.toLowerCase()}.com.br`,
                             password: hashedPassword,
                             isActive: true,
                             departmentId: adminDept.id,

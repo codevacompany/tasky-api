@@ -11,57 +11,41 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
-import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
-import { FindOneQueryOptions, QueryOptions } from '../../shared/types/http';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { User } from './entities/user.entity';
 import { UserService } from './user.service';
-import { TenantAdminGuard } from 'src/shared/guards/tenant-admin.guard';
 
 @Controller('users')
 export class UserController {
     constructor(private readonly userService: UserService) {}
 
+    @Get('me')
+    @UseGuards(AuthGuard('jwt'))
+    async me(@GetAccessProfile() accessProfile: AccessProfile) {
+        return this.userService.findById(accessProfile.userId);
+    }
+
+    @Get(':id')
+    @UseGuards(AuthGuard('jwt'))
+    async findOne(@Param('id', ParseIntPipe) id: number): Promise<User> {
+        return this.userService.findById(id);
+    }
+
     @Get()
     @UseGuards(AuthGuard('jwt'))
-    async findMany(
-        @GetAccessProfile() accessProfile: AccessProfile,
-        @GetQueryOptions() options: QueryOptions<User>,
-        @Query('name') name?: string,
-    ) {
-        return this.userService.findManyUsers(accessProfile, { name }, options);
-    }
-
-    @Get('all')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
-    async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {
-        return this.userService.findAll({ name }, options);
-    }
-
-    @Get(':email')
-    @UseGuards(AuthGuard('jwt'))
-    async findByEmail(
-        @GetAccessProfile() accessProfile: AccessProfile,
-        @GetQueryOptions() options: FindOneQueryOptions<User>,
-        @Param('email') email: string,
-    ) {
-        return this.userService.findByEmail(accessProfile, email, options);
-    }
-
-    @Get('department/:departmentId')
-    @UseGuards(AuthGuard('jwt'))
-    async findByDeparment(
-        @GetAccessProfile() accessProfile: AccessProfile,
-        @GetQueryOptions() options: QueryOptions<User>,
-        @Param('departmentId', ParseIntPipe) departmentId: number,
-    ) {
-        return this.userService.findBy(accessProfile, {
-            ...options,
-            where: { ...options.where, departmentId },
-        });
+    async findMany(@GetAccessProfile() accessProfile: AccessProfile, @Query('name') name?: string) {
+        return this.userService.findManyUsers(
+            accessProfile,
+            {
+                name,
+            },
+            {
+                relations: ['department', 'role'],
+            },
+        );
     }
 
     @Post('super-admin')
@@ -92,21 +76,13 @@ export class UserController {
         return this.userService.update(accessProfile, id, updateUserDto);
     }
 
-    @Patch(':id/deactivate')
-    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
-    async deactivateUser(
+    @Patch('super-admin/:id')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async superAdminUpdate(
         @Param('id', ParseIntPipe) id: number,
+        @Body() updateUserDto: UpdateUserDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        return this.userService.update(accessProfile, id, { isActive: false });
-    }
-
-    @Patch(':id/activate')
-    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
-    async activateUser(
-        @Param('id', ParseIntPipe) id: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
-    ) {
-        return this.userService.update(accessProfile, id, { isActive: true });
+        return this.userService.superAdminUpdate(accessProfile, id, updateUserDto);
     }
 }

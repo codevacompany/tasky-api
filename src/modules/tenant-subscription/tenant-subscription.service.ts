@@ -147,6 +147,44 @@ export class TenantSubscriptionService {
 
         const validation = await this.validateUserLimit(tenantId);
 
+        // Calculate billing information for active subscriptions
+        let billingInfo = null;
+        if (subscription.status === SubscriptionStatus.ACTIVE) {
+            try {
+                const currentUsers = await this.getCurrentUserCount(tenantId);
+                const plan = subscription.subscriptionPlan;
+                const basePlanCost = Number(plan.priceMonthly);
+                let additionalUsersCost = 0;
+                let additionalUsers = 0;
+                let totalCost = basePlanCost;
+
+                // Calculate additional user costs if exceeding plan limits
+                if (plan.maxUsers && currentUsers > plan.maxUsers) {
+                    additionalUsers = currentUsers - plan.maxUsers;
+                    const additionalPlan =
+                        await this.subscriptionPlanService.findBySlug('adicional');
+
+                    if (additionalPlan) {
+                        const additionalUserRate = Number(additionalPlan.priceMonthly); // R$ 15 per user
+                        additionalUsersCost = additionalUsers * additionalUserRate;
+                        totalCost = basePlanCost + additionalUsersCost;
+                    }
+                }
+
+                billingInfo = {
+                    basePlanCost,
+                    additionalUsersCost,
+                    totalCost,
+                    additionalUsers,
+                    currentUsers,
+                    exceedsLimit: currentUsers > (plan.maxUsers || Infinity),
+                };
+            } catch (error) {
+                console.error('Error calculating billing info:', error);
+                // Continue without billing info if calculation fails
+            }
+        }
+
         return {
             hasSubscription: true,
             subscription: {
@@ -162,6 +200,7 @@ export class TenantSubscriptionService {
             },
             userStats,
             validation,
+            billing: billingInfo,
         };
     }
 }

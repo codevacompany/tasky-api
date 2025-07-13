@@ -16,6 +16,7 @@ import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { NotificationService } from '../notification/notification.service';
 import { TenantRepository } from '../tenant/tenant.repository';
+import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { CreateTicketCancellationReasonDto } from '../ticket-cancellation-reason/dtos/create-ticket-cancellation-reason.dto';
 import { TicketCancellationReasonService } from '../ticket-cancellation-reason/ticket-cancellation-reason.service';
 import { CreateTicketDisapprovalReasonDto } from '../ticket-disapproval-reason/dtos/create-ticket-rejection-reason.dto';
@@ -45,6 +46,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly ticketDisapprovalReasonService: TicketDisapprovalReasonService,
         private readonly correctionRequestService: CorrectionRequestService,
         private readonly emailService: EmailService,
+        private readonly tenantSubscriptionService: TenantSubscriptionService,
     ) {
         super(ticketRepository);
     }
@@ -231,11 +233,17 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
             const message = `Novo ticket criado por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
 
-            this.emailService.sendMail({
-                subject: `Um novo ticket foi criado para você.`,
-                html: this.emailService.compileTemplate('ticket-update', { message }),
-                to: targetUser.email,
-            });
+            // Check if email notifications are enabled for this tenant
+            const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(
+                accessProfile.tenantId,
+            );
+            if (emailNotificationsEnabled) {
+                this.emailService.sendMail({
+                    subject: `Um novo ticket foi criado para você.`,
+                    html: this.emailService.compileTemplate('ticket-update', { message }),
+                    to: targetUser.email,
+                });
+            }
         });
 
         //Uncomment when ready to use SSE
@@ -357,11 +365,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
                 const message = `<span style="font-weight: 600;">${ticket.targetUser.firstName} ${ticket.targetUser.lastName}</span> enviou o ticket <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
 
-                this.emailService.sendMail({
-                    subject: `O ticket ${ticket.customId} está pronto para verificação.`,
-                    html: this.emailService.compileTemplate('ticket-update', { message }),
-                    to: ticket.requester.email,
-                });
+                await this.sendEmailWithPermissionCheck(
+                    accessProfile.tenantId,
+                    `O ticket ${ticket.customId} está pronto para verificação.`,
+                    message,
+                    ticket.requester.email,
+                );
             } else if (
                 ticketUpdate.status === TicketStatus.InProgress &&
                 currentStatus === TicketStatus.AwaitingVerification
@@ -409,11 +418,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
                 const message = `<span style="font-weight: 600;">${ticket.targetUser.firstName} ${ticket.targetUser.lastName}</span> cancelou o envio do ticket <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
 
-                this.emailService.sendMail({
-                    subject: `Envio do ticket ${ticket.customId} para verificação foi cancelado`,
-                    html: this.emailService.compileTemplate('ticket-update', { message }),
-                    to: ticket.requester.email,
-                });
+                await this.sendEmailWithPermissionCheck(
+                    accessProfile.tenantId,
+                    `Envio do ticket ${ticket.customId} para verificação foi cancelado`,
+                    message,
+                    ticket.requester.email,
+                );
             } else if (
                 ticketUpdate.status === TicketStatus.UnderVerification &&
                 currentStatus === TicketStatus.AwaitingVerification
@@ -461,11 +471,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
                 const message = `<span style="font-weight: 600;">${ticket.requester.firstName} ${ticket.requester.lastName}</span> iniciou a verificação do ticket <span style="font-weight: 600;">${ticket.customId}</span>.`;
 
-                this.emailService.sendMail({
-                    subject: `Verificação do ticket ${ticket.customId} foi iniciada`,
-                    html: this.emailService.compileTemplate('ticket-update', { message }),
-                    to: ticket.targetUser.email,
-                });
+                await this.sendEmailWithPermissionCheck(
+                    accessProfile.tenantId,
+                    `Verificação do ticket ${ticket.customId} foi iniciada`,
+                    message,
+                    ticket.targetUser.email,
+                );
             } else if (
                 ticketUpdate.status === TicketStatus.InProgress &&
                 currentStatus === TicketStatus.Returned
@@ -513,11 +524,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
                 const message = `<span style="font-weight: 600;">${ticket.targetUser.firstName} ${ticket.targetUser.lastName}</span> iniciou a correção do ticket <span style="font-weight: 600;">${ticket.customId}</span>.`;
 
-                this.emailService.sendMail({
-                    subject: `Correção do ticket ${ticket.customId} foi iniciada`,
-                    html: this.emailService.compileTemplate('ticket-update', { message }),
-                    to: ticket.requester.email,
-                });
+                await this.sendEmailWithPermissionCheck(
+                    accessProfile.tenantId,
+                    `Correção do ticket ${ticket.customId} foi iniciada`,
+                    message,
+                    ticket.requester.email,
+                );
             }
 
             const updatedTicket = await this.findById(accessProfile, customId);
@@ -607,11 +619,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const message = `<span style="font-weight: 600;">${targetUser.firstName} ${targetUser.lastName}</span> aceitou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
 
-        this.emailService.sendMail({
-            subject: `O ticket ${ticketResponse.customId} foi aceite`,
-            html: this.emailService.compileTemplate('ticket-update', { message }),
-            to: requester.email,
-        });
+        await this.sendEmailWithPermissionCheck(
+            accessProfile.tenantId,
+            `O ticket ${ticketResponse.customId} foi aceite`,
+            message,
+            requester.email,
+        );
 
         // this.notificationService.sendNotification(requester.id, {
         //     type: NotificationType.StatusUpdated,
@@ -675,11 +688,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> aprovou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
 
-        this.emailService.sendMail({
-            subject: `O ticket ${ticketResponse.customId} foi aprovado.`,
-            html: this.emailService.compileTemplate('ticket-update', { message }),
-            to: ticketResponse.targetUser.email,
-        });
+        await this.sendEmailWithPermissionCheck(
+            accessProfile.tenantId,
+            `O ticket ${ticketResponse.customId} foi aprovado.`,
+            message,
+            ticketResponse.targetUser.email,
+        );
 
         return {
             message: 'Ticket successfully approved!',
@@ -748,11 +762,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> reprovou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${reasonDto.reason}</span>.`;
 
-        this.emailService.sendMail({
-            subject: `O ticket ${ticketResponse.customId} foi reprovado.`,
-            html: this.emailService.compileTemplate('ticket-update', { message }),
-            to: ticketResponse.targetUser.email,
-        });
+        await this.sendEmailWithPermissionCheck(
+            accessProfile.tenantId,
+            `O ticket ${ticketResponse.customId} foi reprovado.`,
+            message,
+            ticketResponse.targetUser.email,
+        );
 
         const updatedTicket = await this.findById(accessProfile, customId);
 
@@ -827,11 +842,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> cancelou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${reasonDto.reason}</span>.`;
 
-        this.emailService.sendMail({
-            subject: `O ticket ${ticketResponse.customId} foi cancelado.`,
-            html: this.emailService.compileTemplate('ticket-update', { message }),
-            to: ticketResponse.targetUser.email,
-        });
+        await this.sendEmailWithPermissionCheck(
+            accessProfile.tenantId,
+            `O ticket ${ticketResponse.customId} foi cancelado.`,
+            message,
+            ticketResponse.targetUser.email,
+        );
 
         const updatedTicket = await this.findById(accessProfile, customId);
 
@@ -872,6 +888,32 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 createdAt: 'DESC',
             },
         });
+    }
+
+    //TODO: refactor this so these methods are in a more proper place
+    private async isEmailNotificationsEnabled(tenantId: number): Promise<boolean> {
+        try {
+            const permissions = await this.tenantSubscriptionService.getTenantPermissions(tenantId);
+            return permissions.includes('email_notifications');
+        } catch (error) {
+            return false;
+        }
+    }
+
+    private async sendEmailWithPermissionCheck(
+        tenantId: number,
+        subject: string,
+        message: string,
+        to: string,
+    ): Promise<void> {
+        const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(tenantId);
+        if (emailNotificationsEnabled) {
+            this.emailService.sendMail({
+                subject,
+                html: this.emailService.compileTemplate('ticket-update', { message }),
+                to,
+            });
+        }
     }
 
     async addFiles(accessProfile: AccessProfile, customId: string, files: string[]) {
@@ -1047,11 +1089,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         if (requester && targetUser) {
             const message = `<span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span> solicitou uma correção no ticket <span style="font-weight: 600;">${ticket.customId}</span>.`;
 
-            this.emailService.sendMail({
-                subject: `Uma correção foi solicitada no ticket ${ticket.customId}.`,
-                html: this.emailService.compileTemplate('ticket-update', { message }),
-                to: targetUser.email,
-            });
+            await this.sendEmailWithPermissionCheck(
+                accessProfile.tenantId,
+                `Uma correção foi solicitada no ticket ${ticket.customId}.`,
+                message,
+                targetUser.email,
+            );
         }
 
         return this.findById(accessProfile, customId);
@@ -1118,11 +1161,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         // Send email to the new assignee
         const message = `<span style="font-weight: 600;">${assigningUser.firstName} ${assigningUser.lastName}</span> atribuiu um ticket a você.`;
 
-        this.emailService.sendMail({
-            subject: `Um ticket foi atribuído a você.`,
-            html: this.emailService.compileTemplate('ticket-update', { message }),
-            to: newTargetUser.email,
-        });
+        await this.sendEmailWithPermissionCheck(
+            accessProfile.tenantId,
+            `Um ticket foi atribuído a você.`,
+            message,
+            newTargetUser.email,
+        );
 
         // If there was a previous assignee and it's different from the new one, notify them too
         if (previousTargetUser && previousTargetUser.id !== newTargetUserId) {
@@ -1140,13 +1184,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
             const previousMessage = `<span style="font-weight: 600;">${assigningUser.firstName} ${assigningUser.lastName}</span> reatribuiu o ticket <span style="font-weight: 600;">${ticket.customId}</span> para outro usuário.`;
 
-            this.emailService.sendMail({
-                subject: `O ticket ${ticket.customId} foi reatribuído.`,
-                html: this.emailService.compileTemplate('ticket-update', {
-                    message: previousMessage,
-                }),
-                to: previousTargetUser.email,
-            });
+            await this.sendEmailWithPermissionCheck(
+                accessProfile.tenantId,
+                `O ticket ${ticket.customId} foi reatribuído.`,
+                previousMessage,
+                previousTargetUser.email,
+            );
         }
 
         return this.findById(accessProfile, customId);

@@ -9,9 +9,11 @@ import { CorrectionRequestModule } from './modules/correction-request-reason/cor
 import { DepartmentModule } from './modules/department/department.module';
 import { LegalDocumentModule } from './modules/legal-document/legal-document.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { PaymentModule } from './modules/payment/payment.module';
 import { RoleModule } from './modules/role/role.module';
 import { SignUpModule } from './modules/sign-up/sign-up.module';
 import { StatsModule } from './modules/stats/stats.module';
+import { SubscriptionPlanModule } from './modules/subscription-plan/subscription-plan.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { TenantSubscriptionModule } from './modules/tenant-subscription/tenant-subscription.module';
 import { TicketCancellationReasonModule } from './modules/ticket-cancellation-reason/ticket-cancellation-reason.module';
@@ -48,6 +50,8 @@ import { VerificationCodeModule } from './modules/verification-code/verification
         TicketFileModule,
         StatsModule,
         LegalDocumentModule,
+        PaymentModule,
+        SubscriptionPlanModule,
         TenantSubscriptionModule,
     ],
     controllers: [],
