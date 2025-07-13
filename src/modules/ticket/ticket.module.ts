@@ -5,6 +5,7 @@ import { CorrectionRequestModule } from '../correction-request-reason/correction
 import { NotificationModule } from '../notification/notification.module';
 import { StatsModule } from '../stats/stats.module';
 import { TenantModule } from '../tenant/tenant.module';
+import { TenantSubscriptionModule } from '../tenant-subscription/tenant-subscription.module';
 import { TicketCancellationReasonModule } from '../ticket-cancellation-reason/ticket-cancellation-reason.module';
 import { TicketDisapprovalReasonModule } from '../ticket-disapproval-reason/ticket-disapproval-reason.module';
 import { TicketFileModule } from '../ticket-file/ticket-file.module';
@@ -22,6 +23,7 @@ import { TicketService } from './ticket.service';
         UserModule,
         forwardRef(() => TicketUpdateModule),
         TenantModule,
+        TenantSubscriptionModule,
         TicketFileModule,
         TicketCancellationReasonModule,
         TicketDisapprovalReasonModule,

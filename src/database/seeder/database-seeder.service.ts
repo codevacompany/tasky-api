@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DepartmentService } from 'src/modules/department/department.service'; // Import the DepartmentService
 import { UserService } from 'src/modules/user/user.service';
 import { TenantService } from '../../modules/tenant/tenant.service';
@@ -7,7 +7,7 @@ import { RoleName } from '../../modules/role/entities/role.entity';
 import { AccessProfile } from '../../shared/common/access-profile';
 
 @Injectable()
-export class DatabaseSeederService implements OnModuleInit {
+export class DatabaseSeederService {
     constructor(
         private readonly userService: UserService,
         private readonly departmentService: DepartmentService,
@@ -15,20 +15,18 @@ export class DatabaseSeederService implements OnModuleInit {
         private readonly roleRepository: RoleRepository,
     ) {}
 
-    async onModuleInit() {
-        await this.seedUsers();
-    }
-
     async seedTenant() {
         const newTenant = { name: 'Codeva', customKey: 'CDV', isInternal: true };
 
-        const existingTenant = await this.tenantService.findByName(newTenant.name);
+        // Check if tenant exists by name or customKey
+        const existingTenantByName = await this.tenantService.findByName(newTenant.name);
+        const existingTenantByKey = await this.tenantService.findByCustomKey(newTenant.customKey);
 
         let tenant;
-        if (!existingTenant) {
+        if (!existingTenantByName && !existingTenantByKey) {
             tenant = await this.tenantService.create(newTenant);
         } else {
-            tenant = existingTenant;
+            tenant = existingTenantByName || existingTenantByKey;
         }
 
         return tenant;
@@ -58,7 +56,10 @@ export class DatabaseSeederService implements OnModuleInit {
             tenantId: tenant.id,
         } as AccessProfile;
 
-        const existingDepartment = await this.departmentService.findByName(mockAcessProfile, newDepartment.name);
+        const existingDepartment = await this.departmentService.findByName(
+            mockAcessProfile,
+            newDepartment.name,
+        );
 
         let department;
         if (!existingDepartment) {

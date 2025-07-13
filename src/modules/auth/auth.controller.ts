@@ -9,6 +9,7 @@ import { VerificationCodeValidationDto } from './dtos/verification-code-validati
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { ChangePasswordDto } from './dtos/change-password.dto';
 import { UserService } from '../user/user.service';
+import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 
 @Controller('auth')
 export class AuthController {
@@ -16,6 +17,7 @@ export class AuthController {
         private readonly authService: AuthService,
         private readonly verificationCodeService: VerificationCodeService,
         private readonly userService: UserService,
+        private readonly tenantSubscriptionService: TenantSubscriptionService,
     ) {}
 
     @Post('login')
@@ -28,7 +30,18 @@ export class AuthController {
     async whoami(@GetAccessProfile() accessProfile: AccessProfile) {
         const user = await this.userService.findById(accessProfile.userId);
         delete user.password;
-        return { user };
+
+        // Get tenant permissions based on current subscription
+        const tenantPermissions = await this.tenantSubscriptionService.getTenantPermissions(
+            user.tenantId,
+        );
+
+        return {
+            user: {
+                ...user,
+                permissions: tenantPermissions,
+            },
+        };
     }
 
     //TODO: This endpoint is to be used when a user forgets their password

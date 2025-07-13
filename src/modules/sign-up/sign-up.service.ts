@@ -15,8 +15,7 @@ import { DepartmentService } from '../department/department.service';
 // import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { RoleName } from '../role/entities/role.entity';
 import { RoleRepository } from '../role/role.repository';
-import { SubscriptionType } from '../subscription/entities/subscription.entity';
-import { SubscriptionService } from '../subscription/subscription.service';
+import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { TenantService } from '../tenant/tenant.service';
 import { UserService } from '../user/user.service';
 import { CreateSignUpDto } from './dtos/create-sign-up.dto';
@@ -35,7 +34,7 @@ export class SignUpService {
         private readonly roleRepository: RoleRepository,
         private readonly departmentService: DepartmentService,
         // private readonly legalDocumentService: LegalDocumentService,
-        private readonly subscriptionService: SubscriptionService,
+        private readonly tenantSubscriptionService: TenantSubscriptionService,
         // private readonly tokenService: TokenService,
     ) {}
 
@@ -338,16 +337,7 @@ export class SignUpService {
         accessProfile.tenantId = tenant.id;
 
         // Create a 14-day trial subscription
-        const startDate = new Date();
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + 14);
-
-        await this.subscriptionService.create(accessProfile, {
-            tenantId: tenant.id,
-            startDate,
-            endDate,
-            type: SubscriptionType.TRIAL,
-        });
+        await this.tenantSubscriptionService.createTrialSubscription(tenant.id);
 
         const tenantAdminRole = await this.roleRepository.findOneBy({
             name: RoleName.TenantAdmin,

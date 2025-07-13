@@ -27,6 +27,7 @@
         "migration:revert": "npm run typeorm -- migration:revert",
         "typeorm:test": "npm run build && cross-env NODE_ENV=test npx typeorm -d dist/database/data-source.js",
         "migration:test:run": "npm run typeorm:test -- migration:run",
+        "seed": "ts-node src/database/cli/seed.ts",
         "prepare": "husky"
     },
     "dependencies": {
@@ -65,6 +66,7 @@
     "devDependencies": {
         "@babel/core": "^7.24.5",
         "@babel/preset-env": "^7.24.5",
+        "@jorgebodega/typeorm-seeding": "^7.1.0",
         "@nestjs/cli": "^10.0.0",
         "@nestjs/schematics": "^10.0.0",
         "@nestjs/testing": "^10.0.0",

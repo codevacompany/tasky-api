@@ -12,7 +12,7 @@ export class Tenant extends IdTimestampBaseEntity {
     @Column({ nullable: true })
     phoneNumber: string;
 
-    @Column()
+    @Column({ unique: true })
     customKey: string;
 
     @Column({ nullable: true })
