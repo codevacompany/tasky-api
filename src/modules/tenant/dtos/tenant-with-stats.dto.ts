@@ -9,6 +9,13 @@ export interface UserWithStats {
     lastAccess?: string;
 }
 
+export interface SubscriptionInfo {
+    planName?: string;
+    planSlug?: string;
+    maxUsers?: number;
+    status?: string;
+}
+
 export interface TenantWithStatsDto {
     id: number;
     name: string;
@@ -23,6 +30,7 @@ export interface TenantWithStatsDto {
     ticketsThisMonth: number;
     users: UserWithStats[];
     isActive: boolean;
+    subscription?: SubscriptionInfo;
 }
 
 export interface GlobalStatsDto {
