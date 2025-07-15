@@ -224,31 +224,32 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 }),
             );
 
-            await manager.save(
-                this.notificationRepository.create({
-                    tenantId: accessProfile.tenantId,
-                    type: NotificationType.Open,
-                    message: `<p>Novo ticket criado por <span>user</span>.</p>`,
-                    createdById: requester.id,
-                    updatedById: requester.id,
-                    targetUserId: ticketDto.targetUserId,
-                    resourceId: createdTicket.id,
-                    resourceCustomId: createdTicket.customId,
-                }),
-            );
+            if (ticketDto.requesterId !== ticketDto.targetUserId) {
+                await manager.save(
+                    this.notificationRepository.create({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.Open,
+                        message: `<p>Novo ticket criado por <span>user</span>.</p>`,
+                        createdById: requester.id,
+                        updatedById: requester.id,
+                        targetUserId: ticketDto.targetUserId,
+                        resourceId: createdTicket.id,
+                        resourceCustomId: createdTicket.customId,
+                    }),
+                );
 
-            const message = `Novo ticket criado por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
+                const message = `Novo ticket criado por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
 
-            // Check if email notifications are enabled for this tenant
-            const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(
-                accessProfile.tenantId,
-            );
-            if (emailNotificationsEnabled) {
-                this.emailService.sendMail({
-                    subject: `Um novo ticket foi criado para você.`,
-                    html: this.emailService.compileTemplate('ticket-update', { message }),
-                    to: targetUser.email,
-                });
+                const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(
+                    accessProfile.tenantId,
+                );
+                if (emailNotificationsEnabled) {
+                    this.emailService.sendMail({
+                        subject: `Um novo ticket foi criado para você.`,
+                        html: this.emailService.compileTemplate('ticket-update', { message }),
+                        to: targetUser.email,
+                    });
+                }
             }
         });
 
