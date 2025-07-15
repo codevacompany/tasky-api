@@ -238,6 +238,7 @@ export class TenantService {
                           planSlug: subscriptionSummary.subscription?.planSlug,
                           maxUsers: subscriptionSummary.subscription?.maxUsers,
                           status: subscriptionSummary.subscription?.status,
+                          trialEndDate: subscriptionSummary.subscription?.trialEndDate,
                       }
                     : undefined,
             };

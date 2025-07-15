@@ -195,12 +195,28 @@ export class TenantSubscriptionService {
                 maxUsers: subscription.subscriptionPlan?.maxUsers,
                 startDate: subscription.startDate,
                 endDate: subscription.endDate,
-                trialEndDate: subscription.trialEndDate,
+                trialEndDate: subscription.trialEndDate?.toISOString(),
                 isActive: subscription.isActive,
             },
             userStats,
             validation,
             billing: billingInfo,
         };
+    }
+
+    async renewTrial(tenantId: number): Promise<any> {
+        const subscription = await this.findCurrentTenantSubscription(tenantId);
+        if (!subscription || subscription.status !== SubscriptionStatus.TRIAL) {
+            throw new Error('No active trial subscription to renew');
+        }
+        const now = new Date();
+        const baseDate =
+            subscription.trialEndDate && subscription.trialEndDate > now
+                ? new Date(subscription.trialEndDate)
+                : now;
+        baseDate.setDate(baseDate.getDate() + 14);
+        subscription.trialEndDate = baseDate;
+        await this.tenantSubscriptionRepository.save(subscription);
+        return subscription;
     }
 }
