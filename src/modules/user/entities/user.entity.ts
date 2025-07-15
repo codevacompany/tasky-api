@@ -34,6 +34,9 @@ export class User extends TenantBoundBaseEntity {
     @OneToMany(() => Ticket, (ticket) => ticket.targetUser)
     assignedTickets: Ticket[];
 
+    @OneToMany(() => Ticket, (ticket) => ticket.reviewer)
+    reviewedTickets: Ticket[];
+
     @Column()
     roleId: number;
 

@@ -57,6 +57,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: [
                 'requester',
                 'targetUser',
+                'reviewer',
                 'department',
                 'category',
                 'files',
@@ -76,6 +77,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: [
                 'requester',
                 'targetUser',
+                'reviewer',
                 'department',
                 'category',
                 'files',
@@ -95,6 +97,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: [
                 'requester',
                 'targetUser',
+                'reviewer',
                 'department',
                 'category',
                 'files',
@@ -115,6 +118,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: [
                 'requester',
                 'targetUser',
+                'reviewer',
                 'department',
                 'category',
                 'files',
@@ -186,6 +190,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 tenantId: accessProfile.tenantId,
                 createdById: requester.id,
                 updatedById: requester.id,
+                reviewerId:
+                    ticketDto.requesterId !== ticketDto.targetUserId ? ticketDto.requesterId : null,
             });
 
             createdTicket = await manager.save(ticket);
@@ -218,31 +224,32 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 }),
             );
 
-            await manager.save(
-                this.notificationRepository.create({
-                    tenantId: accessProfile.tenantId,
-                    type: NotificationType.Open,
-                    message: `<p>Novo ticket criado por <span>user</span>.</p>`,
-                    createdById: requester.id,
-                    updatedById: requester.id,
-                    targetUserId: ticketDto.targetUserId,
-                    resourceId: createdTicket.id,
-                    resourceCustomId: createdTicket.customId,
-                }),
-            );
+            if (ticketDto.requesterId !== ticketDto.targetUserId) {
+                await manager.save(
+                    this.notificationRepository.create({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.Open,
+                        message: `<p>Novo ticket criado por <span>user</span>.</p>`,
+                        createdById: requester.id,
+                        updatedById: requester.id,
+                        targetUserId: ticketDto.targetUserId,
+                        resourceId: createdTicket.id,
+                        resourceCustomId: createdTicket.customId,
+                    }),
+                );
 
-            const message = `Novo ticket criado por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
+                const message = `Novo ticket criado por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
 
-            // Check if email notifications are enabled for this tenant
-            const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(
-                accessProfile.tenantId,
-            );
-            if (emailNotificationsEnabled) {
-                this.emailService.sendMail({
-                    subject: `Um novo ticket foi criado para você.`,
-                    html: this.emailService.compileTemplate('ticket-update', { message }),
-                    to: targetUser.email,
-                });
+                const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(
+                    accessProfile.tenantId,
+                );
+                if (emailNotificationsEnabled) {
+                    this.emailService.sendMail({
+                        subject: `Um novo ticket foi criado para você.`,
+                        html: this.emailService.compileTemplate('ticket-update', { message }),
+                        to: targetUser.email,
+                    });
+                }
             }
         });
 
@@ -357,7 +364,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                             '<p><span>user</span> enviou o ticket <span>resource</span> para verificação.</p>',
                         createdById: ticket.targetUser.id,
                         updatedById: ticket.targetUser.id,
-                        targetUserId: ticket.requester.id,
+                        targetUserId: ticket.reviewer.id,
                         resourceId: ticket.id,
                         resourceCustomId: ticket.customId,
                     }),
@@ -410,7 +417,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                             '<p><span>user</span> cancelou o envio do ticket <span>resource</span> para verificação.</p>',
                         createdById: ticket.targetUser.id,
                         updatedById: ticket.targetUser.id,
-                        targetUserId: ticket.requester.id,
+                        targetUserId: ticket.reviewer.id,
                         resourceId: ticket.id,
                         resourceCustomId: ticket.customId,
                     }),
@@ -516,7 +523,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                             '<p><span>user</span> iniciou a correção do ticket <span>resource</span>.</p>',
                         createdById: ticket.targetUser.id,
                         updatedById: ticket.targetUser.id,
-                        targetUserId: ticket.requester.id,
+                        targetUserId: ticket.reviewer.id,
                         resourceId: ticket.id,
                         resourceCustomId: ticket.customId,
                     }),

@@ -17,6 +17,8 @@ import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { User } from './entities/user.entity';
 import { UserService } from './user.service';
+import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
+import { FindOneQueryOptions, QueryOptions } from '../../shared/types/http';
 
 @Controller('users')
 export class UserController {
@@ -46,6 +48,35 @@ export class UserController {
                 relations: ['department', 'role'],
             },
         );
+    }
+
+    @Get('all')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {
+        return this.userService.findAll({ name }, options);
+    }
+
+    @Get(':email')
+    @UseGuards(AuthGuard('jwt'))
+    async findByEmail(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetQueryOptions() options: FindOneQueryOptions<User>,
+        @Param('email') email: string,
+    ) {
+        return this.userService.findByEmail(accessProfile, email, options);
+    }
+
+    @Get('department/:departmentId')
+    @UseGuards(AuthGuard('jwt'))
+    async findByDeparment(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetQueryOptions() options: QueryOptions<User>,
+        @Param('departmentId', ParseIntPipe) departmentId: number,
+    ) {
+        return this.userService.findBy(accessProfile, {
+            ...options,
+            where: { ...options.where, departmentId },
+        });
     }
 
     @Post('super-admin')
