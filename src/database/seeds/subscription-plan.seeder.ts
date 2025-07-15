@@ -61,44 +61,31 @@ export class SubscriptionPlanSeeder extends Seeder {
                     'email_notifications',
                 ],
             },
-            {
-                name: 'Usuários Adicionais',
-                slug: 'adicional',
-                maxUsers: null,
-                priceMonthly: 15.0,
-                priceYearly: 150.0,
-                description: 'Para empresas em expansão',
-                permissions: [
-                    'view_basic_analytics',
-                    'view_advanced_analytics',
-                    'view_department_analytics',
-                    'view_users_analytics',
-                    'export_reports',
-                    'email_notifications',
-                ],
-            },
         ];
 
         for (const planData of plansData) {
-            await planRepository.upsert({
-                name: planData.name,
-                slug: planData.slug,
-                maxUsers: planData.maxUsers,
-                priceMonthly: planData.priceMonthly,
-                priceYearly: planData.priceYearly,
-                description: planData.description,
-            }, {
-                conflictPaths: ['slug'],
-                skipUpdateIfNoValuesChanged: true,
-            });
+            await planRepository.upsert(
+                {
+                    name: planData.name,
+                    slug: planData.slug,
+                    maxUsers: planData.maxUsers,
+                    priceMonthly: planData.priceMonthly,
+                    priceYearly: planData.priceYearly,
+                    description: planData.description,
+                },
+                {
+                    conflictPaths: ['slug'],
+                    skipUpdateIfNoValuesChanged: true,
+                },
+            );
 
             const plan = await planRepository.findOne({ where: { slug: planData.slug } });
 
             const permissions = await permissionRepository.find({
-                where: planData.permissions.map(key => ({ key }))
+                where: planData.permissions.map((key) => ({ key })),
             });
 
-            const planPermissions = permissions.map(permission => ({
+            const planPermissions = permissions.map((permission) => ({
                 subscriptionPlanId: plan!.id,
                 permissionId: permission.id,
             }));
@@ -110,7 +97,9 @@ export class SubscriptionPlanSeeder extends Seeder {
                 });
             }
 
-            console.log(`✅ Created/updated plan: ${plan!.name} with ${permissions.length} permissions`);
+            console.log(
+                `✅ Created/updated plan: ${plan!.name} with ${permissions.length} permissions`,
+            );
         }
 
         console.log(`✅ Created/updated ${plansData.length} subscription plans`);

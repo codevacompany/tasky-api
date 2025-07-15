@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { ILike, Between } from 'typeorm';
 import {
     CustomBadRequestException,
@@ -19,6 +19,7 @@ import { Repository } from 'typeorm';
 import { User } from '../user/entities/user.entity';
 import { Ticket } from '../ticket/entities/ticket.entity';
 import { startOfMonth, endOfMonth } from 'date-fns';
+import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 
 @Injectable()
 export class TenantService {
@@ -29,6 +30,8 @@ export class TenantService {
         private userRepository: Repository<User>,
         @InjectRepository(Ticket)
         private ticketRepository: Repository<Ticket>,
+        @Inject(forwardRef(() => TenantSubscriptionService))
+        private tenantSubscriptionService: TenantSubscriptionService,
     ) {}
 
     async findAll(
@@ -187,10 +190,8 @@ export class TenantService {
             }),
         ]);
 
-        // Process each tenant in parallel
         const tenantsWithStatsPromises = tenants.map(async (tenant) => {
-            // Execute all tenant-specific queries in parallel
-            const [users, allTickets, ticketsThisMonth] = await Promise.all([
+            const [users, allTickets, ticketsThisMonth, subscriptionSummary] = await Promise.all([
                 this.userRepository.find({
                     where: { tenantId: tenant.id },
                     relations: ['department', 'role'],
@@ -204,6 +205,7 @@ export class TenantService {
                         createdAt: Between(monthStart, monthEnd),
                     },
                 }),
+                this.tenantSubscriptionService.getSubscriptionSummary(tenant.id),
             ]);
 
             const userStats = users.map((user) => ({
@@ -230,6 +232,15 @@ export class TenantService {
                 totalTickets: allTickets.length,
                 ticketsThisMonth,
                 users: userStats,
+                subscription: subscriptionSummary.hasSubscription
+                    ? {
+                          planName: subscriptionSummary.subscription?.planName,
+                          planSlug: subscriptionSummary.subscription?.planSlug,
+                          maxUsers: subscriptionSummary.subscription?.maxUsers,
+                          status: subscriptionSummary.subscription?.status,
+                          trialEndDate: subscriptionSummary.subscription?.trialEndDate,
+                      }
+                    : undefined,
             };
         });
 

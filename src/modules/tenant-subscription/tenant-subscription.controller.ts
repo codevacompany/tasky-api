@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards, Query } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Get,
+    Param,
+    ParseIntPipe,
+    Post,
+    UseGuards,
+    Query,
+    Patch,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
@@ -138,5 +148,14 @@ export class TenantSubscriptionController {
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.activateSubscription(tenantId, body.planSlug);
+    }
+
+    @Patch('tenant/:tenantId/renew-trial')
+    @UseGuards(GlobalAdminGuard)
+    async renewTrial(
+        @Param('tenantId', ParseIntPipe) tenantId: number,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.tenantSubscriptionService.renewTrial(tenantId);
     }
 }

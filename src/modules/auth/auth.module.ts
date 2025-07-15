@@ -17,7 +17,7 @@ import { AuthService } from './auth.service';
         forwardRef(() => UserModule),
         VerificationCodeModule,
         EmailModule,
-        TenantSubscriptionModule,
+        forwardRef(() => TenantSubscriptionModule),
         JwtModule.registerAsync({
             useFactory: () => ({
                 secret: process.env.TOKEN_SECRET,
