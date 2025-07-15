@@ -57,6 +57,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: [
                 'requester',
                 'targetUser',
+                'reviewer',
                 'department',
                 'category',
                 'files',
@@ -76,6 +77,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: [
                 'requester',
                 'targetUser',
+                'reviewer',
                 'department',
                 'category',
                 'files',
@@ -95,6 +97,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: [
                 'requester',
                 'targetUser',
+                'reviewer',
                 'department',
                 'category',
                 'files',
@@ -115,6 +118,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: [
                 'requester',
                 'targetUser',
+                'reviewer',
                 'department',
                 'category',
                 'files',
@@ -186,6 +190,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 tenantId: accessProfile.tenantId,
                 createdById: requester.id,
                 updatedById: requester.id,
+                reviewerId:
+                    ticketDto.requesterId !== ticketDto.targetUserId ? ticketDto.requesterId : null,
             });
 
             createdTicket = await manager.save(ticket);
@@ -357,7 +363,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                             '<p><span>user</span> enviou o ticket <span>resource</span> para verificação.</p>',
                         createdById: ticket.targetUser.id,
                         updatedById: ticket.targetUser.id,
-                        targetUserId: ticket.requester.id,
+                        targetUserId: ticket.reviewer.id,
                         resourceId: ticket.id,
                         resourceCustomId: ticket.customId,
                     }),
@@ -410,7 +416,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                             '<p><span>user</span> cancelou o envio do ticket <span>resource</span> para verificação.</p>',
                         createdById: ticket.targetUser.id,
                         updatedById: ticket.targetUser.id,
-                        targetUserId: ticket.requester.id,
+                        targetUserId: ticket.reviewer.id,
                         resourceId: ticket.id,
                         resourceCustomId: ticket.customId,
                     }),
@@ -516,7 +522,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                             '<p><span>user</span> iniciou a correção do ticket <span>resource</span>.</p>',
                         createdById: ticket.targetUser.id,
                         updatedById: ticket.targetUser.id,
-                        targetUserId: ticket.requester.id,
+                        targetUserId: ticket.reviewer.id,
                         resourceId: ticket.id,
                         resourceCustomId: ticket.customId,
                     }),

@@ -67,6 +67,13 @@ export class Ticket extends TenantBoundBaseEntity {
     @JoinColumn({ name: 'targetUserId' })
     targetUser: User;
 
+    @Column({ nullable: true })
+    reviewerId: number;
+
+    @ManyToOne(() => User, (user) => user.reviewedTickets, { nullable: true })
+    @JoinColumn({ name: 'reviewerId' })
+    reviewer: User;
+
     @Column({
         type: 'enum',
         enum: TicketStatus,
