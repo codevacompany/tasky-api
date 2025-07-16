@@ -225,4 +225,17 @@ export class TicketController {
             updateAssigneeDto.targetUserId,
         );
     }
+
+    @Patch(':id/reviewer')
+    updateReviewer(
+        @Param('id') customId: string,
+        @Body() updateReviewerDto: { reviewerId: number },
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.updateReviewer(
+            accessProfile,
+            customId,
+            updateReviewerDto.reviewerId,
+        );
+    }
 }
