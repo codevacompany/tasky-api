@@ -30,6 +30,18 @@ export class UserController {
         return this.userService.findById(accessProfile.userId);
     }
 
+    @Get('all')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {
+        return this.userService.findAll({ name }, options);
+    }
+
+    @Get('tenant-admins')
+    @UseGuards(AuthGuard('jwt'))
+    async getTenantAdmins(@GetAccessProfile() accessProfile: AccessProfile) {
+        return this.userService.getTenantAdmins(accessProfile.tenantId);
+    }
+
     @Get(':id')
     @UseGuards(AuthGuard('jwt'))
     async findOne(@Param('id', ParseIntPipe) id: number): Promise<User> {
@@ -48,12 +60,6 @@ export class UserController {
                 relations: ['department', 'role'],
             },
         );
-    }
-
-    @Get('all')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
-    async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {
-        return this.userService.findAll({ name }, options);
     }
 
     @Get(':email')

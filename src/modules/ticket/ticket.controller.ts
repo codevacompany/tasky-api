@@ -140,6 +140,17 @@ export class TicketController {
         return this.ticketService.findBy(accessProfile, options);
     }
 
+    @Get('received/:userId')
+    findReceivedTickets(
+        @Param('userId', ParseIntPipe) userId: number,
+        @GetQueryOptions() options: QueryOptions<Ticket>,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        // Pass the options directly to the service method
+        // The service will handle the OR condition for targetUserId and reviewerId
+        return this.ticketService.findByReceived(accessProfile, userId, options);
+    }
+
     @Patch(':id')
     update(
         @Param('id') customId: string,
@@ -223,6 +234,19 @@ export class TicketController {
             accessProfile,
             customId,
             updateAssigneeDto.targetUserId,
+        );
+    }
+
+    @Patch(':id/reviewer')
+    updateReviewer(
+        @Param('id') customId: string,
+        @Body() updateReviewerDto: { reviewerId: number },
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.updateReviewer(
+            accessProfile,
+            customId,
+            updateReviewerDto.reviewerId,
         );
     }
 }

@@ -26,3 +26,4 @@ jobs:
       run: |
         npm install
         npm run migration:run
+        npm run seed

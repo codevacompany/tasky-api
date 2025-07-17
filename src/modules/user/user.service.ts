@@ -305,4 +305,15 @@ export class UserService extends TenantBoundBaseService<User> {
             inactiveUsers,
         };
     }
+
+    async getTenantAdmins(tenantId: number): Promise<User[]> {
+        return this.userRepository.find({
+            where: {
+                tenantId,
+                isActive: true,
+                role: { name: RoleName.TenantAdmin },
+            },
+            relations: ['department', 'role'],
+        });
+    }
 }

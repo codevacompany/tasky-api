@@ -3,7 +3,6 @@ import { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
-import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { UserRepository } from '../user/user.repository';
 import { CorrectionRequestRepository } from './correction-request-reason.repository';
@@ -78,20 +77,7 @@ export class CorrectionRequestService extends TenantBoundBaseService<CorrectionR
             tenantId: accessProfile.tenantId,
         };
 
-        const savedReason = await this.save(accessProfile, reasonToSave);
-
-        await this.notificationRepository.save({
-            tenantId: accessProfile.tenantId,
-            type: NotificationType.CorrectionRequest,
-            message: `<p><span>user</span> solicitou uma correção no ticket <span>resource</span> por ${dto.reason}.</p>`,
-            createdById: accessProfile.userId,
-            updatedById: accessProfile.userId,
-            targetUserId,
-            resourceId: ticketId,
-            resourceCustomId: ticketCustomId,
-        });
-
-        return savedReason;
+        return this.save(accessProfile, reasonToSave);
     }
 
     async delete(accessProfile: AccessProfile, id: number) {
