@@ -334,7 +334,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        if (accessProfile.userId !== ticketResponse.requester.id) {
+        if (
+            accessProfile.userId !== ticketResponse.requester.id &&
+            accessProfile.userId !== ticketResponse.targetUser?.id
+        ) {
             throw new CustomForbiddenException({
                 message: 'User not allowed to update this ticket.',
                 code: 'user-not-allowed-to-update-ticket',

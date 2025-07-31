@@ -81,9 +81,12 @@ export class SubscriptionPlanSeeder extends Seeder {
 
             const plan = await planRepository.findOne({ where: { slug: planData.slug } });
 
-            const permissions = await permissionRepository.find({
-                where: planData.permissions.map((key) => ({ key })),
-            });
+            let permissions: Permission[] = [];
+            if (planData.permissions.length > 0) {
+                permissions = await permissionRepository.find({
+                    where: planData.permissions.map((key) => ({ key })),
+                });
+            }
 
             const planPermissions = permissions.map((permission) => ({
                 subscriptionPlanId: plan!.id,

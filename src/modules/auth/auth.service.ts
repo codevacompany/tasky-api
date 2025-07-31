@@ -52,8 +52,6 @@ export class AuthService {
             });
         }
 
-        console.log(passwordMatch);
-
         // Get tenant permissions based on current subscription
         const tenantPermissions = await this.tenantSubscriptionService.getTenantPermissions(
             user.tenantId,
