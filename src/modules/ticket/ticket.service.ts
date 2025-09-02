@@ -290,7 +290,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     this.notificationRepository.create({
                         tenantId: accessProfile.tenantId,
                         type: NotificationType.Open,
-                        message: `<p>Novo ticket criado por <span>user</span>.</p>`,
+                        message: `<p><span>user</span> criou um novo ticket para você.</p>`,
                         createdById: requester.id,
                         updatedById: requester.id,
                         targetUserId: ticketDto.targetUserId,
@@ -718,7 +718,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async approve(accessProfile: AccessProfile, customId: string) {
         const ticketResponse = await this.findById(accessProfile, customId);
 
-        const { targetUser, requester } = ticketResponse;
+        const { targetUser } = ticketResponse;
 
         await this.repository.update(ticketResponse.id, {
             status: TicketStatus.Completed,
@@ -785,7 +785,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     ) {
         const ticketResponse = await this.findById(accessProfile, customId);
 
-        const { targetUser, requester } = ticketResponse;
+        const { targetUser } = ticketResponse;
 
         await this.repository.update(ticketResponse.id, {
             status: TicketStatus.Rejected,
