@@ -1,10 +1,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
-import {
-    CustomConflictException,
-    CustomForbiddenException,
-} from '../../shared/exceptions/http-exception';
+import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
 import { FindOneQueryOptions, PaginatedResponse, QueryOptions } from '../../shared/types/http';
@@ -87,6 +84,22 @@ export class UserService extends TenantBoundBaseService<User> {
             qb.andWhere('(user.firstName ILIKE :name OR user.lastName ILIKE :name)', {
                 name: `%${additionalFilter.name}%`,
             });
+        }
+
+        if (options?.order) {
+            for (const [key, direction] of Object.entries(options.order)) {
+                const sortDirection =
+                    typeof direction === 'string' ? direction.toUpperCase() : 'ASC';
+                if (key === 'firstName' || key === 'lastName') {
+                    qb.addOrderBy(`user.${key}`, sortDirection as 'ASC' | 'DESC');
+                } else if (key === 'department.name') {
+                    qb.addOrderBy('department.name', sortDirection as 'ASC' | 'DESC');
+                } else {
+                    qb.addOrderBy(`user.${key}`, sortDirection as 'ASC' | 'DESC');
+                }
+            }
+        } else {
+            qb.orderBy('user.id', 'ASC');
         }
 
         const page = options?.page || 1;

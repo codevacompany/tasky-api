@@ -23,7 +23,7 @@ export abstract class TenantBoundBaseService<T extends TenantBoundBaseEntity> {
             ...options,
             skip: options.paginated === false ? undefined : (options.page - 1) * options.limit,
             take: options.paginated === false ? undefined : options.limit,
-            order: { createdAt: 'DESC' } as any,
+            order: options.order || ({ createdAt: 'DESC' } as any),
         });
 
         return {
