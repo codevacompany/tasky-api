@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Patch, Param, ParseIntPipe, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { VerificationCodeService } from '../verification-code/verification-code.service';
 import { AuthService } from './auth.service';
@@ -8,8 +8,10 @@ import { ResetPasswordRequestDto } from './dtos/reset-password-request.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { ChangePasswordDto } from './dtos/change-password.dto';
+import { AdminResetPasswordDto } from './dtos/admin-reset-password.dto';
 import { UserService } from '../user/user.service';
 import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
+import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -80,5 +82,15 @@ export class AuthController {
         @Body() changePasswordDto: ChangePasswordDto,
     ) {
         return this.authService.changePassword(accessProfile, changePasswordDto);
+    }
+
+    @Patch('admin/reset-password/:userId')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async adminResetPassword(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Param('userId', ParseIntPipe) userId: number,
+        @Body() adminResetPasswordDto: AdminResetPasswordDto,
+    ) {
+        return this.authService.adminResetPassword(accessProfile, userId, adminResetPasswordDto);
     }
 }

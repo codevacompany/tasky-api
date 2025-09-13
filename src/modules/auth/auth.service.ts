@@ -16,6 +16,7 @@ import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscri
 import { LoginDto } from './dtos/login.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
 import { ChangePasswordDto } from './dtos/change-password.dto';
+import { AdminResetPasswordDto } from './dtos/admin-reset-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -172,7 +173,75 @@ export class AuthService {
     }
 
     async changePassword(accessProfile: AccessProfile, changePasswordDto: ChangePasswordDto) {
-        return this.userService.changePassword(accessProfile.userId, changePasswordDto);
+        const user = await this.userService.findById(accessProfile.userId);
+
+        if (!user) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        const isCurrentPasswordValid = this.encryptionService.compareSync(
+            changePasswordDto.currentPassword,
+            user.password,
+        );
+
+        if (!isCurrentPasswordValid) {
+            throw new CustomUnauthorizedException({
+                code: 'invalid-current-password',
+                message: 'Current password is incorrect',
+            });
+        }
+
+        const hashedNewPassword = this.encryptionService.hashSync(changePasswordDto.newPassword);
+
+        await this.userService.update(accessProfile, accessProfile.userId, {
+            password: hashedNewPassword,
+        });
+
+        return { message: 'Password changed successfully' };
+    }
+
+    async adminResetPassword(
+        accessProfile: AccessProfile,
+        userId: number,
+        adminResetPasswordDto: AdminResetPasswordDto,
+    ): Promise<{ message: string }> {
+        const user = await this.userService.findById(userId);
+
+        if (!user) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        const hashedPassword = this.encryptionService.hashSync(adminResetPasswordDto.newPassword);
+
+        await this.userService.superAdminUpdate(accessProfile, userId, {
+            password: hashedPassword,
+        });
+
+        try {
+            const html = this.emailService.compileTemplate('password-reset', {
+                firstName: user.firstName,
+                lastName: user.lastName,
+                newPassword: adminResetPasswordDto.newPassword,
+            });
+
+            await this.emailService.sendMail({
+                to: user.email,
+                subject: 'Senha Redefinida - Tasky System',
+                html,
+            });
+        } catch (error) {
+            console.error('Failed to send password reset email:', error);
+        }
+
+        return {
+            message: 'Password reset successfully',
+        };
     }
 
     // async resetPassword(bearerToken: string, password: string) {

@@ -1,10 +1,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
-import {
-    CustomConflictException,
-    CustomForbiddenException,
-} from '../../shared/exceptions/http-exception';
+import { CustomConflictException } from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
 import { FindOneQueryOptions, PaginatedResponse, QueryOptions } from '../../shared/types/http';
@@ -16,7 +13,6 @@ import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { User } from './entities/user.entity';
 import { UserRepository } from './user.repository';
-import { ChangePasswordDto } from './dtos/change-password.dto';
 
 @Injectable()
 export class UserService extends TenantBoundBaseService<User> {
@@ -87,6 +83,22 @@ export class UserService extends TenantBoundBaseService<User> {
             qb.andWhere('(user.firstName ILIKE :name OR user.lastName ILIKE :name)', {
                 name: `%${additionalFilter.name}%`,
             });
+        }
+
+        if (options?.order) {
+            for (const [key, direction] of Object.entries(options.order)) {
+                const sortDirection =
+                    typeof direction === 'string' ? direction.toUpperCase() : 'ASC';
+                if (key === 'firstName' || key === 'lastName') {
+                    qb.addOrderBy(`user.${key}`, sortDirection as 'ASC' | 'DESC');
+                } else if (key === 'department.name') {
+                    qb.addOrderBy('department.name', sortDirection as 'ASC' | 'DESC');
+                } else {
+                    qb.addOrderBy(`user.${key}`, sortDirection as 'ASC' | 'DESC');
+                }
+            }
+        } else {
+            qb.orderBy('user.id', 'ASC');
         }
 
         const page = options?.page || 1;
@@ -197,7 +209,6 @@ export class UserService extends TenantBoundBaseService<User> {
     }
 
     async update(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
-        // Prevent users from deactivating themselves
         if (data.isActive === false && accessProfile.userId === id) {
             throw new CustomConflictException({
                 code: 'cannot-deactivate-self',
@@ -205,55 +216,11 @@ export class UserService extends TenantBoundBaseService<User> {
             });
         }
 
-        if (data.password) {
-            const hashedPassword = this.encryptionService.hashSync(data.password);
-            data.password = hashedPassword;
-        }
-
         return super.update(accessProfile, id, data);
     }
 
     async superAdminUpdate(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
-        if (data.password) {
-            const hashedPassword = this.encryptionService.hashSync(data.password);
-            data.password = hashedPassword;
-        }
-
         return super.update(accessProfile, id, data, false);
-    }
-
-    async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
-        const user = await this.userRepository.findOne({
-            where: { id: userId },
-            select: ['id', 'password', 'email'],
-        });
-
-        if (!user) {
-            throw new CustomConflictException({
-                code: 'user-not-found',
-                message: 'User not found',
-            });
-        }
-
-        const isCurrentPasswordValid = this.encryptionService.compareSync(
-            changePasswordDto.currentPassword,
-            user.password,
-        );
-
-        if (!isCurrentPasswordValid) {
-            throw new CustomConflictException({
-                code: 'invalid-current-password',
-                message: 'Current password is incorrect',
-            });
-        }
-
-        const hashedNewPassword = this.encryptionService.hashSync(changePasswordDto.newPassword);
-
-        await this.userRepository.update(userId, {
-            password: hashedNewPassword,
-        });
-
-        return { message: 'Password changed successfully' };
     }
 
     /**

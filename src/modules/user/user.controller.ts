@@ -50,15 +50,22 @@ export class UserController {
 
     @Get()
     @UseGuards(AuthGuard('jwt'))
-    async findMany(@GetAccessProfile() accessProfile: AccessProfile, @Query('name') name?: string) {
+    async findMany(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('name') name?: string,
+        @GetQueryOptions() options?: QueryOptions<User>,
+    ) {
+        const queryOptions: QueryOptions<User> = {
+            ...options,
+            relations: ['department', 'role'],
+        };
+
         return this.userService.findManyUsers(
             accessProfile,
             {
                 name,
             },
-            {
-                relations: ['department', 'role'],
-            },
+            queryOptions,
         );
     }
 
