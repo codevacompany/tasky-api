@@ -13,7 +13,6 @@ import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { User } from './entities/user.entity';
 import { UserRepository } from './user.repository';
-import { ChangePasswordDto } from './dtos/change-password.dto';
 
 @Injectable()
 export class UserService extends TenantBoundBaseService<User> {
@@ -210,7 +209,6 @@ export class UserService extends TenantBoundBaseService<User> {
     }
 
     async update(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
-        // Prevent users from deactivating themselves
         if (data.isActive === false && accessProfile.userId === id) {
             throw new CustomConflictException({
                 code: 'cannot-deactivate-self',
@@ -218,55 +216,11 @@ export class UserService extends TenantBoundBaseService<User> {
             });
         }
 
-        if (data.password) {
-            const hashedPassword = this.encryptionService.hashSync(data.password);
-            data.password = hashedPassword;
-        }
-
         return super.update(accessProfile, id, data);
     }
 
     async superAdminUpdate(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
-        if (data.password) {
-            const hashedPassword = this.encryptionService.hashSync(data.password);
-            data.password = hashedPassword;
-        }
-
         return super.update(accessProfile, id, data, false);
-    }
-
-    async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
-        const user = await this.userRepository.findOne({
-            where: { id: userId },
-            select: ['id', 'password', 'email'],
-        });
-
-        if (!user) {
-            throw new CustomConflictException({
-                code: 'user-not-found',
-                message: 'User not found',
-            });
-        }
-
-        const isCurrentPasswordValid = this.encryptionService.compareSync(
-            changePasswordDto.currentPassword,
-            user.password,
-        );
-
-        if (!isCurrentPasswordValid) {
-            throw new CustomConflictException({
-                code: 'invalid-current-password',
-                message: 'Current password is incorrect',
-            });
-        }
-
-        const hashedNewPassword = this.encryptionService.hashSync(changePasswordDto.newPassword);
-
-        await this.userRepository.update(userId, {
-            password: hashedNewPassword,
-        });
-
-        return { message: 'Password changed successfully' };
     }
 
     /**

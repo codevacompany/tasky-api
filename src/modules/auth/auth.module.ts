@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from '../../shared/guards/jwtStrategy';
+import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { EmailModule } from '../../shared/services/email/email.module';
 import { EncryptionModule } from '../../shared/services/encryption/encryption.module';
 import { TokenModule } from '../../shared/services/token/token.module';
@@ -9,7 +10,7 @@ import { VerificationCodeModule } from '../verification-code/verification-code.m
 import { TenantSubscriptionModule } from '../tenant-subscription/tenant-subscription.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-
+import { RoleModule } from '../role/role.module';
 @Module({
     imports: [
         EncryptionModule,
@@ -17,6 +18,7 @@ import { AuthService } from './auth.service';
         forwardRef(() => UserModule),
         VerificationCodeModule,
         EmailModule,
+        RoleModule,
         forwardRef(() => TenantSubscriptionModule),
         JwtModule.registerAsync({
             useFactory: () => ({
@@ -25,7 +27,7 @@ import { AuthService } from './auth.service';
         }),
     ],
     controllers: [AuthController],
-    providers: [AuthService, JwtStrategy],
+    providers: [AuthService, JwtStrategy, GlobalAdminGuard],
     exports: [AuthService],
 })
 export class AuthModule {}
