@@ -50,4 +50,8 @@ export class UpdateUserDto {
     @IsBoolean()
     @IsOptional()
     isActive?: boolean;
+
+    @IsOptional()
+    @IsInt()
+    roleId?: number;
 }
