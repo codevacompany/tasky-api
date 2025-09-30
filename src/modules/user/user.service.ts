@@ -169,7 +169,8 @@ export class UserService extends TenantBoundBaseService<User> {
         const hashedPassword = this.encryptionService.hashSync(password);
         data.password = hashedPassword;
 
-        const userRole = await this.roleRepository.findOneBy({ name: RoleName.User });
+        const roleName = data.isAdmin ? RoleName.TenantAdmin : RoleName.User;
+        const userRole = await this.roleRepository.findOneBy({ name: roleName });
 
         await this.save(accessProfile, { ...data, roleId: userRole.id });
 
@@ -216,7 +217,18 @@ export class UserService extends TenantBoundBaseService<User> {
             });
         }
 
-        return super.update(accessProfile, id, data);
+        const updateData = { ...data };
+        if (data.isAdmin !== undefined) {
+            const roleName = data.isAdmin ? RoleName.TenantAdmin : RoleName.User;
+            const userRole = await this.roleRepository.findOneBy({ name: roleName });
+            if (userRole) {
+                updateData.roleId = userRole.id;
+            }
+
+            delete updateData.isAdmin;
+        }
+
+        return super.update(accessProfile, id, updateData);
     }
 
     async superAdminUpdate(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
