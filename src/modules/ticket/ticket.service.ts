@@ -85,6 +85,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'department',
                 'category',
                 'files',
+                'comments',
                 'updates',
                 'cancellationReason',
                 'disapprovalReason',
@@ -105,6 +106,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'department',
                 'category',
                 'files',
+                'comments',
                 'cancellationReason',
                 'disapprovalReason',
                 'correctionRequests',
@@ -126,6 +128,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'department',
                 'category',
                 'files',
+                'comments',
                 'cancellationReason',
                 'disapprovalReason',
                 'correctionRequests',
@@ -149,6 +152,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.department', 'department')
             .leftJoinAndSelect('ticket.category', 'category')
             .leftJoinAndSelect('ticket.files', 'files')
+            .leftJoinAndSelect('ticket.comments', 'comments')
             .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
             .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
             .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
