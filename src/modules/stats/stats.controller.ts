@@ -101,7 +101,10 @@ export class StatsController {
     async getTopUsers(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Query('limit') limit: number = 5,
+        @Query('all') all?: string,
+        @Query('sort') sort: string = 'top',
     ): Promise<UserRankingResponseDto> {
-        return this.ticketStatsService.getUserRanking(accessProfile, limit);
+        const returnAll = all === 'true' || all === '1';
+        return this.ticketStatsService.getUserRanking(accessProfile, limit, returnAll, sort);
     }
 }

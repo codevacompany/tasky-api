@@ -935,6 +935,8 @@ export class TicketStatsService {
     async getUserRanking(
         accessProfile: AccessProfile,
         limit: number = 5,
+        returnAll: boolean = false,
+        sort: string = 'top',
     ): Promise<UserRankingResponseDto> {
         const now = new Date();
         const threeMonthsAgo = startOfDay(subMonths(now, 3));
@@ -999,17 +1001,21 @@ export class TicketStatsService {
                 return user;
             })
             .sort((a, b) => {
-                // First sort by resolved tickets
-                if (b.resolvedTickets !== a.resolvedTickets) {
-                    return b.resolvedTickets - a.resolvedTickets;
-                }
+                if (sort === 'bottom') {
+                    if (a.resolvedTickets !== b.resolvedTickets) {
+                        return a.resolvedTickets - b.resolvedTickets;
+                    }
 
-                // If resolved tickets are equal, sort by resolution rate
-                if (b.resolutionRate !== a.resolutionRate) {
+                    return a.resolutionRate - b.resolutionRate;
+                } else {
+                    if (b.resolvedTickets !== a.resolvedTickets) {
+                        return b.resolvedTickets - a.resolvedTickets;
+                    }
+
                     return b.resolutionRate - a.resolutionRate;
                 }
             })
-            .slice(0, limit);
+            .slice(0, returnAll ? undefined : limit);
 
         return { users: rankedUsers };
     }
