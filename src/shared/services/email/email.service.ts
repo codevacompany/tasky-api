@@ -25,7 +25,7 @@ export class EmailService {
         console.info('Sending email');
 
         // Skip email sending in development environment
-        if (process.env.NODE_ENV === 'dev') {
+        if (process.env.APP_ENV === 'dev') {
             console.info('Skipping email in development environment');
             return { message: 'Email skipped in development mode' };
         }

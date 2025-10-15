@@ -99,7 +99,7 @@ export class UserSeeder extends Seeder {
         );
 
         if (internalTenant && internalAdminDept) {
-            if (process.env.NODE_ENV === 'production') {
+            if (process.env.APP_ENV === 'production') {
                 usersData.push({
                     firstName: 'Isaac',
                     lastName: 'Silva',
@@ -124,7 +124,7 @@ export class UserSeeder extends Seeder {
             }
         }
 
-        if (process.env.NODE_ENV !== 'production') {
+        if (process.env.APP_ENV !== 'production') {
             for (const tenant of tenants) {
                 const tenantDepartments = createdDepartments.filter(
                     (d) => d.tenantId === tenant.id,

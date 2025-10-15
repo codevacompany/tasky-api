@@ -62,7 +62,7 @@ export class TenantSeeder extends Seeder {
             },
         ];
 
-        if (process.env.NODE_ENV === 'production') {
+        if (process.env.APP_ENV === 'production') {
             await tenantRepository.upsert(tenantsData, {
                 conflictPaths: ['customKey'],
                 skipUpdateIfNoValuesChanged: true,

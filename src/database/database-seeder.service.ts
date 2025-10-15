@@ -57,7 +57,7 @@ export class DatabaseSeederService {
      * Development helper: clears and reseeds all data
      */
     async reseedAll(): Promise<void> {
-        if (process.env.NODE_ENV === 'production') {
+        if (process.env.APP_ENV === 'production') {
             throw new Error('Reseeding is not allowed in production environment');
         }
 

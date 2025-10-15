@@ -12,8 +12,13 @@ export default class MainSeeder extends Seeder {
         // Execute seeders in dependency order
         await new PermissionSeeder().run(dataSource);
         await new SubscriptionPlanSeeder().run(dataSource);
-        await new TenantSeeder().run(dataSource);
-        await new UserSeeder().run(dataSource);
+
+        if (process.env.APP_ENV === 'production') {
+            console.log('🚫 Production environment detected: skipping Tenant and User seeders.');
+        } else {
+            await new TenantSeeder().run(dataSource);
+            await new UserSeeder().run(dataSource);
+        }
 
         console.log('✅ Database seeding completed successfully!');
     }
