@@ -18,6 +18,7 @@ import {
 import { IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { QueryOptions } from '../../shared/types/http';
+import { BusinessHoursService } from '../../shared/services/business-hours.service';
 import { DepartmentService } from '../department/department.service';
 import { User } from '../user/entities/user.entity';
 import { TicketUpdate } from '../ticket-updates/entities/ticket-update.entity';
@@ -52,6 +53,7 @@ export class TicketStatsService {
         private readonly ticketUpdateRepository: Repository<TicketUpdate>,
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
+        private readonly businessHoursService: BusinessHoursService,
     ) {}
 
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<TicketStats>) {
@@ -125,7 +127,8 @@ export class TicketStatsService {
         };
 
         const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
-        const ticketStats = { items, total };
+        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(items);
+        const ticketStats = { items: itemsWithWeekendExclusion, total };
 
         // Calculate overall stats
         const totalTickets = ticketStats.items.length;
@@ -201,7 +204,10 @@ export class TicketStatsService {
         };
 
         const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
-        const ticketStats = { items, total };
+
+        // Apply weekend exclusion to time calculations
+        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(items);
+        const ticketStats = { items: itemsWithWeekendExclusion, total };
 
         const departments = await this.departmentService.findMany(accessProfile, {
             paginated: false,
@@ -588,7 +594,9 @@ export class TicketStatsService {
         };
 
         const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
-        const ticketStats = { items, total };
+
+        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(items);
+        const ticketStats = { items: itemsWithWeekendExclusion, total };
 
         const totalTickets = ticketStats.items.length;
         const resolvedTickets = ticketStats.items.filter((stat) => stat.isResolved).length;
@@ -837,12 +845,16 @@ export class TicketStatsService {
             return 0;
         }
 
-        const totalResolutionTimeSeconds = ticketStats.reduce(
+        // Apply weekend exclusion to time calculations
+        const ticketStatsWithWeekendExclusion = await this.applyWeekendExclusion(ticketStats);
+
+        const totalResolutionTimeSeconds = ticketStatsWithWeekendExclusion.reduce(
             (sum, stat) => sum + Number(stat.resolutionTimeSeconds),
             0,
         );
 
-        const avgResolutionTimeHours = totalResolutionTimeSeconds / ticketStats.length / 3600;
+        const avgResolutionTimeHours =
+            totalResolutionTimeSeconds / ticketStatsWithWeekendExclusion.length / 3600;
 
         return Math.round(avgResolutionTimeHours * 10) / 10;
     }
@@ -1018,5 +1030,52 @@ export class TicketStatsService {
             .slice(0, returnAll ? undefined : limit);
 
         return { users: rankedUsers };
+    }
+
+    private async applyWeekendExclusion(items: TicketStats[]): Promise<TicketStats[]> {
+        return Promise.all(
+            items.map(async (stat) => {
+                let adjustedResolutionTimeSeconds = stat.resolutionTimeSeconds;
+                let adjustedAcceptanceTimeSeconds = stat.acceptanceTimeSeconds;
+
+                // Apply weekend exclusion to resolution time
+                if (stat.resolutionTimeSeconds !== null) {
+                    const ticket = await this.ticketRepository.findOne({
+                        where: { id: stat.ticketId },
+                        select: ['acceptedAt', 'completedAt'],
+                    });
+
+                    if (ticket?.acceptedAt && ticket?.completedAt) {
+                        const businessHours = this.businessHoursService.calculateBusinessHours(
+                            ticket.acceptedAt,
+                            ticket.completedAt,
+                        );
+                        adjustedResolutionTimeSeconds = businessHours * 3600;
+                    }
+                }
+
+                // Apply weekend exclusion to acceptance time
+                if (stat.acceptanceTimeSeconds !== null) {
+                    const ticket = await this.ticketRepository.findOne({
+                        where: { id: stat.ticketId },
+                        select: ['createdAt', 'acceptedAt'],
+                    });
+
+                    if (ticket?.createdAt && ticket?.acceptedAt) {
+                        const businessHours = this.businessHoursService.calculateBusinessHours(
+                            ticket.createdAt,
+                            ticket.acceptedAt,
+                        );
+                        adjustedAcceptanceTimeSeconds = businessHours * 3600;
+                    }
+                }
+
+                return {
+                    ...stat,
+                    resolutionTimeSeconds: adjustedResolutionTimeSeconds,
+                    acceptanceTimeSeconds: adjustedAcceptanceTimeSeconds,
+                };
+            }),
+        );
     }
 }
