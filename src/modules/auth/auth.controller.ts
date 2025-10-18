@@ -46,7 +46,7 @@ export class AuthController {
         };
     }
 
-    //TODO: This endpoint is to be used when a user forgets their password
+    //TODO: This endpoint is to be used when a user forgets their password hehe
     // @Patch('reset-password')
     // @UseGuards(AuthGuard('jwt'))
     // async resetPassword(@Request() req, @Body() { password }: ResetPasswordDto) {
