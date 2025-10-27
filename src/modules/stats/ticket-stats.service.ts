@@ -606,20 +606,22 @@ export class TicketStatsService {
 
         const resolutionRate = closedTickets > 0 ? resolvedTickets / closedTickets : 0;
 
-        const resolutionQueryOptions: any = {
-            where: {
-                currentTargetUserId: userId,
-                fromStatus: TicketStatus.InProgress,
-                timeSecondsInLastStatus: Not(IsNull()),
-                tenantId: accessProfile.tenantId,
-            },
-        };
+        const resolutionQuery = this.ticketUpdateRepository
+            .createQueryBuilder('update')
+            .leftJoin('update.ticket', 'ticket')
+            .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.InProgress })
+            .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+            .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.currentTargetUserId = :userId', { userId });
 
         if (dateFilter['createdAt']) {
-            resolutionQueryOptions.where.createdAt = dateFilter['createdAt'];
+            const startDate = (dateFilter['createdAt'] as any)._value;
+            resolutionQuery.andWhere('update.createdAt >= :startDate', {
+                startDate,
+            });
         }
 
-        const resolutionUpdates = await this.ticketUpdateRepository.find(resolutionQueryOptions);
+        const resolutionUpdates = await resolutionQuery.getMany();
         const resolutionTimeSum = resolutionUpdates.reduce(
             (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
             0,
@@ -629,20 +631,22 @@ export class TicketStatsService {
         const avgResolutionTimeSeconds =
             resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionTicketIds.size : 0;
 
-        const acceptanceQueryOptions: any = {
-            where: {
-                currentTargetUserId: userId,
-                fromStatus: TicketStatus.Pending,
-                timeSecondsInLastStatus: Not(IsNull()),
-                tenantId: accessProfile.tenantId,
-            },
-        };
+        const acceptanceQuery = this.ticketUpdateRepository
+            .createQueryBuilder('update')
+            .leftJoin('update.ticket', 'ticket')
+            .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
+            .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+            .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.currentTargetUserId = :userId', { userId });
 
         if (dateFilter['createdAt']) {
-            acceptanceQueryOptions.where.createdAt = dateFilter['createdAt'];
+            const startDate = (dateFilter['createdAt'] as any)._value;
+            acceptanceQuery.andWhere('update.createdAt >= :startDate', {
+                startDate,
+            });
         }
 
-        const acceptanceUpdates = await this.ticketUpdateRepository.find(acceptanceQueryOptions);
+        const acceptanceUpdates = await acceptanceQuery.getMany();
         const acceptanceTimeSum = acceptanceUpdates.reduce(
             (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
             0,
