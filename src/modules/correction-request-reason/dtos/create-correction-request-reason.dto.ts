@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsString, IsOptional, IsInt } from 'class-validator';
 import { CorrectionReason } from '../entities/correction-request-reason.entity';
 
 export class CreateCorrectionRequestDto {
@@ -9,4 +9,8 @@ export class CreateCorrectionRequestDto {
     @IsString()
     @IsNotEmpty()
     details: string;
+
+    @IsOptional()
+    @IsInt()
+    targetUserId?: number;
 }

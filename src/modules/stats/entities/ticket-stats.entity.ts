@@ -1,5 +1,6 @@
 import { DataSource, ViewColumn, ViewEntity } from 'typeorm';
 import { Ticket } from '../../ticket/entities/ticket.entity';
+import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-target-user.entity';
 
 @ViewEntity({
     expression: (dataSource: DataSource) =>
@@ -10,7 +11,7 @@ import { Ticket } from '../../ticket/entities/ticket.entity';
             .addSelect('ticket.updatedAt', 'updatedAt')
             .addSelect('ticket.id', 'ticketId')
             .addSelect('ticket.departmentId', 'departmentId')
-            .addSelect('ticket.targetUserId', 'targetUserId')
+            .addSelect('ticket.currentTargetUserId', 'currentTargetUserId')
             .addSelect('ticket.tenantId', 'tenantId')
             .addSelect(
                 "CASE WHEN ticket.status = 'finalizado' THEN true ELSE false END",
@@ -24,6 +25,9 @@ import { Ticket } from '../../ticket/entities/ticket.entity';
                 'CASE WHEN ticket.acceptedAt IS NOT NULL THEN EXTRACT(EPOCH FROM (ticket.acceptedAt - ticket.createdAt)) ELSE NULL END',
                 'acceptanceTimeSeconds',
             )
+            .addSelect('ARRAY_AGG(tu.userId ORDER BY tu.order)', 'targetUserIds')
+            .leftJoin(TicketTargetUser, 'tu', 'tu.ticketId = ticket.id')
+            .groupBy('ticket.id')
             .from(Ticket, 'ticket'),
 })
 export class TicketStats {
@@ -43,7 +47,10 @@ export class TicketStats {
     departmentId: number;
 
     @ViewColumn()
-    targetUserId: number;
+    currentTargetUserId: number;
+
+    @ViewColumn()
+    targetUserIds: number[];
 
     @ViewColumn()
     tenantId: number;

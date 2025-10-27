@@ -7,6 +7,9 @@ import {
     IsOptional,
     IsString,
     MinLength,
+    IsArray,
+    ArrayMaxSize,
+    ArrayMinSize,
 } from 'class-validator';
 import { TicketPriority } from '../entities/ticket.entity';
 
@@ -44,8 +47,11 @@ export class UpdateTicketDto {
     departmentId?: number;
 
     @IsOptional()
-    @IsInt()
-    targetUserId?: number;
+    @IsArray()
+    @ArrayMinSize(1)
+    @ArrayMaxSize(3)
+    @IsInt({ each: true })
+    targetUserIds?: number[];
 
     @IsOptional()
     @IsInt()
