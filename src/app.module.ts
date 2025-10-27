@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AppController } from './app.controller';
 import { DatabaseModule } from './database/database.module';
 import { DatabaseSeederService } from './database/seeder/database-seeder.service';
 import { AuthModule } from './modules/auth/auth.module';
@@ -56,7 +57,7 @@ import { VerificationCodeModule } from './modules/verification-code/verification
         SubscriptionPlanModule,
         TenantSubscriptionModule,
     ],
-    controllers: [],
+    controllers: [AppController],
     providers: [DatabaseSeederService],
 })
 export class AppModule {}
