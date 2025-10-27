@@ -7,6 +7,7 @@ import { TicketCancellationReason } from '../../ticket-cancellation-reason/entit
 import { TicketComment } from '../../ticket-comment/entities/ticket-comment.entity';
 import { TicketDisapprovalReason } from '../../ticket-disapproval-reason/entities/ticket-disapproval-reason.entity';
 import { TicketFile } from '../../ticket-file/entities/ticket-file.entity';
+import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-target-user.entity';
 import { TicketUpdate } from '../../ticket-updates/entities/ticket-update.entity';
 import { User } from '../../user/entities/user.entity';
 
@@ -60,12 +61,17 @@ export class Ticket extends TenantBoundBaseEntity {
     @JoinColumn({ name: 'requesterId' })
     requester: User;
 
-    @Column({ nullable: true })
-    targetUserId: number;
+    @OneToMany(() => TicketTargetUser, (ticketTargetUser) => ticketTargetUser.ticket, {
+        cascade: true,
+    })
+    targetUsers: TicketTargetUser[];
 
-    @ManyToOne(() => User, (user) => user.assignedTickets, { nullable: true })
-    @JoinColumn({ name: 'targetUserId' })
-    targetUser: User;
+    @Column({ nullable: true })
+    currentTargetUserId: number;
+
+    @ManyToOne(() => User, (user) => user.currentTickets, { nullable: true })
+    @JoinColumn({ name: 'currentTargetUserId' })
+    currentTargetUser: User;
 
     @Column({ nullable: true })
     reviewerId: number;

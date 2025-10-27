@@ -1,0 +1,34 @@
+import { MigrationInterface, QueryRunner } from "typeorm";
+
+export class UpdateTicketTargetUsers1761426827363 implements MigrationInterface {
+    name = 'UpdateTicketTargetUsers1761426827363'
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`DELETE FROM "typeorm_metadata" WHERE "type" = $1 AND "name" = $2 AND "schema" = $3`, ["VIEW","ticket_stats","public"]);
+        await queryRunner.query(`DROP VIEW "ticket_stats"`);
+        await queryRunner.query(`ALTER TABLE "ticket" DROP CONSTRAINT "FK_ffbc3abfcba5686e3af922a39c4"`);
+        await queryRunner.query(`ALTER TABLE "ticket" RENAME COLUMN "targetUserId" TO "currentTargetUserId"`);
+        await queryRunner.query(`CREATE TABLE "ticket_target_user" ("id" SERIAL NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "createdById" integer, "tenantId" integer NOT NULL, "updatedById" integer, "ticketId" integer NOT NULL, "userId" integer NOT NULL, "order" integer NOT NULL, CONSTRAINT "PK_2be2ef4562fefdfd908c8b9dee0" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_5d99e5e312f1bbd7a68c405aba" ON "ticket_target_user" ("tenantId", "ticketId", "order") `);
+        await queryRunner.query(`ALTER TABLE "ticket_target_user" ADD CONSTRAINT "FK_6de2c4a4761be792e4618682938" FOREIGN KEY ("ticketId") REFERENCES "ticket"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "ticket_target_user" ADD CONSTRAINT "FK_d6070cef5dfd20ae1619a31da40" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "ticket" ADD CONSTRAINT "FK_40ea5e549a523f17d97e909cb02" FOREIGN KEY ("currentTargetUserId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`CREATE VIEW "ticket_stats" AS SELECT "ticket"."id" AS "id", "ticket"."id" AS "ticketId", "ticket"."createdAt" AS "createdAt", "ticket"."updatedAt" AS "updatedAt", "ticket"."tenantId" AS "tenantId", "ticket"."departmentId" AS "departmentId", "ticket"."currentTargetUserId" AS "currentTargetUserId", CASE WHEN "ticket"."status" = 'finalizado' THEN true ELSE false END AS "isResolved", CASE WHEN "ticket"."completedAt" IS NOT NULL AND "ticket"."acceptedAt" IS NOT NULL THEN EXTRACT(EPOCH FROM ("ticket"."completedAt" - "ticket"."acceptedAt")) ELSE NULL END AS "resolutionTimeSeconds", CASE WHEN "ticket"."acceptedAt" IS NOT NULL THEN EXTRACT(EPOCH FROM ("ticket"."acceptedAt" - "ticket"."createdAt")) ELSE NULL END AS "acceptanceTimeSeconds", ARRAY_AGG("tu"."userId" ORDER BY "tu"."order") AS "targetUserIds" FROM "ticket" "ticket" LEFT JOIN "ticket_target_user" "tu" ON "tu"."ticketId" = "ticket"."id" GROUP BY "ticket"."id"`);
+        await queryRunner.query(`INSERT INTO "typeorm_metadata"("database", "schema", "table", "type", "name", "value") VALUES (DEFAULT, $1, DEFAULT, $2, $3, $4)`, ["public","VIEW","ticket_stats","SELECT \"ticket\".\"id\" AS \"id\", \"ticket\".\"id\" AS \"ticketId\", \"ticket\".\"createdAt\" AS \"createdAt\", \"ticket\".\"updatedAt\" AS \"updatedAt\", \"ticket\".\"tenantId\" AS \"tenantId\", \"ticket\".\"departmentId\" AS \"departmentId\", \"ticket\".\"currentTargetUserId\" AS \"currentTargetUserId\", CASE WHEN \"ticket\".\"status\" = 'finalizado' THEN true ELSE false END AS \"isResolved\", CASE WHEN \"ticket\".\"completedAt\" IS NOT NULL AND \"ticket\".\"acceptedAt\" IS NOT NULL THEN EXTRACT(EPOCH FROM (\"ticket\".\"completedAt\" - \"ticket\".\"acceptedAt\")) ELSE NULL END AS \"resolutionTimeSeconds\", CASE WHEN \"ticket\".\"acceptedAt\" IS NOT NULL THEN EXTRACT(EPOCH FROM (\"ticket\".\"acceptedAt\" - \"ticket\".\"createdAt\")) ELSE NULL END AS \"acceptanceTimeSeconds\", ARRAY_AGG(\"tu\".\"userId\" ORDER BY \"tu\".\"order\") AS \"targetUserIds\" FROM \"ticket\" \"ticket\" LEFT JOIN \"ticket_target_user\" \"tu\" ON \"tu\".\"ticketId\" = \"ticket\".\"id\" GROUP BY \"ticket\".\"id\""]);
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`DELETE FROM "typeorm_metadata" WHERE "type" = $1 AND "name" = $2 AND "schema" = $3`, ["VIEW","ticket_stats","public"]);
+        await queryRunner.query(`DROP VIEW "ticket_stats"`);
+        await queryRunner.query(`ALTER TABLE "ticket" DROP CONSTRAINT "FK_40ea5e549a523f17d97e909cb02"`);
+        await queryRunner.query(`ALTER TABLE "ticket_target_user" DROP CONSTRAINT "FK_d6070cef5dfd20ae1619a31da40"`);
+        await queryRunner.query(`ALTER TABLE "ticket_target_user" DROP CONSTRAINT "FK_6de2c4a4761be792e4618682938"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_5d99e5e312f1bbd7a68c405aba"`);
+        await queryRunner.query(`DROP TABLE "ticket_target_user"`);
+        await queryRunner.query(`ALTER TABLE "ticket" RENAME COLUMN "currentTargetUserId" TO "targetUserId"`);
+        await queryRunner.query(`ALTER TABLE "ticket" ADD CONSTRAINT "FK_ffbc3abfcba5686e3af922a39c4" FOREIGN KEY ("targetUserId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`CREATE VIEW "ticket_stats" AS SELECT "ticket"."id" AS "id", "ticket"."id" AS "ticketId", "ticket"."createdAt" AS "createdAt", "ticket"."updatedAt" AS "updatedAt", "ticket"."tenantId" AS "tenantId", "ticket"."departmentId" AS "departmentId", "ticket"."targetUserId" AS "targetUserId", CASE WHEN "ticket"."status" = 'finalizado' THEN true ELSE false END AS "isResolved", CASE WHEN "ticket"."completedAt" IS NOT NULL AND "ticket"."acceptedAt" IS NOT NULL THEN EXTRACT(EPOCH FROM ("ticket"."completedAt" - "ticket"."acceptedAt")) ELSE NULL END AS "resolutionTimeSeconds", CASE WHEN "ticket"."acceptedAt" IS NOT NULL THEN EXTRACT(EPOCH FROM ("ticket"."acceptedAt" - "ticket"."createdAt")) ELSE NULL END AS "acceptanceTimeSeconds" FROM "ticket" "ticket"`);
+        await queryRunner.query(`INSERT INTO "typeorm_metadata"("database", "schema", "table", "type", "name", "value") VALUES (DEFAULT, $1, DEFAULT, $2, $3, $4)`, ["public","VIEW","ticket_stats","SELECT \"ticket\".\"id\" AS \"id\", \"ticket\".\"id\" AS \"ticketId\", \"ticket\".\"createdAt\" AS \"createdAt\", \"ticket\".\"updatedAt\" AS \"updatedAt\", \"ticket\".\"tenantId\" AS \"tenantId\", \"ticket\".\"departmentId\" AS \"departmentId\", \"ticket\".\"targetUserId\" AS \"targetUserId\", CASE WHEN \"ticket\".\"status\" = 'finalizado' THEN true ELSE false END AS \"isResolved\", CASE WHEN \"ticket\".\"completedAt\" IS NOT NULL AND \"ticket\".\"acceptedAt\" IS NOT NULL THEN EXTRACT(EPOCH FROM (\"ticket\".\"completedAt\" - \"ticket\".\"acceptedAt\")) ELSE NULL END AS \"resolutionTimeSeconds\", CASE WHEN \"ticket\".\"acceptedAt\" IS NOT NULL THEN EXTRACT(EPOCH FROM (\"ticket\".\"acceptedAt\" - \"ticket\".\"createdAt\")) ELSE NULL END AS \"acceptanceTimeSeconds\" FROM \"ticket\" \"ticket\""]);
+    }
+
+}

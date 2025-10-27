@@ -9,6 +9,8 @@ import { TenantSubscriptionModule } from '../tenant-subscription/tenant-subscrip
 import { TicketCancellationReasonModule } from '../ticket-cancellation-reason/ticket-cancellation-reason.module';
 import { TicketDisapprovalReasonModule } from '../ticket-disapproval-reason/ticket-disapproval-reason.module';
 import { TicketFileModule } from '../ticket-file/ticket-file.module';
+import { TicketTargetUserModule } from '../ticket-target-user/ticket-target-user.module';
+import { TicketTargetUserRepository } from '../ticket-target-user/ticket-target-user.repository';
 import { TicketUpdateModule } from '../ticket-updates/ticket-update.module';
 import { UserModule } from '../user/user.module';
 import { Ticket } from './entities/ticket.entity';
@@ -30,9 +32,10 @@ import { TicketService } from './ticket.service';
         CorrectionRequestModule,
         EmailModule,
         StatsModule,
+        TicketTargetUserModule,
     ],
     exports: [TicketService],
     controllers: [TicketController],
-    providers: [TicketService, TicketRepository],
+    providers: [TicketService, TicketRepository, TicketTargetUserRepository],
 })
 export class TicketModule {}

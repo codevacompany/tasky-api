@@ -577,7 +577,6 @@ export class TicketStatsService {
                 break;
             case StatsPeriod.ALL:
             default:
-                // Get the last 50 tickets stats instead of all
                 limit = 50;
                 order = { createdAt: 'DESC' };
                 break;
@@ -586,7 +585,7 @@ export class TicketStatsService {
         const filters = {
             where: {
                 tenantId: accessProfile.tenantId,
-                targetUserId: userId,
+                currentTargetUserId: userId,
                 ...dateFilter,
             },
             ...(limit ? { take: limit } : {}),
@@ -607,17 +606,53 @@ export class TicketStatsService {
 
         const resolutionRate = closedTickets > 0 ? resolvedTickets / closedTickets : 0;
 
-        const avgResolutionTimeSeconds = this.calculateAverage(
-            ticketStats.items
-                .filter((stat) => stat.resolutionTimeSeconds !== null)
-                .map((stat) => stat.resolutionTimeSeconds),
+        const resolutionQuery = this.ticketUpdateRepository
+            .createQueryBuilder('update')
+            .leftJoin('update.ticket', 'ticket')
+            .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.InProgress })
+            .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+            .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.currentTargetUserId = :userId', { userId });
+
+        if (dateFilter['createdAt']) {
+            const startDate = (dateFilter['createdAt'] as any)._value;
+            resolutionQuery.andWhere('update.createdAt >= :startDate', {
+                startDate,
+            });
+        }
+
+        const resolutionUpdates = await resolutionQuery.getMany();
+        const resolutionTimeSum = resolutionUpdates.reduce(
+            (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
+            0,
         );
 
-        const avgAcceptanceTimeSeconds = this.calculateAverage(
-            ticketStats.items
-                .filter((stat) => stat.acceptanceTimeSeconds !== null)
-                .map((stat) => stat.acceptanceTimeSeconds),
+        const resolutionTicketIds = new Set(resolutionUpdates.map((update) => update.ticketId));
+        const avgResolutionTimeSeconds =
+            resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionTicketIds.size : 0;
+
+        const acceptanceQuery = this.ticketUpdateRepository
+            .createQueryBuilder('update')
+            .leftJoin('update.ticket', 'ticket')
+            .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
+            .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+            .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.currentTargetUserId = :userId', { userId });
+
+        if (dateFilter['createdAt']) {
+            const startDate = (dateFilter['createdAt'] as any)._value;
+            acceptanceQuery.andWhere('update.createdAt >= :startDate', {
+                startDate,
+            });
+        }
+
+        const acceptanceUpdates = await acceptanceQuery.getMany();
+        const acceptanceTimeSum = acceptanceUpdates.reduce(
+            (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
+            0,
         );
+        const avgAcceptanceTimeSeconds =
+            acceptanceUpdates.length > 0 ? acceptanceTimeSum / acceptanceUpdates.length : 0;
 
         const avgTotalTimeSeconds = avgResolutionTimeSeconds + avgAcceptanceTimeSeconds;
 
@@ -957,7 +992,7 @@ export class TicketStatsService {
             where: {
                 tenantId: accessProfile.tenantId,
                 createdAt: MoreThanOrEqual(threeMonthsAgo),
-                targetUserId: Not(IsNull()),
+                currentTargetUserId: Not(IsNull()),
             },
         });
 
@@ -990,7 +1025,7 @@ export class TicketStatsService {
 
         // Then count tickets for users who have them
         for (const stat of ticketStats) {
-            const userId = stat.targetUserId;
+            const userId = stat.currentTargetUserId;
 
             // Skip if we don't have this user (unlikely but as a safeguard)
             if (!userStatsMap.has(userId)) continue;

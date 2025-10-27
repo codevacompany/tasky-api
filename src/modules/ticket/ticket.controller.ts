@@ -122,22 +122,7 @@ export class TicketController {
         @GetQueryOptions() options: QueryOptions<Ticket>,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        // Create the base where clause with targetUserId
-        const whereClause: any = {
-            ...options.where,
-            targetUserId: userId,
-        };
-
-        // Only apply the default status filter if no status filter is provided
-        if (!options.where || options.where.status === undefined) {
-            whereClause.status = Not(
-                In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]),
-            );
-        }
-
-        options.where = whereClause;
-
-        return this.ticketService.findBy(accessProfile, options);
+        return this.ticketService.findByTargetUser(accessProfile, userId, options);
     }
 
     @Get('received/:userId')
@@ -234,6 +219,7 @@ export class TicketController {
             accessProfile,
             customId,
             updateAssigneeDto.targetUserId,
+            updateAssigneeDto.order,
         );
     }
 
@@ -248,5 +234,13 @@ export class TicketController {
             customId,
             updateReviewerDto.reviewerId,
         );
+    }
+
+    @Post(':id/send-to-next-department')
+    sendToNextDepartment(
+        @Param('id') customId: string,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.sendToNextDepartment(accessProfile, customId);
     }
 }

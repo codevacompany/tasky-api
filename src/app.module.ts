@@ -20,6 +20,7 @@ import { TicketCancellationReasonModule } from './modules/ticket-cancellation-re
 import { TicketCommentModule } from './modules/ticket-comment/ticket-comment.module';
 import { TicketDisapprovalReasonModule } from './modules/ticket-disapproval-reason/ticket-disapproval-reason.module';
 import { TicketFileModule } from './modules/ticket-file/ticket-file.module';
+import { TicketTargetUserModule } from './modules/ticket-target-user/ticket-target-user.module';
 import { TicketUpdateModule } from './modules/ticket-updates/ticket-update.module';
 import { TicketModule } from './modules/ticket/ticket.module';
 import { UserModule } from './modules/user/user.module';
@@ -48,6 +49,7 @@ import { VerificationCodeModule } from './modules/verification-code/verification
         RoleModule,
         AwsModule,
         TicketFileModule,
+        TicketTargetUserModule,
         StatsModule,
         LegalDocumentModule,
         PaymentModule,

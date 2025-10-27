@@ -4,4 +4,8 @@ export class UpdateTicketAssigneeDto {
     @IsNotEmpty()
     @IsNumber()
     targetUserId: number;
+
+    @IsNotEmpty()
+    @IsNumber()
+    order: number;
 }

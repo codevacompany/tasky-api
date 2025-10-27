@@ -108,8 +108,8 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         }
 
         if (
-            commentWithTicket.ticket.targetUserId &&
-            ticketCommentDto.userId !== commentWithTicket.ticket.targetUserId
+            commentWithTicket.ticket.currentTargetUserId &&
+            ticketCommentDto.userId !== commentWithTicket.ticket.currentTargetUserId
         ) {
             notifications.push(
                 this.notificationRepository.save({
@@ -117,7 +117,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
                     type: NotificationType.Comment,
                     message: '<p><span>user</span> comentou no ticket <span>resource</span>.</p>',
                     createdById: ticketCommentDto.userId,
-                    targetUserId: commentWithTicket.ticket.targetUserId,
+                    targetUserId: commentWithTicket.ticket.currentTargetUserId,
                     resourceId: commentWithTicket.ticketId,
                     resourceCustomId: commentWithTicket.ticketCustomId,
                 }),

@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsDateString, IsInt, IsBoolean, IsArray } from 'class-validator';
+import { IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsDateString, IsInt, IsBoolean, IsArray, ArrayMaxSize, ArrayMinSize } from 'class-validator';
 import { TicketPriority } from '../entities/ticket.entity';
 
 export class CreateTicketDto {
@@ -26,9 +26,11 @@ export class CreateTicketDto {
     @IsInt()
     requesterId: number;
 
-    @IsOptional()
-    @IsInt()
-    targetUserId?: number;
+    @IsArray()
+    @ArrayMinSize(1)
+    @ArrayMaxSize(3)
+    @IsInt({ each: true })
+    targetUserIds: number[];
 
     @IsOptional()
     @IsInt()
