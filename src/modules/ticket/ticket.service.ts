@@ -129,28 +129,100 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         accessProfile: AccessProfile,
         options?: QueryOptions<Ticket>,
     ): Promise<PaginatedResponse<Ticket>> {
-        const queryOptions = {
-            ...options,
-            where: this.buildQueryWhere(options.where),
-            relations: [
-                'requester',
-                'currentTargetUser',
-                'targetUsers',
-                'targetUsers.user',
-                'targetUsers.user.department',
-                'reviewer',
-                'department',
-                'category',
-                'files',
-                'comments',
-                'cancellationReason',
-                'disapprovalReason',
-                'correctionRequests',
-            ],
-            order: { createdAt: 'DESC' } as any,
-        };
+        //TODO: refactor this
+        const qb = this.repository
+            .createQueryBuilder('ticket')
+            .leftJoinAndSelect('ticket.requester', 'requester')
+            .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
+            .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
+            .leftJoinAndSelect('targetUsers.user', 'targetUser')
+            .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
+            .leftJoinAndSelect('ticket.reviewer', 'reviewer')
+            .leftJoinAndSelect('ticket.department', 'department')
+            .leftJoinAndSelect('ticket.category', 'category')
+            .leftJoinAndSelect('ticket.files', 'files')
+            .leftJoinAndSelect('ticket.comments', 'comments')
+            .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
+            .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
+            .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .orderBy('ticket.createdAt', 'DESC');
 
-        return super.findMany(accessProfile, queryOptions);
+        // Apply the WHERE filters from options
+        let hasStatusFilter = false;
+
+        if (options?.where) {
+            // Check if status filter is provided
+            if (options.where.status !== undefined) {
+                hasStatusFilter = true;
+                const statusValue = options.where.status as any;
+
+                // Check if it's a TypeORM operator by looking for _type property
+                if (statusValue && typeof statusValue === 'object' && '_type' in statusValue) {
+                    // Handle TypeORM operators like Not(In([...]))
+                    if (statusValue._type === 'not' && statusValue._value?._type === 'in') {
+                        const excludedStatuses = statusValue._value._value;
+                        // Don't exclude all of them, we want to include recent completed ones
+                        qb.andWhere('ticket.status NOT IN (:...statuses)', {
+                            statuses: excludedStatuses.filter(
+                                (s: string) => s !== TicketStatus.Completed,
+                            ),
+                        });
+                    } else if (statusValue._type === 'not') {
+                        // If it's just a Not operator without In, handle it
+                        console.log('Detected Not operator without In', statusValue);
+                    }
+                } else {
+                    // Simple status filter
+                    qb.andWhere('ticket.status = :status', { status: options.where.status });
+                }
+            }
+
+            // Apply other filters
+            if (options.where.name) {
+                const nameFilter = this.buildQueryWhere({ name: options.where.name });
+                qb.andWhere('ticket.name ILIKE :name', { name: nameFilter.name });
+            }
+
+            if (options.where.priority) {
+                qb.andWhere('ticket.priority = :priority', { priority: options.where.priority });
+            }
+
+            if (options.where.requesterId) {
+                qb.andWhere('ticket.requesterId = :requesterId', {
+                    requesterId: options.where.requesterId,
+                });
+            }
+        }
+
+        // If no status filter is provided, exclude terminal statuses OR include recent completed
+        if (!hasStatusFilter) {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            qb.andWhere(
+                '(ticket.status NOT IN (:...statuses) OR (ticket.status = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
+                {
+                    statuses: [TicketStatus.Rejected, TicketStatus.Canceled],
+                    completedStatus: TicketStatus.Completed,
+                    sevenDaysAgo: sevenDaysAgo,
+                },
+            );
+        }
+
+        const page = options?.page || 1;
+        const limit = options?.limit || 10;
+        qb.skip((page - 1) * limit).take(limit);
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
     }
 
     async findByReceived(
@@ -185,9 +257,17 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         if (options?.where?.status) {
             qb.andWhere('ticket.status = :status', { status: options.where.status });
         } else {
-            qb.andWhere('ticket.status NOT IN (:...statuses)', {
-                statuses: [TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled],
-            });
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            qb.andWhere(
+                '(ticket.status NOT IN (:...statuses) OR (ticket.status = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
+                {
+                    statuses: [TicketStatus.Rejected, TicketStatus.Canceled],
+                    completedStatus: TicketStatus.Completed,
+                    sevenDaysAgo: sevenDaysAgo,
+                },
+            );
         }
 
         if (options?.where) {
@@ -246,9 +326,18 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         if (options?.where?.status) {
             qb.andWhere('ticket.status = :status', { status: options.where.status });
         } else {
-            qb.andWhere('ticket.status NOT IN (:...statuses)', {
-                statuses: [TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled],
-            });
+            // Include completed tickets from the last 7 days
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            qb.andWhere(
+                '(ticket.status NOT IN (:...statuses) OR (ticket.status = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
+                {
+                    statuses: [TicketStatus.Rejected, TicketStatus.Canceled],
+                    completedStatus: TicketStatus.Completed,
+                    sevenDaysAgo: sevenDaysAgo,
+                },
+            );
         }
 
         if (options?.where) {
@@ -1214,9 +1303,18 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .andWhere('(ticket.requesterId = :userId OR ticket.currentTargetUserId = :userId)', {
                 userId: accessProfile.userId,
             })
-            .andWhere('ticket.status IN (:...statuses)', {
-                statuses: [TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled],
-            })
+            .andWhere(
+                '(ticket.status IN (:...terminalStatuses) OR (ticket.status = :completedStatus AND ticket.completedAt < :sevenDaysAgo))',
+                {
+                    terminalStatuses: [TicketStatus.Rejected, TicketStatus.Canceled],
+                    completedStatus: TicketStatus.Completed,
+                    sevenDaysAgo: (() => {
+                        const date = new Date();
+                        date.setDate(date.getDate() - 7);
+                        return date;
+                    })(),
+                },
+            )
             .orderBy('ticket.createdAt', 'DESC');
 
         if (options?.where) {
