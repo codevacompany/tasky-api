@@ -2,9 +2,10 @@ import { Column, Entity } from 'typeorm';
 import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
 
 export enum RoleName {
-    GlobalAdmin = 'Global Admin',
-    TenantAdmin = 'Tenant Admin',
-    User = 'User',
+    GlobalAdmin = 'Administrador Global',
+    TenantAdmin = 'Administrador',
+    Supervisor = 'Supervisor',
+    User = 'Usuário',
 }
 
 @Entity()
