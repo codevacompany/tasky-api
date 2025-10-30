@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { Seeder } from '@jorgebodega/typeorm-seeding';
 import { User } from '../../modules/user/entities/user.entity';
 import { Role, RoleName } from '../../modules/role/entities/role.entity';
@@ -35,7 +35,10 @@ export class UserSeeder extends Seeder {
         const userRepository = dataSource.getRepository(User);
         const tenantRepository = dataSource.getRepository(Tenant);
 
-        const tenants = await tenantRepository.find();
+        // Only seed users for tenants created by TenantSeeder
+        const seededCustomKeys =
+            process.env.APP_ENV === 'dev' ? ['CDV', 'EMP', 'STT'] : ['CDV'];
+        const tenants = await tenantRepository.find({ where: { customKey: In(seededCustomKeys) } });
         if (tenants.length === 0) {
             console.log('⚠️ No tenants found. Please run TenantSeeder first.');
             return;
