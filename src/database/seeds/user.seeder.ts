@@ -47,6 +47,7 @@ export class UserSeeder extends Seeder {
         const rolesData: RoleData[] = [
             { name: RoleName.GlobalAdmin },
             { name: RoleName.TenantAdmin },
+            { name: RoleName.Supervisor },
             { name: RoleName.User },
         ];
 
