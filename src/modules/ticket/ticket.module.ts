@@ -10,6 +10,7 @@ import { TicketCancellationReasonModule } from '../ticket-cancellation-reason/ti
 import { TicketDisapprovalReasonModule } from '../ticket-disapproval-reason/ticket-disapproval-reason.module';
 import { TicketFileModule } from '../ticket-file/ticket-file.module';
 import { TicketTargetUserModule } from '../ticket-target-user/ticket-target-user.module';
+import { RoleModule } from '../role/role.module';
 import { TicketTargetUserRepository } from '../ticket-target-user/ticket-target-user.repository';
 import { TicketUpdateModule } from '../ticket-updates/ticket-update.module';
 import { UserModule } from '../user/user.module';
@@ -33,6 +34,7 @@ import { TicketService } from './ticket.service';
         EmailModule,
         StatsModule,
         TicketTargetUserModule,
+        RoleModule,
     ],
     exports: [TicketService],
     controllers: [TicketController],

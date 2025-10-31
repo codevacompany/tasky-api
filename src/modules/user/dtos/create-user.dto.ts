@@ -1,4 +1,12 @@
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+    IsBoolean,
+    IsEmail,
+    IsInt,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    MinLength,
+} from 'class-validator';
 import { LettersOnly } from '../../../shared/decorators/letters-only.decorator';
 
 export class CreateUserDto {
@@ -26,9 +34,9 @@ export class CreateUserDto {
     @IsNotEmpty()
     departmentId?: number;
 
-    @IsBoolean()
+    @IsInt()
     @IsOptional()
-    isAdmin?: boolean;
+    roleId?: number;
 
     @IsBoolean()
     @IsOptional()

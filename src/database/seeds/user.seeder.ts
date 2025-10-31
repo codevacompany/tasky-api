@@ -36,8 +36,7 @@ export class UserSeeder extends Seeder {
         const tenantRepository = dataSource.getRepository(Tenant);
 
         // Only seed users for tenants created by TenantSeeder
-        const seededCustomKeys =
-            process.env.APP_ENV === 'dev' ? ['CDV', 'EMP', 'STT'] : ['CDV'];
+        const seededCustomKeys = process.env.APP_ENV === 'dev' ? ['CDV', 'EMP', 'STT'] : ['CDV'];
         const tenants = await tenantRepository.find({ where: { customKey: In(seededCustomKeys) } });
         if (tenants.length === 0) {
             console.log('⚠️ No tenants found. Please run TenantSeeder first.');
