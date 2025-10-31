@@ -1,7 +1,11 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
-import { CustomConflictException } from '../../shared/exceptions/http-exception';
+import {
+    CustomConflictException,
+    CustomBadRequestException,
+    CustomForbiddenException,
+} from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
 import { FindOneQueryOptions, PaginatedResponse, QueryOptions } from '../../shared/types/http';
@@ -169,10 +173,29 @@ export class UserService extends TenantBoundBaseService<User> {
         const hashedPassword = this.encryptionService.hashSync(password);
         data.password = hashedPassword;
 
-        const roleName = data.isAdmin ? RoleName.TenantAdmin : RoleName.User;
-        const userRole = await this.roleRepository.findOneBy({ name: roleName });
+        let roleIdToAssign: number | undefined = data.roleId;
+        if (roleIdToAssign) {
+            const role = await this.roleRepository.findOne({
+                where: { id: roleIdToAssign } as any,
+            });
+            if (!role) {
+                throw new CustomBadRequestException({
+                    code: 'invalid-role',
+                    message: 'Role not found',
+                });
+            }
+            if (role.name === RoleName.GlobalAdmin) {
+                throw new CustomForbiddenException({
+                    code: 'role-not-assignable',
+                    message: 'Role not assignable',
+                });
+            }
+        } else {
+            const defaultRole = await this.roleRepository.findOneBy({ name: RoleName.User });
+            roleIdToAssign = defaultRole?.id;
+        }
 
-        await this.save(accessProfile, { ...data, roleId: userRole.id });
+        await this.save(accessProfile, { ...data, roleId: roleIdToAssign });
 
         return this.authService.login({
             email: data.email,

@@ -73,23 +73,7 @@ export class TicketController {
         @GetQueryOptions() options: QueryOptions<Ticket>,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        // Create the base where clause with departmentId
-        const whereClause: any = {
-            ...options.where,
-            departmentId,
-            isPrivate: false,
-        };
-
-        // Only apply the default status filter if no status filter is provided
-        if (!options.where || options.where.status === undefined) {
-            whereClause.status = Not(
-                In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]),
-            );
-        }
-
-        options.where = whereClause;
-
-        return this.ticketService.findBy(accessProfile, options);
+        return this.ticketService.findByDepartment(accessProfile, departmentId, options);
     }
 
     @Get('requester/:requesterId')

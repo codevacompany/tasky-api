@@ -15,6 +15,11 @@ export class RoleController {
         return this.roleService.findAll({ name }, options);
     }
 
+    @Get('assignable')
+    async findAssignable(@GetQueryOptions() options: QueryOptions<Role>) {
+        return this.roleService.findAssignable(options);
+    }
+
     @Get(':name')
     async findByName(@Param('name') name: string) {
         return this.roleService.findByName(name);

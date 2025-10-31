@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, FindOptionsWhere, ILike, In } from 'typeorm';
+import { DataSource, FindOptionsWhere, In } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import {
@@ -35,6 +35,8 @@ import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketRepository } from './ticket.repository';
+import { RoleName } from '../role/entities/role.entity';
+import { RoleService } from '../role/role.service';
 
 @Injectable()
 export class TicketService extends TenantBoundBaseService<Ticket> {
@@ -53,6 +55,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly emailService: EmailService,
         private readonly tenantSubscriptionService: TenantSubscriptionService,
         private readonly ticketTargetUserRepository: TicketTargetUserRepository,
+        private readonly roleService: RoleService,
     ) {
         super(ticketRepository);
     }
@@ -78,6 +81,27 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             tenantAware: false,
         };
         return super.findMany(accessProfile, filters);
+    }
+
+    async findByDepartment(
+        accessProfile: AccessProfile,
+        departmentId: number,
+        options?: QueryOptions<Ticket>,
+    ) {
+        const requesterRole = await this.roleService.findById(accessProfile.roleId);
+
+        const isSupervisor = requesterRole?.name === RoleName.Supervisor;
+
+        const whereClause: any = {
+            ...(options?.where || {}),
+            departmentId,
+        };
+
+        if (!isSupervisor) {
+            whereClause.isPrivate = false;
+        }
+
+        return this.findBy(accessProfile, { ...options, where: whereClause });
     }
 
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
@@ -129,86 +153,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         accessProfile: AccessProfile,
         options?: QueryOptions<Ticket>,
     ): Promise<PaginatedResponse<Ticket>> {
-        //TODO: refactor this
-        const qb = this.repository
-            .createQueryBuilder('ticket')
-            .leftJoinAndSelect('ticket.requester', 'requester')
-            .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
-            .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
-            .leftJoinAndSelect('targetUsers.user', 'targetUser')
-            .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
-            .leftJoinAndSelect('ticket.reviewer', 'reviewer')
-            .leftJoinAndSelect('ticket.department', 'department')
-            .leftJoinAndSelect('ticket.category', 'category')
-            .leftJoinAndSelect('ticket.files', 'files')
-            .leftJoinAndSelect('ticket.comments', 'comments')
-            .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
-            .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
-            .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
-            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-            .orderBy('ticket.createdAt', 'DESC');
-
-        // Apply the WHERE filters from options
-        let hasStatusFilter = false;
-
-        if (options?.where) {
-            // Check if status filter is provided
-            if (options.where.status !== undefined) {
-                hasStatusFilter = true;
-                const statusValue = options.where.status as any;
-
-                // Check if it's a TypeORM operator by looking for _type property
-                if (statusValue && typeof statusValue === 'object' && '_type' in statusValue) {
-                    // Handle TypeORM operators like Not(In([...]))
-                    if (statusValue._type === 'not' && statusValue._value?._type === 'in') {
-                        const excludedStatuses = statusValue._value._value;
-                        // Don't exclude all of them, we want to include recent completed ones
-                        qb.andWhere('ticket.status NOT IN (:...statuses)', {
-                            statuses: excludedStatuses.filter(
-                                (s: string) => s !== TicketStatus.Completed,
-                            ),
-                        });
-                    } else if (statusValue._type === 'not') {
-                        // If it's just a Not operator without In, handle it
-                        console.log('Detected Not operator without In', statusValue);
-                    }
-                } else {
-                    // Simple status filter
-                    qb.andWhere('ticket.status = :status', { status: options.where.status });
-                }
-            }
-
-            // Apply other filters
-            if (options.where.name) {
-                const nameFilter = this.buildQueryWhere({ name: options.where.name });
-                qb.andWhere('ticket.name ILIKE :name', { name: nameFilter.name });
-            }
-
-            if (options.where.priority) {
-                qb.andWhere('ticket.priority = :priority', { priority: options.where.priority });
-            }
-
-            if (options.where.requesterId) {
-                qb.andWhere('ticket.requesterId = :requesterId', {
-                    requesterId: options.where.requesterId,
-                });
-            }
-        }
-
-        // If no status filter is provided, exclude terminal statuses OR include recent completed
-        if (!hasStatusFilter) {
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-            qb.andWhere(
-                '(ticket.status NOT IN (:...statuses) OR (ticket.status = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
-                {
-                    statuses: [TicketStatus.Rejected, TicketStatus.Canceled],
-                    completedStatus: TicketStatus.Completed,
-                    sevenDaysAgo: sevenDaysAgo,
-                },
-            );
-        }
+        const qb = this.buildBaseQueryBuilder(accessProfile.tenantId);
+        this.applyWhereFilters(qb, options?.where);
+        this.applyDefaultStatusFilter(qb, options?.where?.status);
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
@@ -223,6 +170,97 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             limit,
             totalPages: Math.ceil(total / limit),
         };
+    }
+
+    private buildBaseQueryBuilder(tenantId: number) {
+        return this.repository
+            .createQueryBuilder('ticket')
+            .leftJoinAndSelect('ticket.requester', 'requester')
+            .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
+            .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
+            .leftJoinAndSelect('targetUsers.user', 'targetUser')
+            .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
+            .leftJoinAndSelect('ticket.reviewer', 'reviewer')
+            .leftJoinAndSelect('ticket.department', 'department')
+            .leftJoinAndSelect('ticket.category', 'category')
+            .leftJoinAndSelect('ticket.files', 'files')
+            .leftJoinAndSelect('ticket.comments', 'comments')
+            .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
+            .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
+            .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
+            .where('ticket.tenantId = :tenantId', { tenantId })
+            .orderBy('ticket.createdAt', 'DESC');
+    }
+
+    private applyWhereFilters(
+        qb: ReturnType<typeof this.repository.createQueryBuilder>,
+        where?: FindOptionsWhere<Ticket>,
+    ) {
+        if (!where) return;
+
+        const simpleEqualityFields: (keyof Ticket)[] = [
+            'departmentId',
+            'isPrivate',
+            'requesterId',
+            'priority',
+        ] as const;
+
+        for (const field of simpleEqualityFields) {
+            if (where[field] !== undefined && where[field] !== null) {
+                qb.andWhere(`ticket.${field} = :${field}`, { [field]: where[field] });
+            }
+        }
+
+        if (where.name) {
+            qb.andWhere('ticket.name ILIKE :name', { name: `%${where.name}%` });
+        }
+    }
+
+    private applyDefaultStatusFilter(
+        qb: ReturnType<typeof this.repository.createQueryBuilder>,
+        statusFilter?: any,
+    ) {
+        if (statusFilter !== undefined) {
+            this.applyStatusFilter(qb, statusFilter);
+            return;
+        }
+
+        // Default: exclude terminal statuses OR include recent completed tickets (last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        qb.andWhere(
+            '(ticket.status NOT IN (:...terminalStatuses) OR (ticket.status = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
+            {
+                terminalStatuses: [TicketStatus.Rejected, TicketStatus.Canceled],
+                completedStatus: TicketStatus.Completed,
+                sevenDaysAgo,
+            },
+        );
+    }
+
+    private applyStatusFilter(
+        qb: ReturnType<typeof this.repository.createQueryBuilder>,
+        statusValue: any,
+    ) {
+        // Handle TypeORM operators (e.g., Not(In([...])))
+        if (statusValue && typeof statusValue === 'object' && '_type' in statusValue) {
+            if (statusValue._type === 'not' && statusValue._value?._type === 'in') {
+                const excludedStatuses = statusValue._value._value;
+                // Filter out Completed from exclusion to allow recent completed tickets
+                qb.andWhere('ticket.status NOT IN (:...excludedStatuses)', {
+                    excludedStatuses: excludedStatuses.filter(
+                        (s: string) => s !== TicketStatus.Completed,
+                    ),
+                });
+            } else {
+                // Log unhandled TypeORM operator for debugging
+                console.warn('Unhandled TypeORM status operator:', statusValue);
+            }
+        } else {
+            // Simple equality status filter
+            qb.andWhere('ticket.status = :status', { status: statusValue });
+        }
     }
 
     async findByReceived(
@@ -364,16 +402,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         };
     }
 
-    private buildQueryWhere(where: FindOptionsWhere<Ticket>) {
-        const queryWhere: any = { ...where };
-
-        if (where.name) {
-            queryWhere.name = ILike(`%${where.name}%`);
-        }
-
-        return queryWhere;
-    }
-
     async create(accessProfile: AccessProfile, ticketDto: CreateTicketDto) {
         const { files, targetUserIds, ...ticketData } = ticketDto;
 
@@ -400,6 +428,26 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         const firstTargetUser = targetUsers.find((user) => user.id === targetUserIds[0]);
+
+        let reviewerId: number | null =
+            ticketDto.requesterId !== firstTargetUser.id ? ticketDto.requesterId : null;
+
+        if (ticketDto.requesterId === firstTargetUser.id) {
+            const supervisorRole = await this.roleService.findByName(RoleName.Supervisor);
+            if (supervisorRole) {
+                const departmentSupervisor = await this.userRepository.findOne({
+                    where: {
+                        tenantId: accessProfile.tenantId,
+                        departmentId: requester.departmentId,
+                        roleId: supervisorRole.id,
+                        isActive: true,
+                    } as any,
+                });
+                reviewerId = departmentSupervisor ? departmentSupervisor.id : null;
+            } else {
+                reviewerId = null;
+            }
+        }
 
         let createdTicket: Ticket;
 
@@ -432,8 +480,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 createdById: requester.id,
                 updatedById: requester.id,
                 currentTargetUserId: firstTargetUser.id,
-                reviewerId:
-                    ticketDto.requesterId !== firstTargetUser.id ? ticketDto.requesterId : null,
+                reviewerId,
             });
 
             createdTicket = await manager.save(ticket);
