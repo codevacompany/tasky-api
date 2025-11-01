@@ -70,7 +70,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'targetUsers.user',
                 'targetUsers.user.department',
                 'reviewer',
-                'department',
                 'category',
                 'files',
                 'cancellationReason',
@@ -92,40 +91,100 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const isSupervisor = requesterRole?.name === RoleName.Supervisor;
 
-        const whereClause: any = {
-            ...(options?.where || {}),
-            departmentId,
-        };
+        const qb = this.buildBaseQueryBuilder(accessProfile.tenantId);
+
+        // Filter by department via targetUsers using EXISTS to avoid duplicates
+        qb.andWhere(
+            `EXISTS (
+                SELECT 1 
+                FROM ticket_target_user ttu
+                INNER JOIN "user" u ON u.id = ttu."userId"
+                WHERE ttu."ticketId" = ticket.id 
+                AND u."departmentId" = :departmentId
+            )`,
+            { departmentId },
+        );
 
         if (!isSupervisor) {
-            whereClause.isPrivate = false;
+            qb.andWhere('ticket.isPrivate = :isPrivate', { isPrivate: false });
         }
 
-        return this.findBy(accessProfile, { ...options, where: whereClause });
+        if (options?.where) {
+            this.applyWhereFilters(qb, options.where);
+        }
+
+        if (options?.where?.status !== undefined) {
+            this.applyStatusFilter(qb, options.where.status);
+        } else {
+            this.applyDefaultStatusFilter(qb);
+        }
+
+        const page = options?.page || 1;
+        const limit = options?.limit || 10;
+        qb.skip((page - 1) * limit).take(limit);
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
     }
 
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
-        const filters = {
-            ...options,
-            relations: [
-                'requester',
-                'currentTargetUser',
-                'targetUsers',
-                'targetUsers.user',
-                'targetUsers.user.department',
-                'reviewer',
-                'department',
-                'category',
-                'files',
-                'comments',
-                'updates',
-                'cancellationReason',
-                'disapprovalReason',
-                'correctionRequests',
-            ],
-            order: { createdAt: 'DESC' } as any,
+        const qb = this.buildBaseQueryBuilder(accessProfile.tenantId);
+
+        // Check if user is Supervisor and filter by their department
+        const user = await this.userRepository.findOne({
+            where: { id: accessProfile.userId, tenantId: accessProfile.tenantId },
+        });
+
+        if (user) {
+            const role = await this.roleService.findById(user.roleId);
+            if (role && role.name === 'Supervisor') {
+                // Filter by department if Supervisor using EXISTS subquery
+                qb.andWhere(
+                    `EXISTS (
+                        SELECT 1 
+                        FROM ticket_target_user ttu
+                        INNER JOIN "user" u ON u.id = ttu."userId"
+                        WHERE ttu."ticketId" = ticket.id 
+                        AND u."departmentId" = :departmentId
+                    )`,
+                    { departmentId: user.departmentId },
+                );
+            }
+        }
+
+        // Apply where filters
+        if (options?.where) {
+            this.applyWhereFilters(qb, options.where);
+        }
+
+        // Apply status filter
+        if (options?.where?.status !== undefined) {
+            this.applyStatusFilter(qb, options.where.status);
+        } else {
+            this.applyDefaultStatusFilter(qb);
+        }
+
+        // Apply pagination
+        const page = options?.page || 1;
+        const limit = options?.limit || 10;
+        qb.skip((page - 1) * limit).take(limit);
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
         };
-        return super.findMany(accessProfile, filters);
     }
 
     async findById(accessProfile: AccessProfile, customId: string): Promise<Ticket> {
@@ -138,7 +197,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'targetUsers.user',
                 'targetUsers.user.department',
                 'reviewer',
-                'department',
                 'category',
                 'files',
                 'comments',
@@ -154,6 +212,29 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         options?: QueryOptions<Ticket>,
     ): Promise<PaginatedResponse<Ticket>> {
         const qb = this.buildBaseQueryBuilder(accessProfile.tenantId);
+
+        // Check if user is Supervisor and filter by their department
+        const user = await this.userRepository.findOne({
+            where: { id: accessProfile.userId, tenantId: accessProfile.tenantId },
+        });
+
+        if (user) {
+            const role = await this.roleService.findById(user.roleId);
+            if (role && role.name === 'Supervisor') {
+                // Filter by department if Supervisor using EXISTS subquery
+                qb.andWhere(
+                    `EXISTS (
+                        SELECT 1 
+                        FROM ticket_target_user ttu
+                        INNER JOIN "user" u ON u.id = ttu."userId"
+                        WHERE ttu."ticketId" = ticket.id 
+                        AND u."departmentId" = :departmentId
+                    )`,
+                    { departmentId: user.departmentId },
+                );
+            }
+        }
+
         this.applyWhereFilters(qb, options?.where);
         this.applyDefaultStatusFilter(qb, options?.where?.status);
 
@@ -181,7 +262,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('targetUsers.user', 'targetUser')
             .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
             .leftJoinAndSelect('ticket.reviewer', 'reviewer')
-            .leftJoinAndSelect('ticket.department', 'department')
             .leftJoinAndSelect('ticket.category', 'category')
             .leftJoinAndSelect('ticket.files', 'files')
             .leftJoinAndSelect('ticket.comments', 'comments')
@@ -199,7 +279,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         if (!where) return;
 
         const simpleEqualityFields: (keyof Ticket)[] = [
-            'departmentId',
             'isPrivate',
             'requesterId',
             'priority',
@@ -276,7 +355,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('targetUsers.user', 'targetUser')
             .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
             .leftJoinAndSelect('ticket.reviewer', 'reviewer')
-            .leftJoinAndSelect('ticket.department', 'department')
             .leftJoinAndSelect('ticket.category', 'category')
             .leftJoinAndSelect('ticket.files', 'files')
             .leftJoinAndSelect('ticket.comments', 'comments')
@@ -345,7 +423,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('targetUsers.user', 'targetUser')
             .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
             .leftJoinAndSelect('ticket.reviewer', 'reviewer')
-            .leftJoinAndSelect('ticket.department', 'department')
             .leftJoinAndSelect('ticket.category', 'category')
             .leftJoinAndSelect('ticket.files', 'files')
             .leftJoinAndSelect('ticket.comments', 'comments')
@@ -1340,7 +1417,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
             .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
             .leftJoinAndSelect('targetUsers.user', 'targetUser')
-            .leftJoinAndSelect('ticket.department', 'department')
             .leftJoinAndSelect('ticket.files', 'files')
             .leftJoinAndSelect('ticket.updates', 'updates')
             .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
@@ -1368,11 +1444,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             if (options.where.name) {
                 qb.andWhere('ticket.name ILIKE :name', { name: `%${options.where.name}%` });
             }
-            if (options.where.departmentId) {
-                qb.andWhere('ticket.departmentId = :departmentId', {
-                    departmentId: options.where.departmentId,
-                });
-            }
+            // departmentId filter removed - now filtered via targetUsers' departments
         }
 
         const page = options?.page || 1;

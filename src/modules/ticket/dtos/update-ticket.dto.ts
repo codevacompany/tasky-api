@@ -43,10 +43,6 @@ export class UpdateTicketDto {
     // disapprovalReason?: string;
 
     @IsOptional()
-    @IsInt()
-    departmentId?: number;
-
-    @IsOptional()
     @IsArray()
     @ArrayMinSize(1)
     @ArrayMaxSize(3)
