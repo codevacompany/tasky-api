@@ -40,6 +40,8 @@ import { TicketTrendsResponseDto, TrendDataPointDto } from './dtos/ticket-trends
 import { UserRankingItemDto, UserRankingResponseDto } from './dtos/user-ranking.dto';
 import { TicketStats } from './entities/ticket-stats.entity';
 import { StatsPeriod } from './stats.controller';
+import { RoleService } from '../role/role.service';
+import { RoleName } from '../role/entities/role.entity';
 
 @Injectable()
 export class TicketStatsService {
@@ -54,7 +56,25 @@ export class TicketStatsService {
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
         private readonly businessHoursService: BusinessHoursService,
+        private readonly roleService: RoleService,
     ) {}
+
+    /**
+     * Helper method to check if user is a Supervisor and get their departmentId
+     * @returns departmentId if user is Supervisor, null otherwise
+     */
+    private async getSupervisorDepartmentId(accessProfile: AccessProfile): Promise<number | null> {
+        const user = await this.userRepository.findOne({
+            where: { id: accessProfile.userId, tenantId: accessProfile.tenantId },
+        });
+
+        if (!user) return null;
+
+        const role = await this.roleService.findById(user.roleId);
+        if (!role || role.name !== RoleName.Supervisor) return null;
+
+        return user.departmentId;
+    }
 
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<TicketStats>) {
         const filters = {
@@ -116,6 +136,9 @@ export class TicketStatsService {
                 break;
         }
 
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
         // Get ticket stats for the tenant with date filter
         const filters = {
             where: {
@@ -127,8 +150,17 @@ export class TicketStatsService {
         };
 
         const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
-        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(items);
-        const ticketStats = { items: itemsWithWeekendExclusion, total };
+
+        // Filter by department if Supervisor
+        let filteredItems = items;
+        if (supervisorDepartmentId !== null) {
+            filteredItems = items.filter(
+                (stat) => stat.departmentIds && stat.departmentIds.includes(supervisorDepartmentId),
+            );
+        }
+
+        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(filteredItems);
+        const ticketStats = { items: itemsWithWeekendExclusion, total: filteredItems.length };
 
         // Calculate overall stats
         const totalTickets = ticketStats.items.length;
@@ -203,19 +235,36 @@ export class TicketStatsService {
             },
         };
 
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
         const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
 
-        // Apply weekend exclusion to time calculations
-        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(items);
-        const ticketStats = { items: itemsWithWeekendExclusion, total };
+        // Filter by department if Supervisor
+        let filteredItems = items;
+        if (supervisorDepartmentId !== null) {
+            filteredItems = items.filter(
+                (stat) => stat.departmentIds && stat.departmentIds.includes(supervisorDepartmentId),
+            );
+        }
 
+        // Apply weekend exclusion to time calculations
+        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(filteredItems);
+        const ticketStats = { items: itemsWithWeekendExclusion, total: filteredItems.length };
+
+        // If Supervisor, only return stats for their department
         const departments = await this.departmentService.findMany(accessProfile, {
             paginated: false,
         });
 
-        return departments.items.map((department) => {
+        const departmentsToProcess =
+            supervisorDepartmentId !== null
+                ? departments.items.filter((dept) => dept.id === supervisorDepartmentId)
+                : departments.items;
+
+        return departmentsToProcess.map((department) => {
             const departmentTickets = ticketStats.items.filter(
-                (stat) => stat.departmentId === department.id,
+                (stat) => stat.departmentIds && stat.departmentIds.includes(department.id),
             );
             const totalDeptTickets = departmentTickets.length;
             const resolvedDeptTickets = departmentTickets.filter((stat) => stat.isResolved).length;
@@ -289,13 +338,29 @@ export class TicketStatsService {
         // Get tickets for the tenant from the last 30 days only
         const startOfRange = startOfDay(subDays(endDate, days - 1));
 
-        const tickets = await this.ticketRepository.find({
-            where: {
-                tenantId: accessProfile.tenantId,
-                createdAt: MoreThanOrEqual(startOfRange),
-            },
-            select: ['id', 'createdAt', 'completedAt', 'status'],
-        });
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
+        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticket.status']);
+
+        // Filter by department if Supervisor using EXISTS subquery
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1 
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id 
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const tickets = await qb.getMany();
 
         return dateRanges.map(({ date, startOfPeriod, endOfPeriod }) => {
             const total = tickets.filter((ticket) => ticket.createdAt <= endOfPeriod).length;
@@ -338,13 +403,29 @@ export class TicketStatsService {
 
         const startOfRange = startOfWeek(subWeeks(endDate, weeks - 1));
 
-        const tickets = await this.ticketRepository.find({
-            where: {
-                tenantId: accessProfile.tenantId,
-                createdAt: MoreThanOrEqual(startOfRange),
-            },
-            select: ['id', 'createdAt', 'completedAt', 'status'],
-        });
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
+        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticket.status']);
+
+        // Filter by department if Supervisor using EXISTS subquery
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1 
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id 
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const tickets = await qb.getMany();
 
         return dateRanges.map(({ date, startOfPeriod, endOfPeriod }) => {
             const total = tickets.filter((ticket) => ticket.createdAt <= endOfPeriod).length;
@@ -389,13 +470,29 @@ export class TicketStatsService {
 
         const startOfRange = startOfMonth(subMonths(endDate, months - 1));
 
-        const tickets = await this.ticketRepository.find({
-            where: {
-                tenantId: accessProfile.tenantId,
-                createdAt: MoreThanOrEqual(startOfRange),
-            },
-            select: ['id', 'createdAt', 'completedAt', 'status'],
-        });
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
+        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticket.status']);
+
+        // Filter by department if Supervisor using EXISTS subquery
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1 
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id 
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const tickets = await qb.getMany();
 
         return dateRanges.map(({ date, startOfPeriod, endOfPeriod }) => {
             const total = tickets.filter((ticket) => ticket.createdAt <= endOfPeriod).length;
@@ -442,13 +539,29 @@ export class TicketStatsService {
         // Get tickets for the tenant from the last 3 months
         const startOfRange = startOfDay(subDays(endDate, (intervals - 1) * intervalDays));
 
-        const tickets = await this.ticketRepository.find({
-            where: {
-                tenantId: accessProfile.tenantId,
-                createdAt: MoreThanOrEqual(startOfRange),
-            },
-            select: ['id', 'createdAt', 'completedAt', 'status'],
-        });
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
+        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticket.status']);
+
+        // Filter by department if Supervisor using EXISTS subquery
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1 
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id 
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const tickets = await qb.getMany();
 
         return dateRanges.map(({ date, startOfPeriod, endOfPeriod }) => {
             const total = tickets.filter((ticket) => ticket.createdAt <= endOfPeriod).length;
@@ -486,10 +599,28 @@ export class TicketStatsService {
     }
 
     async getTicketsByStatus(accessProfile: AccessProfile): Promise<TicketStatusCountResponseDto> {
-        const tickets = await this.ticketRepository.find({
-            where: { tenantId: accessProfile.tenantId },
-            select: ['id', 'status'],
-        });
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.select(['ticket.id', 'ticket.status']);
+
+        // Filter by department if Supervisor using EXISTS subquery
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1 
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id 
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const tickets = await qb.getMany();
 
         const total = tickets.length;
         const statusMap = new Map<string, number>();
@@ -519,10 +650,28 @@ export class TicketStatsService {
     async getTicketsByPriority(
         accessProfile: AccessProfile,
     ): Promise<TicketPriorityCountResponseDto> {
-        const tickets = await this.ticketRepository.find({
-            where: { tenantId: accessProfile.tenantId },
-            select: ['id', 'priority'],
-        });
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.select(['ticket.id', 'ticket.priority']);
+
+        // Filter by department if Supervisor using EXISTS subquery
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1 
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id 
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const tickets = await qb.getMany();
 
         const total = tickets.length;
         const priorityMap = new Map<string, number>();
@@ -696,18 +845,33 @@ export class TicketStatsService {
                 break;
         }
 
-        const queryOptions: any = {
-            where: {
-                tenantId: accessProfile.tenantId,
-                timeSecondsInLastStatus: Not(IsNull()),
-            },
-        };
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
-        if (startDate) {
-            queryOptions.where.createdAt = MoreThanOrEqual(startDate);
+        const qb = this.ticketUpdateRepository.createQueryBuilder('update');
+        qb.innerJoin('update.ticket', 'ticket');
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.andWhere('update.timeSecondsInLastStatus IS NOT NULL');
+
+        // Filter by department if Supervisor using EXISTS subquery
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1 
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id 
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
         }
 
-        const ticketUpdates = await this.ticketUpdateRepository.find(queryOptions);
+        if (startDate) {
+            qb.andWhere('update.createdAt >= :startDate', { startDate });
+        }
+
+        const ticketUpdates = await qb.getMany();
 
         const statusDurationsMap = new Map<string, { total: number; count: number }>();
 
@@ -715,7 +879,38 @@ export class TicketStatsService {
             statusDurationsMap.set(status, { total: 0, count: 0 });
         });
 
-        ticketUpdates.forEach((update) => {
+        // Apply weekend exclusion to each update
+        const updatesWithWeekendExclusion = await Promise.all(
+            ticketUpdates.map(async (update) => {
+                if (update.fromStatus && update.timeSecondsInLastStatus) {
+                    // Find the previous status update where the ticket entered the fromStatus
+                    const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
+                        where: {
+                            ticketId: update.ticketId,
+                            toStatus: update.fromStatus,
+                        },
+                        order: {
+                            createdAt: 'DESC',
+                        },
+                    });
+
+                    if (previousStatusUpdate) {
+                        const businessHours = this.businessHoursService.calculateBusinessHours(
+                            previousStatusUpdate.createdAt,
+                            update.createdAt,
+                        );
+
+                        return {
+                            ...update,
+                            timeSecondsInLastStatus: businessHours * 3600,
+                        };
+                    }
+                }
+                return update;
+            }),
+        );
+
+        updatesWithWeekendExclusion.forEach((update) => {
             if (update.fromStatus && update.timeSecondsInLastStatus) {
                 const statusData = statusDurationsMap.get(update.fromStatus) || {
                     total: 0,
@@ -866,22 +1061,35 @@ export class TicketStatsService {
         startDate: Date,
         endDate: Date,
     ): Promise<number> {
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const filters: any = {
+            tenantId: accessProfile.tenantId,
+            isResolved: true,
+            resolutionTimeSeconds: Not(IsNull()),
+            createdAt: MoreThanOrEqual(startDate),
+            updatedAt: LessThanOrEqual(endDate),
+        };
+
         const ticketStats = await this.ticketStatsRepository.find({
-            where: {
-                tenantId: accessProfile.tenantId,
-                isResolved: true,
-                resolutionTimeSeconds: Not(IsNull()),
-                createdAt: MoreThanOrEqual(startDate),
-                updatedAt: LessThanOrEqual(endDate),
-            },
+            where: filters,
         });
 
-        if (ticketStats.length === 0) {
+        // Filter by department if Supervisor
+        let filteredStats = ticketStats;
+        if (supervisorDepartmentId !== null) {
+            filteredStats = ticketStats.filter(
+                (stat) => stat.departmentIds && stat.departmentIds.includes(supervisorDepartmentId),
+            );
+        }
+
+        if (filteredStats.length === 0) {
             return 0;
         }
 
         // Apply weekend exclusion to time calculations
-        const ticketStatsWithWeekendExclusion = await this.applyWeekendExclusion(ticketStats);
+        const ticketStatsWithWeekendExclusion = await this.applyWeekendExclusion(filteredStats);
 
         const totalResolutionTimeSeconds = ticketStatsWithWeekendExclusion.reduce(
             (sum, stat) => sum + Number(stat.resolutionTimeSeconds),
@@ -925,16 +1133,33 @@ export class TicketStatsService {
             const monthIndex = startDate.getMonth();
             const monthLabel = `${ptMonthNames[monthIndex]}/${startDate.getFullYear().toString().substr(2)}`;
 
+            // Check if user is Supervisor and get their departmentId
+            const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
             // Get all ticket updates for this month where the status changed from the requested status
-            const ticketUpdates = await this.ticketUpdateRepository.find({
-                where: {
-                    tenantId: accessProfile.tenantId,
-                    fromStatus: status,
-                    timeSecondsInLastStatus: Not(IsNull()),
-                    createdAt: MoreThanOrEqual(startDate),
-                    updatedAt: LessThanOrEqual(endDate),
-                },
-            });
+            const qb = this.ticketUpdateRepository.createQueryBuilder('update');
+            qb.innerJoin('update.ticket', 'ticket');
+            qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+            qb.andWhere('update.fromStatus = :status', { status });
+            qb.andWhere('update.timeSecondsInLastStatus IS NOT NULL');
+            qb.andWhere('update.createdAt >= :startDate', { startDate });
+            qb.andWhere('update.updatedAt <= :endDate', { endDate });
+
+            // Filter by department if Supervisor using EXISTS subquery
+            if (supervisorDepartmentId !== null) {
+                qb.andWhere(
+                    `EXISTS (
+                        SELECT 1 
+                        FROM ticket_target_user ttu
+                        INNER JOIN "user" u ON u.id = ttu."userId"
+                        WHERE ttu."ticketId" = ticket.id 
+                        AND u."departmentId" = :departmentId
+                    )`,
+                    { departmentId: supervisorDepartmentId },
+                );
+            }
+
+            const ticketUpdates = await qb.getMany();
 
             // Calculate average time spent in the status for this month
             let totalDurationSeconds = 0;
@@ -988,18 +1213,39 @@ export class TicketStatsService {
         const now = new Date();
         const threeMonthsAgo = startOfDay(subMonths(now, 3));
 
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const filters: any = {
+            tenantId: accessProfile.tenantId,
+            createdAt: MoreThanOrEqual(threeMonthsAgo),
+            currentTargetUserId: Not(IsNull()),
+        };
+
         const ticketStats = await this.ticketStatsRepository.find({
-            where: {
-                tenantId: accessProfile.tenantId,
-                createdAt: MoreThanOrEqual(threeMonthsAgo),
-                currentTargetUserId: Not(IsNull()),
-            },
+            where: filters,
         });
 
-        const allUsers = await this.userRepository.find({
-            where: { tenantId: accessProfile.tenantId },
-            relations: ['department'],
-        });
+        // Filter by department if Supervisor
+        let filteredTicketStats = ticketStats;
+        if (supervisorDepartmentId !== null) {
+            filteredTicketStats = ticketStats.filter(
+                (stat) => stat.departmentIds && stat.departmentIds.includes(supervisorDepartmentId),
+            );
+        }
+
+        const allUsersQuery = this.userRepository.createQueryBuilder('user');
+        allUsersQuery.where('user.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        allUsersQuery.leftJoinAndSelect('user.department', 'department');
+
+        // If Supervisor, only get users from their department
+        if (supervisorDepartmentId !== null) {
+            allUsersQuery.andWhere('user.departmentId = :departmentId', {
+                departmentId: supervisorDepartmentId,
+            });
+        }
+
+        const allUsers = await allUsersQuery.getMany();
 
         // Create a map of users for quick lookup
         const userMap = new Map<number, User>();
@@ -1024,7 +1270,7 @@ export class TicketStatsService {
         }
 
         // Then count tickets for users who have them
-        for (const stat of ticketStats) {
+        for (const stat of filteredTicketStats) {
             const userId = stat.currentTargetUserId;
 
             // Skip if we don't have this user (unlikely but as a safeguard)

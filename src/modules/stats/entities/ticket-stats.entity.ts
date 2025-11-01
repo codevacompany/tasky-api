@@ -1,6 +1,7 @@
 import { DataSource, ViewColumn, ViewEntity } from 'typeorm';
 import { Ticket } from '../../ticket/entities/ticket.entity';
 import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-target-user.entity';
+import { User } from '../../user/entities/user.entity';
 
 @ViewEntity({
     expression: (dataSource: DataSource) =>
@@ -10,7 +11,10 @@ import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-targe
             .addSelect('ticket.createdAt', 'createdAt')
             .addSelect('ticket.updatedAt', 'updatedAt')
             .addSelect('ticket.id', 'ticketId')
-            .addSelect('ticket.departmentId', 'departmentId')
+            .addSelect(
+                'ARRAY_AGG(DISTINCT targetUser.departmentId) FILTER (WHERE targetUser.departmentId IS NOT NULL)',
+                'departmentIds',
+            )
             .addSelect('ticket.currentTargetUserId', 'currentTargetUserId')
             .addSelect('ticket.tenantId', 'tenantId')
             .addSelect(
@@ -27,6 +31,7 @@ import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-targe
             )
             .addSelect('ARRAY_AGG(tu.userId ORDER BY tu.order)', 'targetUserIds')
             .leftJoin(TicketTargetUser, 'tu', 'tu.ticketId = ticket.id')
+            .leftJoin(User, 'targetUser', 'targetUser.id = tu.userId')
             .groupBy('ticket.id')
             .from(Ticket, 'ticket'),
 })
@@ -44,7 +49,7 @@ export class TicketStats {
     ticketId: number;
 
     @ViewColumn()
-    departmentId: number;
+    departmentIds: number[];
 
     @ViewColumn()
     currentTargetUserId: number;

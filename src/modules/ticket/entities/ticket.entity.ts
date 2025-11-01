@@ -2,7 +2,6 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, OneToOne } fro
 import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { Category } from '../../category/entities/category.entity';
 import { CorrectionRequest } from '../../correction-request-reason/entities/correction-request-reason.entity';
-import { Department } from '../../department/entities/department.entity';
 import { TicketCancellationReason } from '../../ticket-cancellation-reason/entities/ticket-cancellation-reason.entity';
 import { TicketComment } from '../../ticket-comment/entities/ticket-comment.entity';
 import { TicketDisapprovalReason } from '../../ticket-disapproval-reason/entities/ticket-disapproval-reason.entity';
@@ -46,13 +45,6 @@ export class Ticket extends TenantBoundBaseEntity {
 
     @Column('text')
     description: string;
-
-    @Column()
-    departmentId: number;
-
-    @ManyToOne(() => Department, (department) => department.tickets)
-    @JoinColumn({ name: 'departmentId' })
-    department: Department;
 
     @Column()
     requesterId: number;

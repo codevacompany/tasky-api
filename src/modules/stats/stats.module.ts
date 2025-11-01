@@ -9,12 +9,14 @@ import { TicketStats } from './entities/ticket-stats.entity';
 import { StatsController } from './stats.controller';
 import { TicketStatsService } from './ticket-stats.service';
 import { UserModule } from '../user/user.module';
+import { RoleModule } from '../role/role.module';
 
 @Module({
     imports: [
         TypeOrmModule.forFeature([TicketStats, Ticket, TicketUpdate, User]),
         DepartmentModule,
         UserModule,
+        RoleModule,
     ],
     providers: [TicketStatsService, BusinessHoursService],
     controllers: [StatsController],
