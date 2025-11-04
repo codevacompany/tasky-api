@@ -89,7 +89,8 @@ export class TicketController {
         };
 
         // Only apply the default status filter if no status filter is provided
-        if (!options.where || options.where.status === undefined) {
+        const whereWithStatus = options.where as any;
+        if (!options.where || whereWithStatus?.status === undefined) {
             whereClause.status = Not(
                 In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]),
             );
@@ -226,5 +227,14 @@ export class TicketController {
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.sendToNextDepartment(accessProfile, customId);
+    }
+
+    @Post(':id/actions/:actionId')
+    executeCustomStatusAction(
+        @Param('id') customId: string,
+        @Param('actionId', ParseIntPipe) actionId: number,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.executeCustomStatusAction(accessProfile, customId, actionId);
     }
 }

@@ -15,7 +15,7 @@ import {
     subQuarters,
     subWeeks,
 } from 'date-fns';
-import { IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { IsNull, LessThan, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { QueryOptions } from '../../shared/types/http';
 import { BusinessHoursService } from '../../shared/services/business-hours.service';
@@ -149,7 +149,7 @@ export class TicketStatsService {
             ...(order ? { order } : {}),
         };
 
-        const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
+        const [items] = await this.ticketStatsRepository.findAndCount(filters);
 
         // Filter by department if Supervisor
         let filteredItems = items;
@@ -238,7 +238,7 @@ export class TicketStatsService {
         // Check if user is Supervisor and get their departmentId
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
-        const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
+        const [items] = await this.ticketStatsRepository.findAndCount(filters);
 
         // Filter by department if Supervisor
         let filteredItems = items;
@@ -342,18 +342,19 @@ export class TicketStatsService {
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
         qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
         qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
-        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticket.status']);
+        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticketStatus.key']);
 
         // Filter by department if Supervisor using EXISTS subquery
         if (supervisorDepartmentId !== null) {
             qb.andWhere(
                 `EXISTS (
-                    SELECT 1 
+                    SELECT 1
                     FROM ticket_target_user ttu
                     INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id 
+                    WHERE ttu."ticketId" = ticket.id
                     AND u."departmentId" = :departmentId
                 )`,
                 { departmentId: supervisorDepartmentId },
@@ -374,7 +375,7 @@ export class TicketStatsService {
                     ticket.completedAt &&
                     ticket.completedAt >= startOfPeriod &&
                     ticket.completedAt <= endOfPeriod &&
-                    ticket.status === TicketStatus.Completed,
+                    ticket.ticketStatus?.key === TicketStatus.Completed,
             ).length;
 
             return {
@@ -407,18 +408,19 @@ export class TicketStatsService {
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
         qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
         qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
-        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticket.status']);
+        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticketStatus.key']);
 
         // Filter by department if Supervisor using EXISTS subquery
         if (supervisorDepartmentId !== null) {
             qb.andWhere(
                 `EXISTS (
-                    SELECT 1 
+                    SELECT 1
                     FROM ticket_target_user ttu
                     INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id 
+                    WHERE ttu."ticketId" = ticket.id
                     AND u."departmentId" = :departmentId
                 )`,
                 { departmentId: supervisorDepartmentId },
@@ -441,7 +443,7 @@ export class TicketStatsService {
                     ticket.completedAt &&
                     ticket.completedAt >= startOfPeriod &&
                     ticket.completedAt <= endOfPeriod &&
-                    ticket.status === TicketStatus.Completed,
+                    ticket.ticketStatus?.key === TicketStatus.Completed,
             ).length;
 
             return {
@@ -474,18 +476,19 @@ export class TicketStatsService {
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
         qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
         qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
-        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticket.status']);
+        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticketStatus.key']);
 
         // Filter by department if Supervisor using EXISTS subquery
         if (supervisorDepartmentId !== null) {
             qb.andWhere(
                 `EXISTS (
-                    SELECT 1 
+                    SELECT 1
                     FROM ticket_target_user ttu
                     INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id 
+                    WHERE ttu."ticketId" = ticket.id
                     AND u."departmentId" = :departmentId
                 )`,
                 { departmentId: supervisorDepartmentId },
@@ -506,7 +509,7 @@ export class TicketStatsService {
                     ticket.completedAt &&
                     ticket.completedAt >= startOfPeriod &&
                     ticket.completedAt <= endOfPeriod &&
-                    ticket.status === TicketStatus.Completed,
+                    ticket.ticketStatus?.key === TicketStatus.Completed,
             ).length;
 
             return {
@@ -543,18 +546,19 @@ export class TicketStatsService {
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
         qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
         qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
-        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticket.status']);
+        qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticketStatus.key']);
 
         // Filter by department if Supervisor using EXISTS subquery
         if (supervisorDepartmentId !== null) {
             qb.andWhere(
                 `EXISTS (
-                    SELECT 1 
+                    SELECT 1
                     FROM ticket_target_user ttu
                     INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id 
+                    WHERE ttu."ticketId" = ticket.id
                     AND u."departmentId" = :departmentId
                 )`,
                 { departmentId: supervisorDepartmentId },
@@ -575,7 +579,7 @@ export class TicketStatsService {
                     ticket.completedAt &&
                     ticket.completedAt >= startOfPeriod &&
                     ticket.completedAt <= endOfPeriod &&
-                    ticket.status === TicketStatus.Completed,
+                    ticket.ticketStatus?.key === TicketStatus.Completed,
             ).length;
 
             return {
@@ -603,17 +607,18 @@ export class TicketStatsService {
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
+        qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
         qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
-        qb.select(['ticket.id', 'ticket.status']);
+        qb.select(['ticket.id', 'ticketStatus.key']);
 
         // Filter by department if Supervisor using EXISTS subquery
         if (supervisorDepartmentId !== null) {
             qb.andWhere(
                 `EXISTS (
-                    SELECT 1 
+                    SELECT 1
                     FROM ticket_target_user ttu
                     INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id 
+                    WHERE ttu."ticketId" = ticket.id
                     AND u."departmentId" = :departmentId
                 )`,
                 { departmentId: supervisorDepartmentId },
@@ -630,8 +635,9 @@ export class TicketStatsService {
         });
 
         tickets.forEach((ticket) => {
-            const currentCount = statusMap.get(ticket.status) || 0;
-            statusMap.set(ticket.status, currentCount + 1);
+            const statusKey = ticket.ticketStatus?.key || '';
+            const currentCount = statusMap.get(statusKey) || 0;
+            statusMap.set(statusKey, currentCount + 1);
         });
 
         const statusCounts: TicketStatusCountDto[] = Array.from(statusMap.entries()).map(
@@ -661,10 +667,10 @@ export class TicketStatsService {
         if (supervisorDepartmentId !== null) {
             qb.andWhere(
                 `EXISTS (
-                    SELECT 1 
+                    SELECT 1
                     FROM ticket_target_user ttu
                     INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id 
+                    WHERE ttu."ticketId" = ticket.id
                     AND u."departmentId" = :departmentId
                 )`,
                 { departmentId: supervisorDepartmentId },
@@ -857,10 +863,10 @@ export class TicketStatsService {
         if (supervisorDepartmentId !== null) {
             qb.andWhere(
                 `EXISTS (
-                    SELECT 1 
+                    SELECT 1
                     FROM ticket_target_user ttu
                     INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id 
+                    WHERE ttu."ticketId" = ticket.id
                     AND u."departmentId" = :departmentId
                 )`,
                 { departmentId: supervisorDepartmentId },
@@ -884,10 +890,12 @@ export class TicketStatsService {
             ticketUpdates.map(async (update) => {
                 if (update.fromStatus && update.timeSecondsInLastStatus) {
                     // Find the previous status update where the ticket entered the fromStatus
+                    // Must be BEFORE the current update to avoid negative durations
                     const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
                         where: {
                             ticketId: update.ticketId,
                             toStatus: update.fromStatus,
+                            createdAt: LessThan(update.createdAt),
                         },
                         order: {
                             createdAt: 'DESC',
@@ -900,10 +908,13 @@ export class TicketStatsService {
                             update.createdAt,
                         );
 
-                        return {
-                            ...update,
-                            timeSecondsInLastStatus: businessHours * 3600,
-                        };
+                        // Only update if business hours is non-negative
+                        if (businessHours >= 0) {
+                            return {
+                                ...update,
+                                timeSecondsInLastStatus: businessHours * 3600,
+                            };
+                        }
                     }
                 }
                 return update;
@@ -1149,10 +1160,10 @@ export class TicketStatsService {
             if (supervisorDepartmentId !== null) {
                 qb.andWhere(
                     `EXISTS (
-                        SELECT 1 
+                        SELECT 1
                         FROM ticket_target_user ttu
                         INNER JOIN "user" u ON u.id = ttu."userId"
-                        WHERE ttu."ticketId" = ticket.id 
+                        WHERE ttu."ticketId" = ticket.id
                         AND u."departmentId" = :departmentId
                     )`,
                     { departmentId: supervisorDepartmentId },

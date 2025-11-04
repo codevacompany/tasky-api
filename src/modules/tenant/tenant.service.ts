@@ -20,6 +20,7 @@ import { User } from '../user/entities/user.entity';
 import { Ticket } from '../ticket/entities/ticket.entity';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
+import { TicketStatusInitService } from '../ticket-status/ticket-status-init.service';
 
 @Injectable()
 export class TenantService {
@@ -32,6 +33,7 @@ export class TenantService {
         private ticketRepository: Repository<Ticket>,
         @Inject(forwardRef(() => TenantSubscriptionService))
         private tenantSubscriptionService: TenantSubscriptionService,
+        private ticketStatusInitService: TicketStatusInitService,
     ) {}
 
     async findAll(
@@ -110,7 +112,11 @@ export class TenantService {
             });
         }
 
-        return await this.tenantRepository.save(Tenant);
+        const savedTenant = await this.tenantRepository.save(Tenant);
+
+        await this.ticketStatusInitService.initializeTenantStatuses(savedTenant.id);
+
+        return savedTenant;
     }
 
     async update(id: number, Tenant: UpdateTenantDto) {

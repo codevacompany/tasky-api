@@ -13,8 +13,11 @@ import { PaymentModule } from './modules/payment/payment.module';
 import { RoleModule } from './modules/role/role.module';
 import { SignUpModule } from './modules/sign-up/sign-up.module';
 import { StatsModule } from './modules/stats/stats.module';
+import { StatusActionModule } from './modules/status-action/status-action.module';
+import { StatusColumnModule } from './modules/status-column/status-column.module';
 import { SubscriptionPlanModule } from './modules/subscription-plan/subscription-plan.module';
 import { TenantModule } from './modules/tenant/tenant.module';
+import { TicketStatusModule } from './modules/ticket-status/ticket-status.module';
 import { TenantSubscriptionModule } from './modules/tenant-subscription/tenant-subscription.module';
 import { TicketCancellationReasonModule } from './modules/ticket-cancellation-reason/ticket-cancellation-reason.module';
 import { TicketCommentModule } from './modules/ticket-comment/ticket-comment.module';
@@ -51,6 +54,9 @@ import { VerificationCodeModule } from './modules/verification-code/verification
         TicketFileModule,
         TicketTargetUserModule,
         StatsModule,
+        StatusColumnModule,
+        StatusActionModule,
+        TicketStatusModule,
         LegalDocumentModule,
         PaymentModule,
         SubscriptionPlanModule,

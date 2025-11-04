@@ -14,6 +14,8 @@ import { RoleModule } from '../role/role.module';
 import { TicketTargetUserRepository } from '../ticket-target-user/ticket-target-user.repository';
 import { TicketUpdateModule } from '../ticket-updates/ticket-update.module';
 import { UserModule } from '../user/user.module';
+import { StatusActionModule } from '../status-action/status-action.module';
+import { TicketStatusModule } from '../ticket-status/ticket-status.module';
 import { Ticket } from './entities/ticket.entity';
 import { TicketController } from './ticket.controller';
 import { TicketRepository } from './ticket.repository';
@@ -35,6 +37,8 @@ import { TicketService } from './ticket.service';
         StatsModule,
         TicketTargetUserModule,
         RoleModule,
+        StatusActionModule,
+        TicketStatusModule,
     ],
     exports: [TicketService],
     controllers: [TicketController],
