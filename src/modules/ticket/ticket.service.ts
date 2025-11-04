@@ -37,6 +37,10 @@ import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketRepository } from './ticket.repository';
 import { RoleName } from '../role/entities/role.entity';
 import { RoleService } from '../role/role.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { StatusAction } from '../status-action/entities/status-action.entity';
+import { TicketStatus as TicketStatusEntity } from '../ticket-status/entities/ticket-status.entity';
 
 @Injectable()
 export class TicketService extends TenantBoundBaseService<Ticket> {
@@ -56,6 +60,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly tenantSubscriptionService: TenantSubscriptionService,
         private readonly ticketTargetUserRepository: TicketTargetUserRepository,
         private readonly roleService: RoleService,
+        @InjectRepository(StatusAction)
+        private readonly statusActionRepository: Repository<StatusAction>,
+        @InjectRepository(TicketStatusEntity)
+        private readonly ticketStatusRepository: Repository<TicketStatusEntity>,
     ) {
         super(ticketRepository);
     }
@@ -96,10 +104,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         // Filter by department via targetUsers using EXISTS to avoid duplicates
         qb.andWhere(
             `EXISTS (
-                SELECT 1 
+                SELECT 1
                 FROM ticket_target_user ttu
                 INNER JOIN "user" u ON u.id = ttu."userId"
-                WHERE ttu."ticketId" = ticket.id 
+                WHERE ttu."ticketId" = ticket.id
                 AND u."departmentId" = :departmentId
             )`,
             { departmentId },
@@ -113,8 +121,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             this.applyWhereFilters(qb, options.where);
         }
 
-        if (options?.where?.status !== undefined) {
-            this.applyStatusFilter(qb, options.where.status);
+        const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
+        if (whereWithStatus?.status !== undefined) {
+            this.applyStatusFilter(qb, whereWithStatus.status);
         } else {
             this.applyDefaultStatusFilter(qb);
         }
@@ -148,10 +157,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 // Filter by department if Supervisor using EXISTS subquery
                 qb.andWhere(
                     `EXISTS (
-                        SELECT 1 
+                        SELECT 1
                         FROM ticket_target_user ttu
                         INNER JOIN "user" u ON u.id = ttu."userId"
-                        WHERE ttu."ticketId" = ticket.id 
+                        WHERE ttu."ticketId" = ticket.id
                         AND u."departmentId" = :departmentId
                     )`,
                     { departmentId: user.departmentId },
@@ -165,8 +174,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         // Apply status filter
-        if (options?.where?.status !== undefined) {
-            this.applyStatusFilter(qb, options.where.status);
+        const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
+        if (whereWithStatus?.status !== undefined) {
+            this.applyStatusFilter(qb, whereWithStatus.status);
         } else {
             this.applyDefaultStatusFilter(qb);
         }
@@ -203,6 +213,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'cancellationReason',
                 'disapprovalReason',
                 'correctionRequests',
+                'ticketStatus',
             ],
         });
     }
@@ -224,10 +235,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 // Filter by department if Supervisor using EXISTS subquery
                 qb.andWhere(
                     `EXISTS (
-                        SELECT 1 
+                        SELECT 1
                         FROM ticket_target_user ttu
                         INNER JOIN "user" u ON u.id = ttu."userId"
-                        WHERE ttu."ticketId" = ticket.id 
+                        WHERE ttu."ticketId" = ticket.id
                         AND u."departmentId" = :departmentId
                     )`,
                     { departmentId: user.departmentId },
@@ -235,8 +246,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             }
         }
 
-        this.applyWhereFilters(qb, options?.where);
-        this.applyDefaultStatusFilter(qb, options?.where?.status);
+        const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
+        this.applyWhereFilters(qb, whereWithStatus);
+        this.applyDefaultStatusFilter(qb, whereWithStatus?.status);
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
@@ -268,13 +280,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
             .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
             .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
+            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
             .where('ticket.tenantId = :tenantId', { tenantId })
             .orderBy('ticket.createdAt', 'DESC');
     }
 
     private applyWhereFilters(
         qb: ReturnType<typeof this.repository.createQueryBuilder>,
-        where?: FindOptionsWhere<Ticket>,
+        where?: FindOptionsWhere<Ticket> & { status?: any },
     ) {
         if (!where) return;
 
@@ -304,12 +317,17 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             return;
         }
 
+        // Ensure ticketStatus join exists
+        if (!qb.expressionMap.joinAttributes.find((j) => j.alias.name === 'ticketStatus')) {
+            qb.leftJoin('ticket.ticketStatus', 'ticketStatus');
+        }
+
         // Default: exclude terminal statuses OR include recent completed tickets (last 7 days)
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
         qb.andWhere(
-            '(ticket.status NOT IN (:...terminalStatuses) OR (ticket.status = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
+            '(ticketStatus.key NOT IN (:...terminalStatuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
             {
                 terminalStatuses: [TicketStatus.Rejected, TicketStatus.Canceled],
                 completedStatus: TicketStatus.Completed,
@@ -322,12 +340,17 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         qb: ReturnType<typeof this.repository.createQueryBuilder>,
         statusValue: any,
     ) {
+        // Ensure ticketStatus join exists
+        if (!qb.expressionMap.joinAttributes.find((j) => j.alias.name === 'ticketStatus')) {
+            qb.leftJoin('ticket.ticketStatus', 'ticketStatus');
+        }
+
         // Handle TypeORM operators (e.g., Not(In([...])))
         if (statusValue && typeof statusValue === 'object' && '_type' in statusValue) {
             if (statusValue._type === 'not' && statusValue._value?._type === 'in') {
                 const excludedStatuses = statusValue._value._value;
                 // Filter out Completed from exclusion to allow recent completed tickets
-                qb.andWhere('ticket.status NOT IN (:...excludedStatuses)', {
+                qb.andWhere('ticketStatus.key NOT IN (:...excludedStatuses)', {
                     excludedStatuses: excludedStatuses.filter(
                         (s: string) => s !== TicketStatus.Completed,
                     ),
@@ -337,8 +360,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 console.warn('Unhandled TypeORM status operator:', statusValue);
             }
         } else {
-            // Simple equality status filter
-            qb.andWhere('ticket.status = :status', { status: statusValue });
+            qb.andWhere('ticketStatus.key = :status', { status: statusValue });
         }
     }
 
@@ -361,6 +383,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
             .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
             .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
+            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere(
                 '(ticket.currentTargetUserId = :userId OR EXISTS (SELECT 1 FROM "ticket_target_user" ttu WHERE ttu."ticketId" = ticket.id AND ttu."userId" = :userId) OR (ticket.reviewerId = :userId AND ticket.requesterId != :userId))',
@@ -370,14 +393,15 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             )
             .orderBy('ticket.createdAt', 'DESC');
 
-        if (options?.where?.status) {
-            qb.andWhere('ticket.status = :status', { status: options.where.status });
+        const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
+        if (whereWithStatus?.status) {
+            qb.andWhere('ticketStatus.key = :status', { status: whereWithStatus.status });
         } else {
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
             qb.andWhere(
-                '(ticket.status NOT IN (:...statuses) OR (ticket.status = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
+                '(ticketStatus.key NOT IN (:...statuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
                 {
                     statuses: [TicketStatus.Rejected, TicketStatus.Canceled],
                     completedStatus: TicketStatus.Completed,
@@ -429,6 +453,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
             .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
             .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
+            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere(
                 '(ticket.currentTargetUserId = :userId OR EXISTS (SELECT 1 FROM "ticket_target_user" ttu WHERE ttu."ticketId" = ticket.id AND ttu."userId" = :userId))',
@@ -438,15 +463,16 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             )
             .orderBy('ticket.createdAt', 'DESC');
 
-        if (options?.where?.status) {
-            qb.andWhere('ticket.status = :status', { status: options.where.status });
+        const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
+        if (whereWithStatus?.status) {
+            qb.andWhere('ticketStatus.key = :status', { status: whereWithStatus.status });
         } else {
             // Include completed tickets from the last 7 days
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
             qb.andWhere(
-                '(ticket.status NOT IN (:...statuses) OR (ticket.status = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
+                '(ticketStatus.key NOT IN (:...statuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
                 {
                     statuses: [TicketStatus.Rejected, TicketStatus.Canceled],
                     completedStatus: TicketStatus.Completed,
@@ -550,6 +576,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             const nextNumber = lastTicket ? parseInt(lastTicket.customId.split('-')[1]) + 1 : 1;
             const customId = `${tenant.customKey}-${nextNumber}`;
 
+            // Find the "Pendente" status for this tenant
+            const pendingStatus = await manager.findOne(TicketStatusEntity, {
+                where: { key: TicketStatus.Pending, tenantId: accessProfile.tenantId },
+            });
+
+            if (!pendingStatus) {
+                throw new CustomNotFoundException({
+                    message:
+                        'Pending status not found for tenant. Please run the status column seeder.',
+                    code: 'pending-status-not-found',
+                });
+            }
+
             const ticket = manager.create(Ticket, {
                 ...ticketData,
                 customId,
@@ -558,6 +597,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 updatedById: requester.id,
                 currentTargetUserId: firstTargetUser.id,
                 reviewerId,
+                statusId: pendingStatus.id,
             });
 
             createdTicket = await manager.save(ticket);
@@ -677,8 +717,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.Update,
-            fromStatus: ticketResponse.status as TicketStatus,
-            toStatus: ticketResponse.status as TicketStatus,
+            fromStatus: ticketResponse.ticketStatus?.key || '',
+            toStatus: ticketResponse.ticketStatus?.key || '',
             description: '<p><span>user</span> atualizou este ticket.</p>',
         });
 
@@ -712,7 +752,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     ) {
         return this.dataSource.transaction(async () => {
             const ticket = await this.findById(accessProfile, customId);
-            const currentStatus = ticket.status;
+            const currentStatus = ticket.ticketStatus?.key || '';
 
             if (!ticket) {
                 throw new CustomNotFoundException({
@@ -721,8 +761,18 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 });
             }
 
-            Object.assign(ticket, ticketUpdate);
-            await this.repository.update(ticket.id, ticketUpdate);
+            const newStatus = await this.ticketStatusRepository.findOne({
+                where: { key: ticketUpdate.status, tenantId: accessProfile.tenantId },
+            });
+
+            if (!newStatus) {
+                throw new CustomNotFoundException({
+                    code: 'status-not-found',
+                    message: `Status with key '${ticketUpdate.status}' not found.`,
+                });
+            }
+
+            await this.repository.update(ticket.id, { statusId: newStatus.id });
             if (ticketUpdate.status === TicketStatus.AwaitingVerification) {
                 let timeSecondsInLastStatus = null;
 
@@ -979,8 +1029,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
+        const inProgressStatus = await this.ticketStatusRepository.findOne({
+            where: { key: TicketStatus.InProgress, tenantId: accessProfile.tenantId },
+        });
+
+        if (!inProgressStatus) {
+            throw new CustomNotFoundException({
+                code: 'status-not-found',
+                message: `Status '${TicketStatus.InProgress}' not found.`,
+            });
+        }
+
         await this.repository.update(ticketResponse.id, {
-            status: TicketStatus.InProgress,
+            statusId: inProgressStatus.id,
             acceptedAt: new Date().toISOString(),
         });
 
@@ -1061,8 +1122,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async approve(accessProfile: AccessProfile, customId: string) {
         const ticketResponse = await this.findById(accessProfile, customId);
 
+        const completedStatus = await this.ticketStatusRepository.findOne({
+            where: { key: TicketStatus.Completed, tenantId: accessProfile.tenantId },
+        });
+
+        if (!completedStatus) {
+            throw new CustomNotFoundException({
+                code: 'status-not-found',
+                message: `Status '${TicketStatus.Completed}' not found.`,
+            });
+        }
+
         await this.repository.update(ticketResponse.id, {
-            status: TicketStatus.Completed,
+            statusId: completedStatus.id,
             completedAt: new Date().toISOString(),
         });
 
@@ -1137,8 +1209,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     ) {
         const ticketResponse = await this.findById(accessProfile, customId);
 
+        const rejectedStatus = await this.ticketStatusRepository.findOne({
+            where: { key: TicketStatus.Rejected, tenantId: accessProfile.tenantId },
+        });
+
+        if (!rejectedStatus) {
+            throw new CustomNotFoundException({
+                code: 'status-not-found',
+                message: `Status '${TicketStatus.Rejected}' not found.`,
+            });
+        }
+
         await this.repository.update(ticketResponse.id, {
-            status: TicketStatus.Rejected,
+            statusId: rejectedStatus.id,
             completedAt: new Date().toISOString(),
         });
 
@@ -1163,7 +1246,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: ticketResponse.reviewer.id,
             updatedById: ticketResponse.reviewer.id,
             action: TicketActionType.StatusUpdate,
-            fromStatus: ticketResponse.status as TicketStatus,
+            fromStatus: ticketResponse.ticketStatus?.key || '',
             toStatus: TicketStatus.Rejected,
             timeSecondsInLastStatus,
             description: `<p><span>user</span> reprovou este ticket.</p>`,
@@ -1227,14 +1310,25 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
+        const canceledStatus = await this.ticketStatusRepository.findOne({
+            where: { key: TicketStatus.Canceled, tenantId: accessProfile.tenantId },
+        });
+
+        if (!canceledStatus) {
+            throw new CustomNotFoundException({
+                code: 'status-not-found',
+                message: `Status '${TicketStatus.Canceled}' not found.`,
+            });
+        }
+
         await this.repository.update(ticketResponse.id, {
-            status: TicketStatus.Canceled,
+            statusId: canceledStatus.id,
             canceledAt: new Date(),
         });
 
         const lastStatusUpdate = await this.findLastStatusUpdate(
             ticketResponse.id,
-            ticketResponse.status,
+            ticketResponse.ticketStatus?.key || '',
         );
         let timeSecondsInLastStatus = null;
 
@@ -1253,7 +1347,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: requester.id,
             updatedById: requester.id,
             action: TicketActionType.Cancellation,
-            fromStatus: ticketResponse.status as TicketStatus,
+            fromStatus: ticketResponse.ticketStatus?.key || '',
             toStatus: TicketStatus.Canceled,
             timeSecondsInLastStatus,
             description: `<p><span>user</span> cancelou este ticket.</p>`,
@@ -1268,7 +1362,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.Cancellation,
-                message: `<p><span>user</span> cancelou o ticket <span>resource</span> por ${reasonDto.reason}.</p>`,
+                message: `<p><span>user</span> cancelou o ticket <span>resource</span> por ${formatSnakeToNaturalCase(reasonDto.reason)}.</p>`,
                 createdById: requester.id,
                 updatedById: requester.id,
                 targetUserId: ticketTargetUser.userId,
@@ -1287,7 +1381,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             reasonDto,
         );
 
-        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> cancelou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${reasonDto.reason}</span>.`;
+        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> cancelou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${formatSnakeToNaturalCase(reasonDto.reason)}</span>.`;
 
         for (const ticketTargetUser of targetUsers) {
             await this.sendEmailWithPermissionCheck(
@@ -1399,8 +1493,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 createdById: accessProfile.userId,
                 updatedById: accessProfile.userId,
                 action: TicketActionType.Update,
-                fromStatus: ticket.status,
-                toStatus: ticket.status,
+                fromStatus: ticket.ticketStatus?.key || '',
+                toStatus: ticket.ticketStatus?.key || '',
                 description: `<p><span>user</span> adicionou ${files.length} arquivo(s) ao ticket.</p>`,
             }),
         );
@@ -1422,12 +1516,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
             .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
             .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
+            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere('(ticket.requesterId = :userId OR ticket.currentTargetUserId = :userId)', {
                 userId: accessProfile.userId,
             })
             .andWhere(
-                '(ticket.status IN (:...terminalStatuses) OR (ticket.status = :completedStatus AND ticket.completedAt < :sevenDaysAgo))',
+                '(ticketStatus.key IN (:...terminalStatuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt < :sevenDaysAgo))',
                 {
                     terminalStatuses: [TicketStatus.Rejected, TicketStatus.Canceled],
                     completedStatus: TicketStatus.Completed,
@@ -1476,7 +1571,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        if (ticket.status !== TicketStatus.UnderVerification) {
+        if (ticket.ticketStatus?.key !== TicketStatus.UnderVerification) {
             throw new CustomForbiddenException({
                 message: 'Ticket must be under verification to request a correction',
                 code: 'ticket-not-under-verification',
@@ -1502,8 +1597,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             targetUserId = ticket.currentTargetUserId;
         }
 
+        const returnedStatus = await this.ticketStatusRepository.findOne({
+            where: { key: TicketStatus.Returned, tenantId: accessProfile.tenantId },
+        });
+
+        if (!returnedStatus) {
+            throw new CustomNotFoundException({
+                code: 'status-not-found',
+                message: `Status '${TicketStatus.Returned}' not found.`,
+            });
+        }
+
         await this.repository.update(ticket.id, {
-            status: TicketStatus.Returned,
+            statusId: returnedStatus.id,
             currentTargetUserId: targetUserId,
         });
 
@@ -1724,9 +1830,20 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
+        const pendingStatus = await this.ticketStatusRepository.findOne({
+            where: { key: TicketStatus.Pending, tenantId: accessProfile.tenantId },
+        });
+
+        if (!pendingStatus) {
+            throw new CustomNotFoundException({
+                code: 'status-not-found',
+                message: `Status '${TicketStatus.Pending}' not found.`,
+            });
+        }
+
         await this.repository.update(ticket.id, {
             currentTargetUserId: nextUser.userId,
-            status: TicketStatus.Pending,
+            statusId: pendingStatus.id,
         });
 
         await this.ticketUpdateRepository.save({
@@ -1855,5 +1972,111 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         return ticket;
+    }
+
+    async executeCustomStatusAction(
+        accessProfile: AccessProfile,
+        customId: string,
+        actionId: number,
+    ): Promise<Ticket> {
+        return this.dataSource.transaction(async () => {
+            // Find ticket with status relation
+            const ticket = await this.ticketRepository.findOne({
+                where: {
+                    customId,
+                    tenantId: accessProfile.tenantId,
+                },
+                relations: ['ticketStatus', 'currentTargetUser'],
+            });
+
+            if (!ticket) {
+                throw new CustomNotFoundException({
+                    code: 'ticket-not-found',
+                    message: 'Ticket not found.',
+                });
+            }
+
+            // Find the action with relations
+            const action = await this.statusActionRepository.findOne({
+                where: {
+                    id: actionId,
+                    tenantId: accessProfile.tenantId,
+                },
+                relations: ['fromStatus', 'toStatus'],
+            });
+
+            if (!action) {
+                throw new CustomNotFoundException({
+                    code: 'action-not-found',
+                    message: 'Status action not found.',
+                });
+            }
+
+            // Validate that the ticket's current status matches the action's fromStatus
+            if (ticket.statusId !== action.fromStatusId) {
+                throw new CustomForbiddenException({
+                    code: 'invalid-status-for-action',
+                    message: `This action cannot be executed from the current status. Expected status ID: ${action.fromStatusId}, but ticket has status ID: ${ticket.statusId}`,
+                });
+            }
+
+            // Validate that the action's fromStatus is not a default status
+            // Default statuses should use existing endpoints (approve, reject, cancel, etc.)
+            const fromStatus = await this.ticketStatusRepository.findOne({
+                where: { id: action.fromStatusId },
+            });
+
+            if (fromStatus?.isDefault) {
+                throw new CustomForbiddenException({
+                    code: 'default-status-action',
+                    message: 'Default status actions should use their dedicated endpoints.',
+                });
+            }
+
+            if (!action.toStatusId) {
+                throw new CustomForbiddenException({
+                    code: 'missing-target-status',
+                    message: 'This action does not have a target status configured.',
+                });
+            }
+
+            // Calculate time in last status
+            // findLastStatusUpdate expects a status string (key), so we use the status key
+            const lastStatusUpdate = await this.findLastStatusUpdate(
+                ticket.id,
+                fromStatus?.key || '',
+            );
+            let timeSecondsInLastStatus = null;
+
+            if (lastStatusUpdate) {
+                timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                    lastStatusUpdate.createdAt,
+                    new Date(),
+                );
+            }
+
+            // Update ticket status
+            await this.ticketRepository.update(ticket.id, {
+                statusId: action.toStatusId,
+            });
+
+            // Create ticket update record
+            await this.ticketUpdateRepository.save({
+                tenantId: accessProfile.tenantId,
+                ticketId: ticket.id,
+                ticketCustomId: ticket.customId,
+                performedById: accessProfile.userId,
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                action: TicketActionType.StatusUpdate,
+                fromStatus: fromStatus?.key || '',
+                toStatus: action.toStatus?.key || '',
+                timeSecondsInLastStatus,
+                description: `<p><span>user</span> executou a ação "${action.title}".</p>`,
+            });
+
+            // Return updated ticket
+            return this.findById(accessProfile, customId);
+        });
     }
 }

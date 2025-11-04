@@ -10,6 +10,7 @@ import { RoleModule } from '../role/role.module';
 import { User } from '../user/entities/user.entity';
 import { Ticket } from '../ticket/entities/ticket.entity';
 import { TenantSubscriptionModule } from '../tenant-subscription/tenant-subscription.module';
+import { TicketStatusModule } from '../ticket-status/ticket-status.module';
 
 @Module({
     imports: [
@@ -17,6 +18,7 @@ import { TenantSubscriptionModule } from '../tenant-subscription/tenant-subscrip
         LegalDocumentModule,
         RoleModule, // Required for GlobalAdminGuard
         forwardRef(() => TenantSubscriptionModule),
+        TicketStatusModule,
     ],
     exports: [TenantService, TenantRepository],
     controllers: [TenantController],

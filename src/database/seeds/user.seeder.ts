@@ -198,6 +198,5 @@ export class UserSeeder extends Seeder {
         }
 
         console.log(`✅ Created/updated ${createdUsers.length} users`);
-        console.log('📧 Default password for all users: 123456');
     }
 }

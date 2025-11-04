@@ -9,6 +9,7 @@ import { TicketFile } from '../../ticket-file/entities/ticket-file.entity';
 import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-target-user.entity';
 import { TicketUpdate } from '../../ticket-updates/entities/ticket-update.entity';
 import { User } from '../../user/entities/user.entity';
+import { TicketStatus as TicketStatusEntity } from '../../ticket-status/entities/ticket-status.entity';
 
 export enum TicketPriority {
     Low = 'baixa',
@@ -72,12 +73,12 @@ export class Ticket extends TenantBoundBaseEntity {
     @JoinColumn({ name: 'reviewerId' })
     reviewer: User;
 
-    @Column({
-        type: 'enum',
-        enum: TicketStatus,
-        default: TicketStatus.Pending,
-    })
-    status: string;
+    @Column()
+    statusId: number;
+
+    @ManyToOne(() => TicketStatusEntity, (ticketStatus) => ticketStatus.tickets)
+    @JoinColumn({ name: 'statusId' })
+    ticketStatus: TicketStatusEntity;
 
     @Column('timestamp', { nullable: true })
     acceptedAt: Date | null;
