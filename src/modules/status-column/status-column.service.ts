@@ -30,3 +30,5 @@ export class StatusColumnService extends TenantBoundBaseService<StatusColumn> {
         };
     }
 }
+
+
