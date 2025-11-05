@@ -8,3 +8,5 @@ export class StatusColumnRepository extends Repository<StatusColumn> {
         super(StatusColumn, dataSource.createEntityManager());
     }
 }
+
+
