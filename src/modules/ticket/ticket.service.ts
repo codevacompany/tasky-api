@@ -304,7 +304,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         if (where.name) {
-            qb.andWhere('ticket.name ILIKE :name', { name: `%${where.name}%` });
+            qb.andWhere(
+                '(ticket.name ILIKE :name OR ticket.customId ILIKE :name)',
+                { name: `%${where.name}%` },
+            );
         }
     }
 
@@ -717,8 +720,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.Update,
-            fromStatus: ticketResponse.ticketStatus?.key || '',
-            toStatus: ticketResponse.ticketStatus?.key || '',
+            fromStatus: ticketResponse.ticketStatus?.key || null,
+            toStatus: ticketResponse.ticketStatus?.key || null,
             description: '<p><span>user</span> atualizou este ticket.</p>',
         });
 
@@ -1246,7 +1249,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: ticketResponse.reviewer.id,
             updatedById: ticketResponse.reviewer.id,
             action: TicketActionType.StatusUpdate,
-            fromStatus: ticketResponse.ticketStatus?.key || '',
+            fromStatus: ticketResponse.ticketStatus?.key || null,
             toStatus: TicketStatus.Rejected,
             timeSecondsInLastStatus,
             description: `<p><span>user</span> reprovou este ticket.</p>`,
@@ -1347,7 +1350,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: requester.id,
             updatedById: requester.id,
             action: TicketActionType.Cancellation,
-            fromStatus: ticketResponse.ticketStatus?.key || '',
+            fromStatus: ticketResponse.ticketStatus?.key || null,
             toStatus: TicketStatus.Canceled,
             timeSecondsInLastStatus,
             description: `<p><span>user</span> cancelou este ticket.</p>`,
@@ -1493,8 +1496,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 createdById: accessProfile.userId,
                 updatedById: accessProfile.userId,
                 action: TicketActionType.Update,
-                fromStatus: ticket.ticketStatus?.key || '',
-                toStatus: ticket.ticketStatus?.key || '',
+                fromStatus: ticket.ticketStatus?.key || null,
+                toStatus: ticket.ticketStatus?.key || null,
                 description: `<p><span>user</span> adicionou ${files.length} arquivo(s) ao ticket.</p>`,
             }),
         );
