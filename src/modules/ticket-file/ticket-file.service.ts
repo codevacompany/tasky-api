@@ -16,6 +16,6 @@ export class TicketFileService extends TenantBoundBaseService<TicketFile> {
     }
 
     async delete(acessProfile: AccessProfile, id: number): Promise<void> {
-        return this.delete(acessProfile, id);
+        return super.delete(acessProfile, id);
     }
 }
