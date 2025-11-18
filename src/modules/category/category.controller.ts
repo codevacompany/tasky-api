@@ -4,13 +4,13 @@ import {
     Delete,
     Get,
     Param,
-    ParseIntPipe,
     Patch,
     Post,
     UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
+import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { GetFindOneQueryOptions } from '../../shared/decorators/get-find-one-query-options.decorator';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { TenantAdminGuard } from '../../shared/guards/tenant-admin.guard';
@@ -33,13 +33,25 @@ export class CategoryController {
         return this.categoryService.findMany(accessProfile, options);
     }
 
-    @Get(':name')
+    @Get('name/:name')
     @UseGuards(AuthGuard('jwt'))
     async findByName(
         @GetAccessProfile() acessProfile: AccessProfile,
         @GetFindOneQueryOptions() options: FindOneQueryOptions<Category>,
     ) {
         return this.categoryService.findByName(acessProfile, options);
+    }
+
+    /**
+     * Get category by UUID (public-facing endpoint)
+     */
+    @Get(':uuid')
+    @UseGuards(AuthGuard('jwt'))
+    async findByUuid(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
+    ): Promise<Category> {
+        return this.categoryService.findByUuid(accessProfile, uuid);
     }
 
     @Post()
@@ -51,23 +63,29 @@ export class CategoryController {
         return this.categoryService.create(acessProfile, createCategoryDto);
     }
 
-    @Patch(':id')
+    /**
+     * Update category by UUID (public-facing endpoint)
+     */
+    @Patch(':uuid')
     @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
     async update(
         @GetAccessProfile() acessProfile: AccessProfile,
-        @Param('id', ParseIntPipe) id: number,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
         @Body() updateCategoryDto: UpdateCategoryDto,
-    ) {
-        return this.categoryService.update(acessProfile, id, updateCategoryDto);
+    ): Promise<Category> {
+        return this.categoryService.updateCategoryByUuid(acessProfile, uuid, updateCategoryDto);
     }
 
-    @Delete(':id')
+    /**
+     * Delete category by UUID (public-facing endpoint)
+     */
+    @Delete(':uuid')
     @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
     async delete(
         @GetAccessProfile() accessProfile: AccessProfile,
-        @Param('id', ParseIntPipe) id: number,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
     ) {
-        await this.categoryService.delete(accessProfile, id);
-        return { message: 'Category deleted successfully', id };
+        await this.categoryService.deleteByUuid(accessProfile, uuid);
+        return { message: 'Category deleted successfully' };
     }
 }

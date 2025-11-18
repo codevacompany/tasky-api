@@ -1,6 +1,7 @@
 import { Controller, Delete, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
+import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
 import { Notification } from './entities/notification.entity';
@@ -47,12 +48,15 @@ export class NotificationController {
         return { count: await this.notificationService.countUnreadByUser(accessProfile) };
     }
 
-    @Delete(':id')
+    /**
+     * Delete notification by UUID (public-facing endpoint)
+     */
+    @Delete(':uuid')
     async delete(
         @GetAccessProfile() accessProfile: AccessProfile,
-        @Param('id', ParseIntPipe) id: number,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
     ) {
-        await this.notificationService.delete(accessProfile, id);
+        await this.notificationService.deleteByUuid(accessProfile, uuid);
         return { message: 'Successfully deleted!' };
     }
 

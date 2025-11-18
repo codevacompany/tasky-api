@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
@@ -155,6 +156,43 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         ticketCommentDto: UpdateTicketCommentDto,
     ) {
         return super.update(accessProfile, id, ticketCommentDto);
+    }
+
+    /**
+     * Find ticket comment by UUID (public-facing identifier)
+     */
+    async findByUuid(accessProfile: AccessProfile, uuid: string): Promise<TicketComment> {
+        const comment = await super.findByUuid(accessProfile, uuid, {
+            relations: ['user'],
+        });
+
+        if (!comment) {
+            throw new CustomNotFoundException({
+                code: 'not-found',
+                message: 'Ticket comment not found.',
+            });
+        }
+
+        return comment;
+    }
+
+    /**
+     * Update ticket comment by UUID (public-facing identifier)
+     */
+    async updateCommentByUuid(
+        accessProfile: AccessProfile,
+        uuid: string,
+        dto: UpdateTicketCommentDto,
+    ): Promise<TicketComment> {
+        await super.updateByUuid(accessProfile, uuid, dto as QueryDeepPartialEntity<TicketComment>);
+        return this.findByUuid(accessProfile, uuid);
+    }
+
+    /**
+     * Delete ticket comment by UUID (public-facing identifier)
+     */
+    async deleteByUuid(accessProfile: AccessProfile, uuid: string): Promise<void> {
+        await super.deleteByUuid(accessProfile, uuid);
     }
 
     async delete(accessProfile: AccessProfile, id: number) {

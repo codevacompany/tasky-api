@@ -4,13 +4,13 @@ import {
     Delete,
     Get,
     Param,
-    ParseIntPipe,
     Patch,
     Post,
     UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
+import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
 import { CreateTicketCommentDto } from './dtos/create-ticket-comment.dto';
@@ -28,14 +28,6 @@ export class TicketCommentController {
         return this.ticketCommentService.findAll(accessProfile);
     }
 
-    @Get(':id')
-    async findById(
-        @Param('id', ParseIntPipe) id: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
-    ) {
-        return this.ticketCommentService.findById(accessProfile, id);
-    }
-
     @Get('ticket/:ticketId')
     findByTicket(
         @Param('ticketId') ticketCustomId: string,
@@ -43,6 +35,17 @@ export class TicketCommentController {
         @GetQueryOptions() options?: QueryOptions<TicketComment>,
     ) {
         return this.ticketCommentService.findBy(accessProfile, { ticketCustomId }, options);
+    }
+
+    /**
+     * Get ticket comment by UUID (public-facing endpoint)
+     */
+    @Get(':uuid')
+    async findByUuid(
+        @Param('uuid', UUIDValidationPipe) uuid: string,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ): Promise<TicketComment> {
+        return this.ticketCommentService.findByUuid(accessProfile, uuid);
     }
 
     @Post()
@@ -53,20 +56,27 @@ export class TicketCommentController {
         return this.ticketCommentService.create(accessProfile, createTicketCommentDto);
     }
 
-    @Patch(':id')
+    /**
+     * Update ticket comment by UUID (public-facing endpoint)
+     */
+    @Patch(':uuid')
     async update(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
         @Body() updateTicketCommentDto: UpdateTicketCommentDto,
         @GetAccessProfile() accessProfile: AccessProfile,
-    ) {
-        return this.ticketCommentService.update(accessProfile, id, updateTicketCommentDto);
+    ): Promise<TicketComment> {
+        return this.ticketCommentService.updateCommentByUuid(accessProfile, uuid, updateTicketCommentDto);
     }
 
-    @Delete(':id')
+    /**
+     * Delete ticket comment by UUID (public-facing endpoint)
+     */
+    @Delete(':uuid')
     async delete(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        return this.ticketCommentService.delete(accessProfile, id);
+        await this.ticketCommentService.deleteByUuid(accessProfile, uuid);
+        return { message: 'Successfully deleted!' };
     }
 }

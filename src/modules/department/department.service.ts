@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import {
     CustomBadRequestException,
     CustomConflictException,
+    CustomNotFoundException,
 } from '../../shared/exceptions/http-exception';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { User } from '../user/entities/user.entity';
@@ -60,6 +62,58 @@ export class DepartmentService extends TenantBoundBaseService<Department> {
 
     async update(acessProfile: AccessProfile, id: number, dto: UpdateDepartmentDto) {
         return super.update(acessProfile, id, dto);
+    }
+
+    /**
+     * Find department by UUID (public-facing identifier)
+     */
+    async findByUuid(acessProfile: AccessProfile, uuid: string): Promise<Department> {
+        const department = await super.findByUuid(acessProfile, uuid);
+
+        if (!department) {
+            throw new CustomNotFoundException({
+                code: 'not-found',
+                message: 'Department not found.',
+            });
+        }
+
+        return department;
+    }
+
+    /**
+     * Update department by UUID (public-facing identifier)
+     */
+    async updateDepartmentByUuid(
+        acessProfile: AccessProfile,
+        uuid: string,
+        dto: UpdateDepartmentDto,
+    ): Promise<Department> {
+        await super.updateByUuid(acessProfile, uuid, dto as QueryDeepPartialEntity<Department>);
+        return this.findByUuid(acessProfile, uuid);
+    }
+
+    /**
+     * Delete department by UUID (public-facing identifier)
+     */
+    async deleteByUuid(acessProfile: AccessProfile, uuid: string): Promise<void> {
+        const department = await this.findByUuidOrFail(acessProfile, uuid);
+
+        // Check if there are users assigned to this department
+        const usersInDepartment = await this.userRepository.count({
+            where: {
+                departmentId: department.id,
+                tenantId: acessProfile.tenantId,
+            },
+        });
+
+        if (usersInDepartment > 0) {
+            throw new CustomBadRequestException({
+                code: 'department-in-use',
+                message: `Cannot delete department because it has ${usersInDepartment} user(s) assigned`,
+            });
+        }
+
+        await super.deleteByUuid(acessProfile, uuid);
     }
 
     async delete(acessProfile: AccessProfile, id: number): Promise<void> {
