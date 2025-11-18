@@ -12,8 +12,10 @@ export interface UUIDRepository<T> {
  * Base repository class with UUID support
  * Extend this instead of Repository<T> to get UUID methods
  */
-export abstract class BaseUUIDRepository<T extends { uuid: string }> extends Repository<T>
-    implements UUIDRepository<T> {
+export abstract class BaseUUIDRepository<T extends { uuid: string }>
+    extends Repository<T>
+    implements UUIDRepository<T>
+{
     async findByUuid(uuid: string): Promise<T | null> {
         return this.findOne({ where: { uuid } as any });
     }

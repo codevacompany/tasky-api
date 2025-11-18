@@ -1,13 +1,4 @@
-import {
-    Body,
-    Controller,
-    Delete,
-    Get,
-    Param,
-    Patch,
-    Post,
-    UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
@@ -65,7 +56,11 @@ export class TicketCommentController {
         @Body() updateTicketCommentDto: UpdateTicketCommentDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ): Promise<TicketComment> {
-        return this.ticketCommentService.updateCommentByUuid(accessProfile, uuid, updateTicketCommentDto);
+        return this.ticketCommentService.updateCommentByUuid(
+            accessProfile,
+            uuid,
+            updateTicketCommentDto,
+        );
     }
 
     /**
