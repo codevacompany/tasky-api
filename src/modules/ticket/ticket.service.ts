@@ -198,7 +198,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     }
 
     async findById(accessProfile: AccessProfile, customId: string): Promise<Ticket> {
-        return this.findOne(accessProfile, {
+        const ticket = await this.findOne(accessProfile, {
             where: { customId },
             relations: [
                 'requester',
@@ -216,6 +216,86 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'ticketStatus',
             ],
         });
+
+        if (!ticket) {
+            throw new CustomNotFoundException({
+                code: 'ticket-not-found',
+                message: 'Ticket not found.',
+            });
+        }
+
+        // Get current user
+        const currentUser = await this.userRepository.findOne({
+            where: { id: accessProfile.userId, tenantId: accessProfile.tenantId },
+        });
+
+        if (!currentUser) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found.',
+            });
+        }
+
+        // Check if user has access to this ticket
+        const hasAccess = this.checkTicketAccess(ticket, currentUser);
+
+        if (!hasAccess) {
+            throw new CustomForbiddenException({
+                code: 'ticket-access-denied',
+                message: 'You do not have permission to access this ticket.',
+            });
+        }
+
+        return ticket;
+    }
+
+    /**
+     * Check if a user has access to a ticket
+     * Rules:
+     * 1. User is the requester
+     * 2. User is the current target user
+     * 3. User is one of the target users
+     * 4. User is the reviewer
+     * 5. If ticket is not private, user's department matches any target user's department
+     */
+    private checkTicketAccess(ticket: Ticket, user: any): boolean {
+        const userId = user.id;
+        const userDepartmentId = user.departmentId;
+
+        // Check if user is the requester
+        if (ticket.requesterId === userId) {
+            return true;
+        }
+
+        // Check if user is the current target user
+        if (ticket.currentTargetUserId === userId) {
+            return true;
+        }
+
+        // Check if user is one of the target users
+        if (ticket.targetUsers && ticket.targetUsers.some((tu) => tu.userId === userId)) {
+            return true;
+        }
+
+        // Check if user is the reviewer
+        if (ticket.reviewerId === userId) {
+            return true;
+        }
+
+        // If ticket is not private, check if user's department matches any target user's department
+        if (!ticket.isPrivate && userDepartmentId) {
+            if (ticket.targetUsers && ticket.targetUsers.length > 0) {
+                const targetUserDepartments = ticket.targetUsers
+                    .map((tu) => tu.user?.departmentId)
+                    .filter((deptId) => deptId !== null && deptId !== undefined);
+
+                if (targetUserDepartments.includes(userDepartmentId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     async findBy(
@@ -304,10 +384,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         if (where.name) {
-            qb.andWhere(
-                '(ticket.name ILIKE :name OR ticket.customId ILIKE :name)',
-                { name: `%${where.name}%` },
-            );
+            qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
+                name: `%${where.name}%`,
+            });
         }
     }
 
@@ -415,7 +494,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         if (options?.where) {
             if (options.where.name) {
-                qb.andWhere('ticket.name ILIKE :name', { name: `%${options.where.name}%` });
+                qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
+                    name: `%${options.where.name}%`,
+                });
             }
             if (options.where.priority) {
                 qb.andWhere('ticket.priority = :priority', { priority: options.where.priority });
@@ -486,7 +567,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         if (options?.where) {
             if (options.where.name) {
-                qb.andWhere('ticket.name ILIKE :name', { name: `%${options.where.name}%` });
+                qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
+                    name: `%${options.where.name}%`,
+                });
             }
             if (options.where.priority) {
                 qb.andWhere('ticket.priority = :priority', { priority: options.where.priority });
@@ -670,9 +753,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         accessProfile.tenantId,
                     );
                     if (emailNotificationsEnabled) {
+                        const ticketLink = `${process.env.FRONTEND_URL}/meus-tickets?ticket=${createdTicket.customId}`;
                         this.emailService.sendMail({
                             subject: `Um novo ticket foi criado para você.`,
-                            html: this.emailService.compileTemplate('ticket-update', { message }),
+                            html: this.emailService.compileTemplate('ticket-update', {
+                                message,
+                                ticketLink,
+                            }),
                             to: targetUser.email,
                         });
                     }
@@ -826,6 +913,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     `O ticket ${ticket.customId} está pronto para verificação.`,
                     message,
                     ticket.reviewer.email,
+                    ticket.customId,
                 );
             } else if (
                 ticketUpdate.status === TicketStatus.InProgress &&
@@ -871,15 +959,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         resourceCustomId: ticket.customId,
                     }),
                 ]);
-
-                const message = `<span style="font-weight: 600;">${ticket.currentTargetUser.firstName} ${ticket.currentTargetUser.lastName}</span> cancelou o envio do ticket <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
-
-                await this.sendEmailWithPermissionCheck(
-                    accessProfile.tenantId,
-                    `Envio do ticket ${ticket.customId} para verificação foi cancelado`,
-                    message,
-                    ticket.reviewer.email,
-                );
             } else if (
                 ticketUpdate.status === TicketStatus.UnderVerification &&
                 currentStatus === TicketStatus.AwaitingVerification
@@ -933,17 +1012,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     }),
                     ...notifications,
                 ]);
-
-                const message = `<span style="font-weight: 600;">${ticket.reviewer.firstName} ${ticket.reviewer.lastName}</span> iniciou a verificação do ticket <span style="font-weight: 600;">${ticket.customId}</span>.`;
-
-                for (const ticketTargetUser of targetUsers) {
-                    await this.sendEmailWithPermissionCheck(
-                        accessProfile.tenantId,
-                        `Verificação do ticket ${ticket.customId} foi iniciada`,
-                        message,
-                        ticketTargetUser.user.email,
-                    );
-                }
             } else if (
                 ticketUpdate.status === TicketStatus.InProgress &&
                 currentStatus === TicketStatus.Returned
@@ -988,15 +1056,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         resourceCustomId: ticket.customId,
                     }),
                 ]);
-
-                const message = `<span style="font-weight: 600;">${ticket.currentTargetUser.firstName} ${ticket.currentTargetUser.lastName}</span> iniciou a correção do ticket <span style="font-weight: 600;">${ticket.customId}</span>.`;
-
-                await this.sendEmailWithPermissionCheck(
-                    accessProfile.tenantId,
-                    `Correção do ticket ${ticket.customId} foi iniciada`,
-                    message,
-                    ticket.reviewer.email,
-                );
             }
 
             const updatedTicket = await this.findById(accessProfile, customId);
@@ -1107,6 +1166,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 `O ticket ${ticketResponse.customId} foi aceite`,
                 message,
                 requester.email,
+                ticketResponse.customId,
             );
         }
 
@@ -1196,6 +1256,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 `O ticket ${ticketResponse.customId} foi aprovado.`,
                 message,
                 ticketTargetUser.user.email,
+                ticketResponse.customId,
             );
         }
 
@@ -1290,6 +1351,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 `O ticket ${ticketResponse.customId} foi reprovado.`,
                 message,
                 ticketTargetUser.user.email,
+                ticketResponse.customId,
             );
         }
 
@@ -1392,6 +1454,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 `O ticket ${ticketResponse.customId} foi cancelado.`,
                 message,
                 ticketTargetUser.user.email,
+                ticketResponse.customId,
             );
         }
 
@@ -1451,12 +1514,17 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         subject: string,
         message: string,
         to: string,
+        ticketCustomId?: string,
     ): Promise<void> {
         const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(tenantId);
         if (emailNotificationsEnabled) {
+            const ticketLink = ticketCustomId
+                ? `${process.env.FRONTEND_URL}/meus-tickets?ticket=${ticketCustomId}`
+                : undefined;
+
             this.emailService.sendMail({
                 subject,
-                html: this.emailService.compileTemplate('ticket-update', { message }),
+                html: this.emailService.compileTemplate('ticket-update', { message, ticketLink }),
                 to,
             });
         }
@@ -1540,7 +1608,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         if (options?.where) {
             if (options.where.name) {
-                qb.andWhere('ticket.name ILIKE :name', { name: `%${options.where.name}%` });
+                qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
+                    name: `%${options.where.name}%`,
+                });
             }
             // departmentId filter removed - now filtered via targetUsers' departments
         }
@@ -1683,6 +1753,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     `Uma correção foi solicitada no ticket ${ticket.customId}.`,
                     message,
                     ticketTargetUser.user.email,
+                    ticket.customId,
                 );
             }
         }
@@ -1902,6 +1973,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 `O ticket ${ticket.customId} foi enviado para você.`,
                 message,
                 nextUserDetails.email,
+                ticket.customId,
             );
 
             for (const targetUser of targetUsers) {
@@ -1911,6 +1983,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         `O ticket ${ticket.customId} foi enviado para o próximo departamento.`,
                         message,
                         targetUser.user.email,
+                        ticket.customId,
                     );
                 }
             }

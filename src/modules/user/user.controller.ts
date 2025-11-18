@@ -12,6 +12,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
+import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy';
 import { UpdateUserDto } from './dtos/update-user.dto';
@@ -42,10 +43,17 @@ export class UserController {
         return this.userService.getTenantAdmins(accessProfile.tenantId);
     }
 
-    @Get(':id')
+    /**
+     * Get user by UUID (public-facing endpoint)
+     * Use UUID for security and privacy
+     */
+    @Get(':uuid')
     @UseGuards(AuthGuard('jwt'))
-    async findOne(@Param('id', ParseIntPipe) id: number): Promise<User> {
-        return this.userService.findById(id);
+    async findOneByUuid(
+        @Param('uuid', UUIDValidationPipe) uuid: string,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ): Promise<User> {
+        return this.userService.findByUuid(accessProfile, uuid);
     }
 
     @Get()
@@ -110,14 +118,17 @@ export class UserController {
         return this.userService.create(accessProfile, createUserDto);
     }
 
-    @Patch(':id')
+    /**
+     * Update user by UUID (public-facing endpoint)
+     */
+    @Patch(':uuid')
     @UseGuards(AuthGuard('jwt'))
-    async update(
-        @Param('id', ParseIntPipe) id: number,
+    async updateByUuid(
+        @Param('uuid', UUIDValidationPipe) uuid: string,
         @Body() updateUserDto: UpdateUserDto,
         @GetAccessProfile() accessProfile: AccessProfile,
-    ) {
-        return this.userService.update(accessProfile, id, updateUserDto);
+    ): Promise<User> {
+        return this.userService.updateUserByUuid(accessProfile, uuid, updateUserDto);
     }
 
     @Patch('super-admin/:id')

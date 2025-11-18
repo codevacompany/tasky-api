@@ -49,8 +49,13 @@ export class EmailService {
             },
         });
 
+        const mailOptions: Mail.Options = {
+            ...options,
+            from: options.from || `Tasky Pro <${process.env.EMAIL_USERNAME}>`,
+        };
+
         return transport
-            .sendMail(options)
+            .sendMail(mailOptions)
             .then(() => {
                 console.info('Email successfully sent');
                 return { message: 'Email successfully sent' };

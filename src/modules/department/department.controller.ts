@@ -4,13 +4,13 @@ import {
     Delete,
     Get,
     Param,
-    ParseIntPipe,
     Patch,
     Post,
     UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
+import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from './department.service';
@@ -31,9 +31,20 @@ export class DepartmentController {
         return this.departmentService.findMany(acessProfile, options);
     }
 
-    @Get(':name')
+    @Get('name/:name')
     async findByName(@GetAccessProfile() acessProfile: AccessProfile, @Param('name') name: string) {
         return this.departmentService.findByName(acessProfile, name);
+    }
+
+    /**
+     * Get department by UUID (public-facing endpoint)
+     */
+    @Get(':uuid')
+    async findByUuid(
+        @GetAccessProfile() acessProfile: AccessProfile,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
+    ): Promise<Department> {
+        return this.departmentService.findByUuid(acessProfile, uuid);
     }
 
     @Post()
@@ -44,21 +55,27 @@ export class DepartmentController {
         return this.departmentService.create(acessProfile, dto);
     }
 
-    @Patch(':id')
+    /**
+     * Update department by UUID (public-facing endpoint)
+     */
+    @Patch(':uuid')
     async update(
         @GetAccessProfile() acessProfile: AccessProfile,
-        @Param('id', ParseIntPipe) id: number,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
         @Body() dto: UpdateDepartmentDto,
-    ) {
-        return this.departmentService.update(acessProfile, id, dto);
+    ): Promise<Department> {
+        return this.departmentService.updateDepartmentByUuid(acessProfile, uuid, dto);
     }
 
-    @Delete(':id')
+    /**
+     * Delete department by UUID (public-facing endpoint)
+     */
+    @Delete(':uuid')
     async delete(
         @GetAccessProfile() acessProfile: AccessProfile,
-        @Param('id', ParseIntPipe) id: number,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
     ) {
-        await this.departmentService.delete(acessProfile, id);
+        await this.departmentService.deleteByUuid(acessProfile, uuid);
         return { message: 'Successfully deleted!' };
     }
 }

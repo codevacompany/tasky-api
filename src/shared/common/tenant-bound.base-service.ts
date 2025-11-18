@@ -120,4 +120,70 @@ export abstract class TenantBoundBaseService<T extends TenantBoundBaseEntity> {
 
         await this.repository.remove(entity);
     }
+
+    /**
+     * Find entity by UUID (public-facing identifier)
+     */
+    protected async findByUuid(
+        accessProfile: AccessProfile,
+        uuid: string,
+        options?: FindOneQueryOptions<T>,
+    ): Promise<T | null> {
+        const where = { uuid } as any;
+
+        if (options?.tenantAware !== false) {
+            where.tenantId = Equal(accessProfile.tenantId);
+        }
+
+        return this.repository.findOne({
+            ...options,
+            where: { ...where, ...options?.where },
+        });
+    }
+
+    /**
+     * Find entity by UUID or throw NotFoundException
+     */
+    protected async findByUuidOrFail(
+        accessProfile: AccessProfile,
+        uuid: string,
+        options?: FindOneQueryOptions<T>,
+    ): Promise<T> {
+        const entity = await this.findByUuid(accessProfile, uuid, options);
+
+        if (!entity) {
+            throw new CustomNotFoundException({
+                code: 'not-found',
+                message: 'Entity not found.',
+            });
+        }
+
+        return entity;
+    }
+
+    /**
+     * Update entity by UUID (public-facing identifier)
+     */
+    protected async updateByUuid(
+        accessProfile: AccessProfile,
+        uuid: string,
+        data: QueryDeepPartialEntity<T>,
+        tenantAware = true,
+    ) {
+        const entity = await this.findByUuidOrFail(accessProfile, uuid, { tenantAware });
+
+        return this.repository.update(entity.id, { ...data, updatedById: accessProfile.userId });
+    }
+
+    /**
+     * Delete entity by UUID (public-facing identifier)
+     */
+    protected async deleteByUuid(
+        accessProfile: AccessProfile,
+        uuid: string,
+        tenantAware = true,
+    ): Promise<void> {
+        const entity = await this.findByUuidOrFail(accessProfile, uuid, { tenantAware });
+        await this.repository.remove(entity);
+    }
 }

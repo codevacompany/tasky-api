@@ -1,10 +1,12 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import {
     CustomConflictException,
     CustomBadRequestException,
     CustomForbiddenException,
+    CustomNotFoundException,
 } from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
@@ -140,6 +142,48 @@ export class UserService extends TenantBoundBaseService<User> {
             },
             relations: ['department', 'role'],
         });
+    }
+
+    /**
+     * Find user by UUID (public-facing identifier)
+     * Use this for public API endpoints
+     */
+    async findByUuid(accessProfile: AccessProfile, uuid: string): Promise<User> {
+        const user = await super.findByUuid(accessProfile, uuid, {
+            relations: ['department', 'role'],
+        });
+
+        if (!user) {
+            throw new CustomNotFoundException({
+                code: 'not-found',
+                message: 'User not found.',
+            });
+        }
+
+        return user;
+    }
+
+    /**
+     * Update user by UUID (public-facing identifier)
+     */
+    async updateUserByUuid(
+        accessProfile: AccessProfile,
+        uuid: string,
+        updateUserDto: UpdateUserDto,
+    ): Promise<User> {
+        await super.updateByUuid(
+            accessProfile,
+            uuid,
+            updateUserDto as QueryDeepPartialEntity<User>,
+        );
+        return this.findByUuid(accessProfile, uuid);
+    }
+
+    /**
+     * Delete user by UUID (public-facing identifier)
+     */
+    async deleteByUuid(accessProfile: AccessProfile, uuid: string): Promise<void> {
+        await super.deleteByUuid(accessProfile, uuid);
     }
 
     async findBy(accessProfile: AccessProfile, options: QueryOptions<User>) {

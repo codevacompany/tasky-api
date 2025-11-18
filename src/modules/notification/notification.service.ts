@@ -80,6 +80,13 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
         });
     }
 
+    /**
+     * Delete notification by UUID (public-facing identifier)
+     */
+    async deleteByUuid(accessProfile: AccessProfile, uuid: string): Promise<void> {
+        await super.deleteByUuid(accessProfile, uuid);
+    }
+
     async delete(accessProfile: AccessProfile, id: number): Promise<void> {
         return super.delete(accessProfile, id);
     }

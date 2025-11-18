@@ -62,8 +62,14 @@ export class TicketController {
         return this.ticketService.findArchived(accessProfile, options);
     }
 
-    @Get(':id')
-    findById(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
+    /**
+     * Get ticket by customId (public-facing endpoint)
+     */
+    @Get(':customId')
+    findById(
+        @Param('customId') customId: string,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
         return this.ticketService.findById(accessProfile, customId);
     }
 
@@ -121,69 +127,96 @@ export class TicketController {
         return this.ticketService.findByReceived(accessProfile, userId, options);
     }
 
-    @Patch(':id')
+    /**
+     * Update ticket by customId (public-facing endpoint)
+     */
+    @Patch(':customId')
     update(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Body() updateTicketDto: UpdateTicketDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.updateTicket(accessProfile, customId, updateTicketDto);
     }
 
-    @Patch(':id/status')
+    /**
+     * Update ticket status by customId (public-facing endpoint)
+     */
+    @Patch(':customId/status')
     updateStatus(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Body() updateTicketStatusDto: UpdateTicketStatusDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.updateStatus(accessProfile, customId, updateTicketStatusDto);
     }
 
-    @Post(':id/accept')
-    accept(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
+    /**
+     * Accept ticket by customId (public-facing endpoint)
+     */
+    @Post(':customId/accept')
+    accept(@Param('customId') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
         return this.ticketService.accept(accessProfile, customId);
     }
 
-    @Post(':id/approve')
-    approve(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
+    /**
+     * Approve ticket by customId (public-facing endpoint)
+     */
+    @Post(':customId/approve')
+    approve(@Param('customId') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
         return this.ticketService.approve(accessProfile, customId);
     }
 
-    @Post(':id/reject')
+    /**
+     * Reject ticket by customId (public-facing endpoint)
+     */
+    @Post(':customId/reject')
     reject(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Body() createDisapprovalReasonDto: CreateTicketDisapprovalReasonDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.reject(accessProfile, customId, createDisapprovalReasonDto);
     }
 
-    @Post(':id/cancel')
+    /**
+     * Cancel ticket by customId (public-facing endpoint)
+     */
+    @Post(':customId/cancel')
     cancel(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Body() createCancellationReasonDto: CreateTicketCancellationReasonDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.cancel(accessProfile, customId, createCancellationReasonDto);
     }
 
-    @Delete(':id')
-    delete(@Param('id') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
+    /**
+     * Delete ticket by customId (public-facing endpoint)
+     */
+    @Delete(':customId')
+    delete(@Param('customId') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
         return this.ticketService.deleteTicket(accessProfile, customId);
     }
 
-    @Post(':id/files')
+    /**
+     * Add files to ticket by customId (public-facing endpoint)
+     */
+    @Post(':customId/files')
     addFiles(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Body() addTicketFilesDto: AddTicketFilesDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.addFiles(accessProfile, customId, addTicketFilesDto.files);
     }
 
-    @Post(':id/request-correction')
+    /**
+     * Request correction for ticket by customId (public-facing endpoint)
+     */
+    @Post(':customId/request-correction')
     requestCorrection(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Body() createCorrectionRequestDto: CreateCorrectionRequestDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
@@ -194,9 +227,12 @@ export class TicketController {
         );
     }
 
-    @Patch(':id/assignee')
+    /**
+     * Update ticket assignee by customId (public-facing endpoint)
+     */
+    @Patch(':customId/assignee')
     updateAssignee(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Body() updateAssigneeDto: UpdateTicketAssigneeDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
@@ -208,9 +244,12 @@ export class TicketController {
         );
     }
 
-    @Patch(':id/reviewer')
+    /**
+     * Update ticket reviewer by customId (public-facing endpoint)
+     */
+    @Patch(':customId/reviewer')
     updateReviewer(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Body() updateReviewerDto: { reviewerId: number },
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
@@ -221,17 +260,23 @@ export class TicketController {
         );
     }
 
-    @Post(':id/send-to-next-department')
+    /**
+     * Send ticket to next department by customId (public-facing endpoint)
+     */
+    @Post(':customId/send-to-next-department')
     sendToNextDepartment(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.sendToNextDepartment(accessProfile, customId);
     }
 
-    @Post(':id/actions/:actionId')
+    /**
+     * Execute custom status action by customId (public-facing endpoint)
+     */
+    @Post(':customId/actions/:actionId')
     executeCustomStatusAction(
-        @Param('id') customId: string,
+        @Param('customId') customId: string,
         @Param('actionId', ParseIntPipe) actionId: number,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
