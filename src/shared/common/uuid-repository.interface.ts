@@ -29,3 +29,4 @@ export abstract class BaseUUIDRepository<T extends { uuid: string }>
     }
 }
 
+

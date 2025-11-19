@@ -6,6 +6,7 @@ import { LoginDto } from './dtos/login.dto';
 import { RefreshTokenDto } from './dtos/refresh-token.dto';
 import { ResetPasswordRequestDto } from './dtos/reset-password-request.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
+import { ResetPasswordWithTokenDto } from './dtos/reset-password-with-token.dto';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { ChangePasswordDto } from './dtos/change-password.dto';
 import { AdminResetPasswordDto } from './dtos/admin-reset-password.dto';
@@ -46,17 +47,6 @@ export class AuthController {
         };
     }
 
-    //TODO: This endpoint is to be used when a user forgets their password hehe
-    // @Patch('reset-password')
-    // @UseGuards(AuthGuard('jwt'))
-    // async resetPassword(@Request() req, @Body() { password }: ResetPasswordDto) {
-    //     const bearerToken = req.headers['authorization'];
-
-    //     return await this.authService.resetPassword(bearerToken, password);
-    // }
-
-    //TODO: Implement an endpoint to change the password of a user
-
     @Post('reset-password/request')
     async requestPasswordReset(@Body() { email }: ResetPasswordRequestDto) {
         const accessProfile = new AccessProfile();
@@ -68,6 +58,11 @@ export class AuthController {
     async validateVerificationCode(@Body() body: VerificationCodeValidationDto) {
         const accessProfile = new AccessProfile();
         return await this.authService.validateVerificationCode(accessProfile, body);
+    }
+
+    @Post('reset-password')
+    async resetPasswordWithToken(@Body() { token, newPassword }: ResetPasswordWithTokenDto) {
+        return await this.authService.resetPasswordWithToken(token, newPassword);
     }
 
     @Post('refresh-token')
