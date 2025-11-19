@@ -1,0 +1,23 @@
+{{#> layout}}
+  <p style="text-align: center; margin-bottom: 1rem;">
+    Olá {{firstName}} {{lastName}}!
+  </p>
+  
+  <p style="text-align: center; margin-bottom: 1rem;">
+    Você solicitou a redefinição de senha. Use o código de verificação abaixo para continuar:
+  </p>
+
+  <div style="background-color: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; margin: 2rem 0; text-align: center; border: 2px solid #00143b;">
+    <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #6b7280;">Código de Verificação</p>
+    <code style="font-size: 2rem; font-weight: bold; color: #00143b; letter-spacing: 0.5rem;">{{verificationCode}}</code>
+  </div>
+
+  <p style="text-align: center; margin-bottom: 1rem; color: #6b7280; font-size: 0.875rem;">
+    Este código expira em 1 hora.
+  </p>
+
+  <p style="text-align: center; margin-bottom: 2rem; color: #6b7280; font-size: 0.875rem;">
+    Se você não solicitou esta redefinição de senha, ignore este e-mail.
+  </p>
+{{/layout}}
+

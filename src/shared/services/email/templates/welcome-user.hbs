@@ -1,0 +1,32 @@
+{{#> layout}}
+  <p>Olá {{firstName}} {{lastName}},</p>
+
+  <p><strong>Bem-vindo ao Tasky Pro!</strong></p>
+
+  <p>Sua conta foi criada com sucesso. Abaixo estão suas credenciais de acesso temporárias:</p>
+
+  <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 1rem; margin: 20px 0;">
+    <p style="margin: 0 0 8px 0; font-weight: 600; color: #000;">E-mail:</p>
+    <p style="margin: 0 0 16px 0; color: #495057; font-family: monospace;">{{email}}</p>
+    
+    <p style="margin: 0 0 8px 0; font-weight: 600; color: #000;">Senha temporária:</p>
+    <p style="margin: 0; color: #495057; font-family: monospace; font-size: 18px; letter-spacing: 2px;">{{temporaryPassword}}</p>
+  </div>
+
+  <p><strong>Importante:</strong> Por questões de segurança, recomendamos que você altere sua senha após o primeiro acesso.</p>
+
+  <div style="width: 100%; text-align: center; margin: 30px 0;">
+    <a
+      href="{{loginUrl}}"
+      target="_blank"
+      style="display: inline-block; color: #fff; font-weight: 500; text-decoration: none; padding-top: 0.625rem; padding-bottom: 0.625rem; padding-left: 1.25rem; padding-right: 1.25rem; border-radius: 0.25rem; background-color: #00143b;">
+      Acessar Sistema
+    </a>
+  </div>
+
+  <p>Se você tiver alguma dúvida ou precisar de ajuda, não hesite em entrar em contato com nossa equipe de suporte.</p>
+
+  <p>Atenciosamente,<br>
+  Equipe Tasky Pro</p>
+{{/layout}}
+

@@ -26,10 +26,10 @@ export class CreateUserDto {
     @IsEmail()
     email: string;
 
-    @IsNotEmpty()
+    @IsOptional()
     @IsString()
     // @IsPasswordStrong()
-    password: string;
+    password?: string;
 
     @IsNotEmpty()
     departmentId?: number;

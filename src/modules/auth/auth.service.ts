@@ -126,9 +126,23 @@ export class AuthService {
         }
 
         const verificationCode = await this.verificationCodeService.generate();
-        // if (process.env.APP_ENV !== 'test') {
-        //     await this.emailService.sendVerificationCode(user, verificationCode);
-        // }
+
+        if (process.env.APP_ENV !== 'test') {
+            try {
+                await this.emailService.sendMail({
+                    subject: 'Código de Verificação - Redefinição de Senha',
+                    html: this.emailService.compileTemplate('verification-code', {
+                        firstName: user.firstName,
+                        lastName: user.lastName,
+                        verificationCode: verificationCode,
+                    }),
+                    to: email,
+                });
+            } catch (error) {
+                console.error('Error sending verification code email:', error);
+            }
+        }
+
         await this.verificationCodeService.insert(verificationCode, email, user.tenantId);
 
         return { message: `Verification code sent to ${email}` };
@@ -244,22 +258,70 @@ export class AuthService {
         };
     }
 
-    // async resetPassword(bearerToken: string, password: string) {
-    //     const token = bearerToken.split(' ')[1];
+    async resetPasswordWithToken(token: string, newPassword: string) {
+        let decodedToken: JwtPayload;
 
-    //     const { sub } = this.tokenService.decode(token);
+        try {
+            decodedToken = this.tokenService.verify(token) as JwtPayload;
+        } catch (error) {
+            throw new CustomForbiddenException({
+                code: 'invalid-or-expired-token',
+                message: 'This token is invalid or has expired',
+            });
+        }
 
-    //     const validCode = await this.verificationCodeService.validate(sub.code, sub.email);
+        // Validate token structure
+        if (!decodedToken.sub || typeof decodedToken.sub !== 'object') {
+            throw new CustomForbiddenException({
+                code: 'invalid-token',
+                message: 'Invalid token format',
+            });
+        }
 
-    //     if (!validCode.valid) {
-    //         throw new CustomUnauthorizedException({
-    //             code: 'invalid-token',
-    //             message: 'This token is invalid or has already been used',
-    //         });
-    //     }
+        const { userId, email, code } = decodedToken.sub as any;
 
-    //     await this.verificationCodeService.delete(validCode.id);
+        if (!userId || !email || !code) {
+            throw new CustomForbiddenException({
+                code: 'invalid-token',
+                message: 'Invalid token',
+            });
+        }
 
-    //     return this.userService.update(sub.userId, { password });
-    // }
+        // Verify user exists
+        const accessProfile = new AccessProfile();
+        const user = await this.userService.findByEmail(accessProfile, email, {
+            tenantAware: false,
+        });
+
+        if (!user || user.id !== userId) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        // Validate that the verification code is still valid
+        const validCode = await this.verificationCodeService.validate(accessProfile, code, email);
+
+        if (!validCode.valid) {
+            throw new CustomForbiddenException({
+                code: 'invalid-or-expired-code',
+                message: 'This verification code is invalid or has expired',
+            });
+        }
+
+        // Mark verification code as used
+        if (validCode.id) {
+            await this.verificationCodeService.markAsUsed(validCode.id);
+        }
+
+        // Hash and update password
+        const hashedPassword = this.encryptionService.hashSync(newPassword);
+
+        await this.userService.update(accessProfile, userId, {
+            password: hashedPassword,
+        });
+
+        return { message: 'Password reset successfully' };
+    }
 }
