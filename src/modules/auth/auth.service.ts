@@ -127,7 +127,7 @@ export class AuthService {
 
         const verificationCode = await this.verificationCodeService.generate();
 
-        if (process.env.APP_ENV !== 'test') {
+        if (process.env.APP_ENV !== 'dev') {
             try {
                 await this.emailService.sendMail({
                     subject: 'Código de Verificação - Redefinição de Senha',

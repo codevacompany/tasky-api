@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, FindOptionsWhere, In } from 'typeorm';
+import { DataSource, FindOptionsOrder, FindOptionsWhere, In } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import {
@@ -84,7 +84,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'disapprovalReason',
                 'correctionRequests',
             ],
-            order: { createdAt: 'DESC' } as any,
+            order: options?.order || ({ createdAt: 'DESC' } as any),
             tenantAware: false,
         };
         return super.findMany(accessProfile, filters);
@@ -127,6 +127,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         } else {
             this.applyDefaultStatusFilter(qb);
         }
+        this.applySorting(qb, options?.order);
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
@@ -180,6 +181,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         } else {
             this.applyDefaultStatusFilter(qb);
         }
+        this.applySorting(qb, options?.order);
 
         // Apply pagination
         const page = options?.page || 1;
@@ -329,6 +331,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
         this.applyWhereFilters(qb, whereWithStatus);
         this.applyDefaultStatusFilter(qb, whereWithStatus?.status);
+        this.applySorting(qb, options?.order);
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
@@ -361,8 +364,33 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
             .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
             .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
-            .where('ticket.tenantId = :tenantId', { tenantId })
-            .orderBy('ticket.createdAt', 'DESC');
+            .where('ticket.tenantId = :tenantId', { tenantId });
+    }
+
+    private applySorting(
+        qb: ReturnType<typeof this.repository.createQueryBuilder>,
+        order?: FindOptionsOrder<Ticket>,
+    ) {
+        const existingOrderBys = qb.expressionMap.orderBys;
+        if (existingOrderBys && Object.keys(existingOrderBys).length > 0) {
+            qb.expressionMap.orderBys = {};
+        }
+
+        if (order && Object.keys(order).length > 0) {
+            Object.entries(order).forEach(([field, direction]) => {
+                let dir: 'ASC' | 'DESC';
+                if (typeof direction === 'string') {
+                    dir = direction.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+                } else if (direction === 1) {
+                    dir = 'ASC';
+                } else {
+                    dir = 'DESC';
+                }
+                qb.addOrderBy(`ticket.${field}`, dir);
+            });
+        } else {
+            qb.addOrderBy('ticket.createdAt', 'DESC');
+        }
     }
 
     private applyWhereFilters(
@@ -472,8 +500,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 {
                     userId,
                 },
-            )
-            .orderBy('ticket.createdAt', 'DESC');
+            );
 
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
         if (whereWithStatus?.status) {
@@ -502,6 +529,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 qb.andWhere('ticket.priority = :priority', { priority: options.where.priority });
             }
         }
+        this.applySorting(qb, options?.order);
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
@@ -544,8 +572,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 {
                     userId,
                 },
-            )
-            .orderBy('ticket.createdAt', 'DESC');
+            );
 
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
         if (whereWithStatus?.status) {
@@ -575,6 +602,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 qb.andWhere('ticket.priority = :priority', { priority: options.where.priority });
             }
         }
+        this.applySorting(qb, options?.order);
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
@@ -1603,8 +1631,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         return date;
                     })(),
                 },
-            )
-            .orderBy('ticket.createdAt', 'DESC');
+            );
 
         if (options?.where) {
             if (options.where.name) {
@@ -1614,6 +1641,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             }
             // departmentId filter removed - now filtered via targetUsers' departments
         }
+        this.applySorting(qb, options?.order);
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
