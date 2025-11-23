@@ -128,6 +128,10 @@ export class TenantService {
         };
     }
 
+    async updateStripeCustomerId(id: number, stripeCustomerId: string) {
+        await this.tenantRepository.update(id, { stripeCustomerId });
+    }
+
     async updateConsent(id: number, consentData: UpdateTenantConsentDto) {
         await this.findById(id);
 

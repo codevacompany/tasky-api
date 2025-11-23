@@ -65,4 +65,7 @@ export class Tenant extends IdTimestampBaseEntity {
 
     @Column({ nullable: true })
     privacyPolicyVersion: string;
+
+    @Column({ length: 255, nullable: true })
+    stripeCustomerId: string;
 }

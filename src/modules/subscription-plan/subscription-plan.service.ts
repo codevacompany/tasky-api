@@ -41,4 +41,13 @@ export class SubscriptionPlanService {
 
         return plan.subscriptionPlanPermissions.map((spp) => spp.permission.key);
     }
+
+    async findByStripePriceId(priceId: string) {
+        return this.subscriptionPlanRepository.findOne({
+            where: [
+                { stripePriceIdMonthly: priceId, isActive: true },
+                { stripePriceIdYearly: priceId, isActive: true },
+            ],
+        });
+    }
 }
