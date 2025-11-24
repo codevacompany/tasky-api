@@ -23,6 +23,9 @@ export class Notification extends TenantBoundBaseEntity {
     @Column({ default: false })
     read: boolean;
 
+    @Column({ type: 'jsonb', nullable: true })
+    metadata: Record<string, unknown> | null;
+
     @Column({ nullable: true })
     createdById: number;
 
