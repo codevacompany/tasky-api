@@ -104,6 +104,9 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
                     targetUserId: commentWithTicket.ticket.requesterId,
                     resourceId: commentWithTicket.ticketId,
                     resourceCustomId: commentWithTicket.ticketCustomId,
+                    metadata: {
+                        commentText: ticketCommentDto.content,
+                    },
                 }),
             );
         }
@@ -121,6 +124,9 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
                     targetUserId: commentWithTicket.ticket.currentTargetUserId,
                     resourceId: commentWithTicket.ticketId,
                     resourceCustomId: commentWithTicket.ticketCustomId,
+                    metadata: {
+                        commentText: ticketCommentDto.content,
+                    },
                 }),
             );
         }

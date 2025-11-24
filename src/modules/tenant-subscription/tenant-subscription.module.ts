@@ -11,7 +11,9 @@ import { PermissionModule } from '../permission/permission.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { PaymentModule } from '../payment/payment.module';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
+import { StripeModule } from '../../shared/services/stripe/stripe.module';
 import { TenantSubscriptionController } from './tenant-subscription.controller';
+import { StripeWebhookController } from './stripe-webhook.controller';
 
 @Module({
     imports: [
@@ -22,8 +24,9 @@ import { TenantSubscriptionController } from './tenant-subscription.controller';
         PaymentModule,
         forwardRef(() => TenantModule),
         forwardRef(() => UserModule),
+        StripeModule,
     ],
-    controllers: [TenantSubscriptionController],
+    controllers: [TenantSubscriptionController, StripeWebhookController],
     providers: [
         TenantSubscriptionService,
         TenantSubscriptionRepository,

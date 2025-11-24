@@ -15,7 +15,9 @@ import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { TenantAdminGuard } from '../../shared/guards/tenant-admin.guard';
 import { TenantSubscriptionService } from './tenant-subscription.service';
 import { BillingService } from './billing.service';
+import { SubscribeRequestDto } from './dtos/subscribe-request.dto';
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
 @Controller('tenant-subscriptions')
 @UseGuards(AuthGuard('jwt'))
 export class TenantSubscriptionController {
@@ -27,7 +29,7 @@ export class TenantSubscriptionController {
     @Get('tenant/:tenantId/summary')
     getSubscriptionSummary(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.getSubscriptionSummary(tenantId);
     }
@@ -35,7 +37,7 @@ export class TenantSubscriptionController {
     @Get('tenant/:tenantId/active')
     findActiveTenantSubscription(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.findActiveTenantSubscription(tenantId);
     }
@@ -43,7 +45,7 @@ export class TenantSubscriptionController {
     @Get('tenant/:tenantId/current')
     findCurrentTenantSubscription(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
     }
@@ -51,7 +53,7 @@ export class TenantSubscriptionController {
     @Get('tenant/:tenantId/permissions')
     getTenantPermissions(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.getTenantPermissions(tenantId);
     }
@@ -59,7 +61,7 @@ export class TenantSubscriptionController {
     @Get('tenant/:tenantId/user-limit')
     validateUserLimit(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.validateUserLimit(tenantId);
     }
@@ -69,7 +71,7 @@ export class TenantSubscriptionController {
     @UseGuards(TenantAdminGuard)
     getTenantBilling(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.billingService.calculateTenantBilling(tenantId);
     }
@@ -78,7 +80,7 @@ export class TenantSubscriptionController {
     @UseGuards(TenantAdminGuard)
     getBillingSummary(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.billingService.getBillingSummary(tenantId);
     }
@@ -120,12 +122,15 @@ export class TenantSubscriptionController {
     @Post('subscribe')
     @UseGuards(TenantAdminGuard)
     async subscribe(
-        @Body() body: { planSlug: string },
+        @Body() body: SubscribeRequestDto,
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
-        return this.tenantSubscriptionService.activateSubscription(
+        return this.tenantSubscriptionService.createCheckoutSession(
             accessProfile.tenantId,
             body.planSlug,
+            {
+                billingInterval: body.billingInterval,
+            },
         );
     }
 
@@ -133,7 +138,7 @@ export class TenantSubscriptionController {
     @UseGuards(GlobalAdminGuard)
     createTrialSubscription(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
         @Body() body: { planSlug?: string },
     ) {
         const planSlug = body.planSlug || 'iniciante';
@@ -145,7 +150,7 @@ export class TenantSubscriptionController {
     activateSubscription(
         @Param('tenantId', ParseIntPipe) tenantId: number,
         @Body() body: { planSlug: string },
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.activateSubscription(tenantId, body.planSlug);
     }
@@ -154,8 +159,35 @@ export class TenantSubscriptionController {
     @UseGuards(GlobalAdminGuard)
     async renewTrial(
         @Param('tenantId', ParseIntPipe) tenantId: number,
-        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.renewTrial(tenantId);
+    }
+
+    @Post('tenant/:tenantId/usage/sync')
+    @UseGuards(TenantAdminGuard)
+    syncMeteredUsage(
+        @Param('tenantId', ParseIntPipe) tenantId: number,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.tenantSubscriptionService.syncMeteredUsage(tenantId);
+    }
+
+    @Post('tenant/:tenantId/portal')
+    @UseGuards(TenantAdminGuard)
+    async createCustomerPortalSession(
+        @Param('tenantId', ParseIntPipe) tenantId: number,
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Body() body: { returnUrl?: string },
+    ) {
+        const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const returnUrl = body.returnUrl || `${baseUrl}/admin/billing`;
+
+        const portalUrl = await this.tenantSubscriptionService.createCustomerPortalSession(
+            tenantId,
+            returnUrl,
+        );
+
+        return { url: portalUrl };
     }
 }

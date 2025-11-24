@@ -43,6 +43,15 @@ export class TenantSubscription extends TenantBoundBaseEntity {
     @JoinColumn({ name: 'subscriptionPlanId' })
     subscriptionPlan: SubscriptionPlan;
 
+    @Column({ length: 255, nullable: true })
+    stripeSubscriptionId: string;
+
+    @Column({ length: 255, nullable: true })
+    stripeSubscriptionItemIdBase: string;
+
+    @Column({ length: 255, nullable: true })
+    stripeSubscriptionItemIdPerUser: string;
+
     @OneToMany(() => Payment, (payment) => payment.tenantSubscription)
     payments: Payment[];
 
