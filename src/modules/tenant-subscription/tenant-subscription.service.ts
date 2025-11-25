@@ -146,8 +146,8 @@ export class TenantSubscriptionService {
         const tenant = await this.tenantService.findById(tenantId);
 
         const baseUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-        const successUrl = `${baseUrl}/admin/billing?session_id={CHECKOUT_SESSION_ID}&success=true`;
-        const cancelUrl = `${baseUrl}/admin/billing?canceled=true`;
+        const successUrl = `${baseUrl}/assinaturas?success=true`;
+        const cancelUrl = `${baseUrl}/assinaturas?canceled=true`;
 
         const customer = await this.stripeService.ensureCustomer({
             tenantId,
