@@ -239,7 +239,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         // Check if user has access to this ticket
-        const hasAccess = this.checkTicketAccess(ticket, currentUser);
+        const hasAccess = await this.checkTicketAccess(ticket, currentUser);
 
         if (!hasAccess) {
             throw new CustomForbiddenException({
@@ -254,37 +254,40 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     /**
      * Check if a user has access to a ticket
      * Rules:
-     * 1. User is the requester
-     * 2. User is the current target user
-     * 3. User is one of the target users
-     * 4. User is the reviewer
-     * 5. If ticket is not private, user's department matches any target user's department
+     * 1. User is a tenant admin (can access all tickets, including private ones)
+     * 2. User is the requester
+     * 3. User is the current target user
+     * 4. User is one of the target users
+     * 5. User is the reviewer
+     * 6. If ticket is not private, user's department matches any target user's department
      */
-    private checkTicketAccess(ticket: Ticket, user: any): boolean {
+    private async checkTicketAccess(ticket: Ticket, user: any): Promise<boolean> {
         const userId = user.id;
         const userDepartmentId = user.departmentId;
 
-        // Check if user is the requester
+        if (user.roleId) {
+            const role = await this.roleService.findById(user.roleId);
+            if (role && role.name === RoleName.TenantAdmin) {
+                return true;
+            }
+        }
+
         if (ticket.requesterId === userId) {
             return true;
         }
 
-        // Check if user is the current target user
         if (ticket.currentTargetUserId === userId) {
             return true;
         }
 
-        // Check if user is one of the target users
         if (ticket.targetUsers && ticket.targetUsers.some((tu) => tu.userId === userId)) {
             return true;
         }
 
-        // Check if user is the reviewer
         if (ticket.reviewerId === userId) {
             return true;
         }
 
-        // If ticket is not private, check if user's department matches any target user's department
         if (!ticket.isPrivate && userDepartmentId) {
             if (ticket.targetUsers && ticket.targetUsers.length > 0) {
                 const targetUserDepartments = ticket.targetUsers
@@ -1610,6 +1613,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
             .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
             .leftJoinAndSelect('targetUsers.user', 'targetUser')
+            .leftJoinAndSelect('targetUser.department', 'targetUserDepartmentArchived')
             .leftJoinAndSelect('ticket.files', 'files')
             .leftJoinAndSelect('ticket.updates', 'updates')
             .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
