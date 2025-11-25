@@ -300,6 +300,9 @@ export class AuthService {
             });
         }
 
+        accessProfile.tenantId = user.tenantId;
+        accessProfile.userId = user.id;
+
         // Validate that the verification code is still valid
         const validCode = await this.verificationCodeService.validate(accessProfile, code, email);
 
