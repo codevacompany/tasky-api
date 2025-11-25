@@ -1,8 +1,8 @@
-import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { MoreThanOrEqual } from 'typeorm';
 import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
-import { UserService } from '../user/user.service';
+import { UserRepository } from '../user/user.repository';
 import { VerificationCodeRepository } from './verification-code.repository';
 import { AccessProfile } from '../../shared/common/access-profile';
 
@@ -10,8 +10,7 @@ import { AccessProfile } from '../../shared/common/access-profile';
 export class VerificationCodeService {
     constructor(
         private readonly verificationCodeRepository: VerificationCodeRepository,
-        @Inject(forwardRef(() => UserService))
-        private readonly userService: UserService,
+        private readonly userRepository: UserRepository,
     ) {}
 
     insert(code: string, email: string, tenantId: number) {
@@ -21,7 +20,7 @@ export class VerificationCodeService {
     }
 
     async find(accessProfile: AccessProfile, code: string, email: string) {
-        const user = await this.userService.findByEmail(accessProfile, email);
+        const user = await this.userRepository.findOne({ where: { email } });
 
         if (!user) {
             throw new CustomNotFoundException({
@@ -39,7 +38,7 @@ export class VerificationCodeService {
     }
 
     async validate(accessProfile: AccessProfile, code: string, email: string) {
-        const user = await this.userService.findByEmail(accessProfile, email);
+        const user = await this.userRepository.findOne({ where: { email } });
 
         if (!user) {
             throw new CustomNotFoundException({
