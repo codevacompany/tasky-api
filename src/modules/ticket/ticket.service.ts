@@ -1607,6 +1607,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     }
 
     async findArchived(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
+        const user = await this.userRepository.findOne({
+            where: { id: accessProfile.userId },
+            relations: ['department', 'role'],
+        });
+
         const qb = this.repository
             .createQueryBuilder('ticket')
             .leftJoinAndSelect('ticket.requester', 'requester')
@@ -1621,9 +1626,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
             .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-            .andWhere('(ticket.requesterId = :userId OR ticket.currentTargetUserId = :userId)', {
-                userId: accessProfile.userId,
-            })
             .andWhere(
                 '(ticketStatus.key IN (:...terminalStatuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt < :sevenDaysAgo))',
                 {
@@ -1637,13 +1639,35 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 },
             );
 
+        const roleName = user?.role?.name || '';
+        const isTenantAdmin = roleName === RoleName.TenantAdmin;
+        const isSupervisor = roleName === RoleName.Supervisor;
+
+        if (!isTenantAdmin) {
+            if (isSupervisor && user?.departmentId) {
+                qb.andWhere(
+                    '(ticket.requesterId = :userId OR ticket.currentTargetUserId = :userId OR targetUser.departmentId = :departmentId)',
+                    {
+                        userId: accessProfile.userId,
+                        departmentId: user.departmentId,
+                    },
+                );
+            } else {
+                qb.andWhere(
+                    '(ticket.requesterId = :userId OR ticket.currentTargetUserId = :userId)',
+                    {
+                        userId: accessProfile.userId,
+                    },
+                );
+            }
+        }
+
         if (options?.where) {
             if (options.where.name) {
                 qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
                     name: `%${options.where.name}%`,
                 });
             }
-            // departmentId filter removed - now filtered via targetUsers' departments
         }
         this.applySorting(qb, options?.order);
 

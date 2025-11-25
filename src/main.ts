@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
+import { DatabaseRetryInterceptor } from './shared/interceptors/database-retry.interceptor';
 import { json, raw, Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
@@ -22,6 +23,7 @@ async function bootstrap() {
     });
 
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
+    app.useGlobalInterceptors(new DatabaseRetryInterceptor());
 
     await app.listen(4443);
 }

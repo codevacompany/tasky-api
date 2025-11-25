@@ -279,6 +279,11 @@ export class TenantSubscriptionService {
             });
         }
 
+        await this.tenantSubscriptionRepository.delete({
+            tenantId,
+            status: SubscriptionStatus.TRIAL,
+        });
+
         const items: Stripe.SubscriptionCreateParams.Item[] = [{ price: priceId }];
 
         if (plan.stripePriceIdPerUser) {
