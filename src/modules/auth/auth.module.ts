@@ -8,6 +8,7 @@ import { TokenModule } from '../../shared/services/token/token.module';
 import { UserModule } from '../user/user.module';
 import { VerificationCodeModule } from '../verification-code/verification-code.module';
 import { TenantSubscriptionModule } from '../tenant-subscription/tenant-subscription.module';
+import { TenantModule } from '../tenant/tenant.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RoleModule } from '../role/role.module';
@@ -20,6 +21,7 @@ import { RoleModule } from '../role/role.module';
         EmailModule,
         RoleModule,
         forwardRef(() => TenantSubscriptionModule),
+        forwardRef(() => TenantModule),
         JwtModule.registerAsync({
             useFactory: () => ({
                 secret: process.env.TOKEN_SECRET,

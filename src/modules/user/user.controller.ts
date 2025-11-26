@@ -12,6 +12,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
+import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
 import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy';
@@ -22,6 +23,7 @@ import { GetQueryOptions } from '../../shared/decorators/get-query-options.decor
 import { FindOneQueryOptions, QueryOptions } from '../../shared/types/http';
 
 @Controller('users')
+@UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard)
 export class UserController {
     constructor(private readonly userService: UserService) {}
 

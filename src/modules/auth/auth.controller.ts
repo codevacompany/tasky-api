@@ -10,8 +10,6 @@ import { ResetPasswordWithTokenDto } from './dtos/reset-password-with-token.dto'
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { ChangePasswordDto } from './dtos/change-password.dto';
 import { AdminResetPasswordDto } from './dtos/admin-reset-password.dto';
-import { UserService } from '../user/user.service';
-import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 
 @Controller('auth')
@@ -19,8 +17,6 @@ export class AuthController {
     constructor(
         private readonly authService: AuthService,
         private readonly verificationCodeService: VerificationCodeService,
-        private readonly userService: UserService,
-        private readonly tenantSubscriptionService: TenantSubscriptionService,
     ) {}
 
     @Post('login')
@@ -31,20 +27,7 @@ export class AuthController {
     @Get('whoami')
     @UseGuards(AuthGuard('jwt'))
     async whoami(@GetAccessProfile() accessProfile: AccessProfile) {
-        const user = await this.userService.findById(accessProfile.userId);
-        delete user.password;
-
-        // Get tenant permissions based on current subscription
-        const tenantPermissions = await this.tenantSubscriptionService.getTenantPermissions(
-            user.tenantId,
-        );
-
-        return {
-            user: {
-                ...user,
-                permissions: tenantPermissions,
-            },
-        };
+        return this.authService.whoami(accessProfile);
     }
 
     @Post('reset-password/request')

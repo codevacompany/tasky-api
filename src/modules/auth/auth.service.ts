@@ -13,6 +13,9 @@ import { TokenService } from '../../shared/services/token/token.service';
 import { UserService } from '../user/user.service';
 import { VerificationCodeService } from '../verification-code/verification-code.service';
 import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
+import { TenantService } from '../tenant/tenant.service';
+import { RoleName } from '../role/entities/role.entity';
+import { SubscriptionStatus } from '../tenant-subscription/entities/tenant-subscription.entity';
 import { LoginDto } from './dtos/login.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
 import { ChangePasswordDto } from './dtos/change-password.dto';
@@ -29,6 +32,8 @@ export class AuthService {
         private emailService: EmailService,
         private readonly jwtService: JwtService,
         private tenantSubscriptionService: TenantSubscriptionService,
+        @Inject(forwardRef(() => TenantService))
+        private tenantService: TenantService,
     ) {}
     async login(body: LoginDto) {
         const accessProfile = new AccessProfile();
@@ -53,6 +58,30 @@ export class AuthService {
             });
         }
 
+        const isTenantAdmin = user.role?.name === RoleName.TenantAdmin;
+
+        const tenant = await this.tenantService.findById(user.tenantId);
+        const isInternalTenant = tenant?.isInternal || false;
+
+        const subscription = await this.tenantSubscriptionService.findCurrentTenantSubscription(
+            user.tenantId,
+        );
+
+        const hasActiveSubscription =
+            isInternalTenant ||
+            (subscription &&
+                (subscription.status === SubscriptionStatus.ACTIVE ||
+                    (subscription.status === SubscriptionStatus.TRIAL &&
+                        subscription.trialEndDate &&
+                        subscription.trialEndDate > new Date())));
+
+        if (!isTenantAdmin && !hasActiveSubscription) {
+            throw new CustomForbiddenException({
+                code: 'subscription-required',
+                message: 'An active subscription is required to access the system',
+            });
+        }
+
         // Get tenant permissions based on current subscription
         const tenantPermissions = await this.tenantSubscriptionService.getTenantPermissions(
             user.tenantId,
@@ -67,10 +96,70 @@ export class AuthService {
 
         delete user.password;
 
-        return {
+        const response: any = {
             token,
             user: { ...user, permissions: tenantPermissions },
         };
+
+        if (isTenantAdmin) {
+            response.hasActiveSubscription = hasActiveSubscription;
+        }
+
+        return response;
+    }
+
+    async whoami(accessProfile: AccessProfile) {
+        const user = await this.userService.findById(accessProfile.userId);
+
+        if (!user) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        const isTenantAdmin = user.role?.name === RoleName.TenantAdmin;
+
+        const tenant = await this.tenantService.findById(user.tenantId);
+        const isInternalTenant = tenant?.isInternal || false;
+
+        const subscription = await this.tenantSubscriptionService.findCurrentTenantSubscription(
+            user.tenantId,
+        );
+
+        const hasActiveSubscription =
+            isInternalTenant ||
+            (subscription &&
+                (subscription.status === SubscriptionStatus.ACTIVE ||
+                    (subscription.status === SubscriptionStatus.TRIAL &&
+                        subscription.trialEndDate &&
+                        subscription.trialEndDate > new Date())));
+
+        if (!isTenantAdmin && !hasActiveSubscription) {
+            throw new CustomForbiddenException({
+                code: 'subscription-required',
+                message: 'An active subscription is required to access the system',
+            });
+        }
+
+        const tenantPermissions = await this.tenantSubscriptionService.getTenantPermissions(
+            user.tenantId,
+        );
+
+        delete user.password;
+
+        const response: any = {
+            user: {
+                ...user,
+                permissions: tenantPermissions,
+            },
+        };
+
+        if (isTenantAdmin) {
+            response.hasActiveSubscription = hasActiveSubscription;
+        }
+
+        return response;
     }
 
     async refreshToken(refreshToken: string) {
