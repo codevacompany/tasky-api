@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
+import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
 import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
 import {
     StatusDurationResponseDto,
@@ -24,7 +25,7 @@ export enum StatsPeriod {
 }
 
 @Controller('stats')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard)
 export class StatsController {
     constructor(private readonly ticketStatsService: TicketStatsService) {}
 

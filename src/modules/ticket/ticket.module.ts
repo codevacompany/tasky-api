@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmailModule } from '../../shared/services/email/email.module';
+import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
 import { CorrectionRequestModule } from '../correction-request-reason/correction-request-reason.module';
 import { NotificationModule } from '../notification/notification.module';
 import { StatsModule } from '../stats/stats.module';
@@ -42,6 +43,6 @@ import { TicketService } from './ticket.service';
     ],
     exports: [TicketService],
     controllers: [TicketController],
-    providers: [TicketService, TicketRepository, TicketTargetUserRepository],
+    providers: [TicketService, TicketRepository, TicketTargetUserRepository, SubscriptionRequiredGuard],
 })
 export class TicketModule {}
