@@ -485,6 +485,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const qb = this.repository
             .createQueryBuilder('ticket')
             .leftJoinAndSelect('ticket.requester', 'requester')
+            .leftJoinAndSelect('requester.department', 'requesterDepartment')
             .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
             .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
             .leftJoinAndSelect('targetUsers.user', 'targetUser')
