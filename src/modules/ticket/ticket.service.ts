@@ -131,7 +131,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        qb.skip((page - 1) * limit).take(limit);
+        
+        // Only apply pagination if paginated is not explicitly set to false
+        if (options?.paginated !== false) {
+            qb.skip((page - 1) * limit).take(limit);
+        }
 
         const [items, total] = await qb.getManyAndCount();
 
@@ -140,7 +144,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             total,
             page,
             limit,
-            totalPages: Math.ceil(total / limit),
+            totalPages: options?.paginated === false ? 1 : Math.ceil(total / limit),
         };
     }
 
@@ -186,7 +190,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         // Apply pagination
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        qb.skip((page - 1) * limit).take(limit);
+        
+        // Only apply pagination if paginated is not explicitly set to false
+        if (options?.paginated !== false) {
+            qb.skip((page - 1) * limit).take(limit);
+        }
 
         const [items, total] = await qb.getManyAndCount();
 
@@ -195,7 +203,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             total,
             page,
             limit,
-            totalPages: Math.ceil(total / limit),
+            totalPages: options?.paginated === false ? 1 : Math.ceil(total / limit),
         };
     }
 
@@ -338,7 +346,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        qb.skip((page - 1) * limit).take(limit);
+        
+        // Only apply pagination if paginated is not explicitly set to false
+        if (options?.paginated !== false) {
+            qb.skip((page - 1) * limit).take(limit);
+        }
 
         const [items, total] = await qb.getManyAndCount();
 
@@ -347,7 +359,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             total,
             page,
             limit,
-            totalPages: Math.ceil(total / limit),
+            totalPages: options?.paginated === false ? 1 : Math.ceil(total / limit),
         };
     }
 
@@ -537,7 +549,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        qb.skip((page - 1) * limit).take(limit);
+        
+        // Only apply pagination if paginated is not explicitly set to false
+        if (options?.paginated !== false) {
+            qb.skip((page - 1) * limit).take(limit);
+        }
 
         const [items, total] = await qb.getManyAndCount();
 
@@ -546,7 +562,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             total,
             page,
             limit,
-            totalPages: Math.ceil(total / limit),
+            totalPages: options?.paginated === false ? 1 : Math.ceil(total / limit),
         };
     }
 
@@ -610,7 +626,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        qb.skip((page - 1) * limit).take(limit);
+        
+        // Only apply pagination if paginated is not explicitly set to false
+        if (options?.paginated !== false) {
+            qb.skip((page - 1) * limit).take(limit);
+        }
 
         const [items, total] = await qb.getManyAndCount();
 
@@ -619,7 +639,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             total,
             page,
             limit,
-            totalPages: Math.ceil(total / limit),
+            totalPages: options?.paginated === false ? 1 : Math.ceil(total / limit),
         };
     }
 
