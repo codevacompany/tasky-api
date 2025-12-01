@@ -3,6 +3,7 @@ import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-
 import { Category } from '../../category/entities/category.entity';
 import { CorrectionRequest } from '../../correction-request-reason/entities/correction-request-reason.entity';
 import { TicketCancellationReason } from '../../ticket-cancellation-reason/entities/ticket-cancellation-reason.entity';
+import { TicketChecklist } from '../../ticket-checklist/entities/ticket-checklist.entity';
 import { TicketComment } from '../../ticket-comment/entities/ticket-comment.entity';
 import { TicketDisapprovalReason } from '../../ticket-disapproval-reason/entities/ticket-disapproval-reason.entity';
 import { TicketFile } from '../../ticket-file/entities/ticket-file.entity';
@@ -110,6 +111,9 @@ export class Ticket extends TenantBoundBaseEntity {
 
     @OneToMany(() => TicketFile, (file) => file.ticket, { cascade: true })
     files: TicketFile[];
+
+    @OneToMany(() => TicketChecklist, (checklist) => checklist.ticket, { cascade: true })
+    checklists: TicketChecklist[];
 
     @OneToOne(() => TicketCancellationReason, (reason) => reason.ticket, { nullable: true })
     cancellationReason: TicketCancellationReason;

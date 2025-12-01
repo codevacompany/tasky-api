@@ -1,10 +1,18 @@
-import { Column, CreateDateColumn, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+    Column,
+    CreateDateColumn,
+    Generated,
+    Index,
+    PrimaryGeneratedColumn,
+    UpdateDateColumn,
+} from 'typeorm';
 
 export abstract class IdTimestampBaseEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column({ type: 'uuid', unique: true, default: () => 'gen_random_uuid()' })
+    @Column({ type: 'uuid', unique: true })
+    @Generated('uuid')
     @Index()
     uuid: string;
 
