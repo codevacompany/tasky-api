@@ -28,7 +28,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
     async findAll(accessProfile: AccessProfile): Promise<TicketComment[]> {
         const options = {
             where: { tenantId: accessProfile.tenantId } as FindOptionsWhere<TicketComment>,
-            relations: ['user'],
+            relations: ['user', 'user.department'],
             order: { createdAt: 'DESC' } as FindOptionsOrder<TicketComment>,
         };
         return this.ticketCommentRepository.find(options);
@@ -37,7 +37,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
     async findById(accessProfile: AccessProfile, id: number): Promise<TicketComment> {
         return this.findOne(accessProfile, {
             where: { id },
-            relations: ['user'],
+            relations: ['user', 'user.department'],
         });
     }
 
@@ -46,12 +46,20 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         where: Partial<TicketComment>,
         options?: QueryOptions<TicketComment>,
     ): Promise<TicketComment[]> {
+        const defaultRelations = ['user', 'user.department'];
+        const relations = options?.relations || defaultRelations;
+        
+        // Ensure user.department is included even if custom relations are provided
+        const finalRelations = Array.isArray(relations)
+            ? [...new Set([...relations, ...defaultRelations])]
+            : defaultRelations;
+
         const filters = {
             where: {
                 ...where,
                 tenantId: accessProfile.tenantId,
             } as FindOptionsWhere<TicketComment>,
-            relations: options?.relations || ['user'],
+            relations: finalRelations,
             order: options?.order || ({ createdAt: 'DESC' } as FindOptionsOrder<TicketComment>),
         };
 
@@ -82,6 +90,9 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             where: { id: savedComment.id, tenantId: accessProfile.tenantId },
             relations: {
                 ticket: true,
+                user: {
+                    department: true,
+                },
             },
         });
 
@@ -169,7 +180,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
      */
     async findByUuid(accessProfile: AccessProfile, uuid: string): Promise<TicketComment> {
         const comment = await super.findByUuid(accessProfile, uuid, {
-            relations: ['user'],
+            relations: ['user', 'user.department'],
         });
 
         if (!comment) {
