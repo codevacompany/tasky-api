@@ -106,6 +106,7 @@ export class TicketStatsService {
     async getTenantStats(
         accessProfile: AccessProfile,
         period: StatsPeriod = StatsPeriod.ALL,
+        excludeCanceled: boolean = false,
     ): Promise<TicketStatsResponseDto> {
         let dateFilter = {};
         let limit = undefined;
@@ -157,6 +158,24 @@ export class TicketStatsService {
             filteredItems = items.filter(
                 (stat) => stat.departmentIds && stat.departmentIds.includes(supervisorDepartmentId),
             );
+        }
+
+        // Optionally filter out canceled tickets
+        if (excludeCanceled && filteredItems.length > 0) {
+            const ticketIds = filteredItems.map((stat) => stat.ticketId);
+            const tickets = await this.ticketRepository.find({
+                where: { id: In(ticketIds) },
+                relations: ['ticketStatus'],
+                select: ['id', 'ticketStatus'],
+            });
+
+            const canceledTicketIds = new Set(
+                tickets
+                    .filter((ticket) => ticket.ticketStatus?.key === TicketStatus.Canceled)
+                    .map((ticket) => ticket.id),
+            );
+
+            filteredItems = filteredItems.filter((stat) => !canceledTicketIds.has(stat.ticketId));
         }
 
         const itemsWithWeekendExclusion = await this.applyWeekendExclusion(filteredItems);

@@ -34,8 +34,10 @@ export class StatsController {
     async getTenantStats(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Query('period') period: StatsPeriod = StatsPeriod.ALL,
+        @Query('excludeCanceled') excludeCanceled?: string,
     ): Promise<TicketStatsResponseDto> {
-        return this.ticketStatsService.getTenantStats(accessProfile, period);
+        const shouldExcludeCanceled = excludeCanceled === 'true' || excludeCanceled === '1';
+        return this.ticketStatsService.getTenantStats(accessProfile, period, shouldExcludeCanceled);
     }
 
     @Get('/by-user')
