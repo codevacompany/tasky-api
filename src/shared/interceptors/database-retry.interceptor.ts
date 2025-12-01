@@ -5,7 +5,7 @@ import { retry } from 'rxjs/operators';
 @Injectable()
 export class DatabaseRetryInterceptor implements NestInterceptor {
     constructor(
-        private readonly maxRetries = 2,
+        private readonly maxRetries = 3,
         private readonly retryDelayMs = 300,
     ) {}
 
@@ -28,6 +28,9 @@ export class DatabaseRetryInterceptor implements NestInterceptor {
                   ? error.response.message
                   : '';
 
-        return message.includes('Authentication timed out');
+        return (
+            message.includes('Authentication timed out') ||
+            message.includes('getaddrinfo EAI_AGAIN')
+        );
     }
 }

@@ -41,7 +41,7 @@ import { TicketService } from './ticket.service';
         StatusActionModule,
         TicketStatusModule,
     ],
-    exports: [TicketService],
+    exports: [TicketService, TicketRepository],
     controllers: [TicketController],
     providers: [TicketService, TicketRepository, TicketTargetUserRepository, SubscriptionRequiredGuard],
 })

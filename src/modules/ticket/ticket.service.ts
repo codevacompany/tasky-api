@@ -83,6 +83,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'cancellationReason',
                 'disapprovalReason',
                 'correctionRequests',
+                'checklists',
+                'checklists.items',
             ],
             order: options?.order || ({ createdAt: 'DESC' } as any),
             tenantAware: false,
@@ -224,6 +226,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'disapprovalReason',
                 'correctionRequests',
                 'ticketStatus',
+                'checklists',
+                'checklists.items',
             ],
         });
 
@@ -381,6 +385,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
             .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
             .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
+            .leftJoinAndSelect('ticket.checklists', 'checklists')
+            .leftJoinAndSelect('checklists.items', 'checklistItems')
             .where('ticket.tenantId = :tenantId', { tenantId });
     }
 
