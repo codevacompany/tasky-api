@@ -1,112 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
-import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
-import { Ticket } from '../ticket/entities/ticket.entity';
 import { TicketRepository } from '../ticket/ticket.repository';
-import { CreateChecklistDto } from './dtos/create-checklist.dto';
 import { CreateChecklistItemDto } from './dtos/create-checklist-item.dto';
-import { UpdateChecklistDto } from './dtos/update-checklist.dto';
 import { UpdateChecklistItemDto } from './dtos/update-checklist-item.dto';
-import { TicketChecklist } from './entities/ticket-checklist.entity';
 import { TicketChecklistItem } from './entities/ticket-checklist-item.entity';
-import { TicketChecklistRepository } from './ticket-checklist.repository';
 
 @Injectable()
-export class TicketChecklistService extends TenantBoundBaseService<TicketChecklist> {
+export class TicketChecklistService {
     constructor(
-        private ticketChecklistRepository: TicketChecklistRepository,
         @InjectRepository(TicketChecklistItem)
-        private checklistItemRepository: Repository<TicketChecklistItem>,
-        private ticketRepository: TicketRepository,
-    ) {
-        super(ticketChecklistRepository);
-    }
+        private readonly checklistItemRepository: Repository<TicketChecklistItem>,
+        private readonly ticketRepository: TicketRepository,
+    ) {}
 
-    async create(accessProfile: AccessProfile, dto: CreateChecklistDto): Promise<TicketChecklist> {
-        // Verify ticket exists and belongs to tenant
-        const ticket = await this.ticketRepository.findOne({
-            where: { id: dto.ticketId, tenantId: accessProfile.tenantId },
-        });
-
-        if (!ticket) {
-            throw new CustomNotFoundException({
-                message: 'Ticket not found',
-                code: 'ticket-not-found',
-            });
-        }
-
-        // Get max order for this ticket
-        const maxOrderResult = await this.ticketChecklistRepository
-            .createQueryBuilder('checklist')
-            .where('checklist.ticketId = :ticketId', { ticketId: dto.ticketId })
-            .select('MAX(checklist.order)', 'maxOrder')
-            .getRawOne();
-
-        const maxOrder = maxOrderResult?.maxOrder ?? -1;
-
-        const checklist = this.ticketChecklistRepository.create({
-            title: dto.title,
-            ticketId: dto.ticketId,
-            tenantId: accessProfile.tenantId,
-            createdById: accessProfile.userId,
-            updatedById: accessProfile.userId,
-            order: maxOrder + 1,
-        });
-
-        return this.ticketChecklistRepository.save(checklist);
-    }
-
-    async updateChecklist(
-        accessProfile: AccessProfile,
-        id: number,
-        dto: UpdateChecklistDto,
-    ): Promise<TicketChecklist> {
-        const checklist = await this.findOne(accessProfile, {
-            where: { id },
-            relations: ['items'],
-        });
-
-        if (!checklist) {
-            throw new CustomNotFoundException({
-                message: 'Checklist not found',
-                code: 'checklist-not-found',
-            });
-        }
-
-        if (dto.title !== undefined) {
-            checklist.title = dto.title;
-        }
-        if (dto.order !== undefined) {
-            checklist.order = dto.order;
-        }
-
-        checklist.updatedById = accessProfile.userId;
-
-        return this.ticketChecklistRepository.save(checklist);
-    }
-
-    async delete(accessProfile: AccessProfile, id: number): Promise<void> {
-        const checklist = await this.findOne(accessProfile, {
-            where: { id },
-        });
-
-        if (!checklist) {
-            throw new CustomNotFoundException({
-                message: 'Checklist not found',
-                code: 'checklist-not-found',
-            });
-        }
-
-        await this.ticketChecklistRepository.remove(checklist);
-    }
-
-    async getByTicket(
-        accessProfile: AccessProfile,
-        ticketId: number,
-    ): Promise<TicketChecklist[]> {
+    async getByTicket(accessProfile: AccessProfile, ticketId: number): Promise<TicketChecklistItem[]> {
         // Verify ticket exists and belongs to tenant
         const ticket = await this.ticketRepository.findOne({
             where: { id: ticketId, tenantId: accessProfile.tenantId },
@@ -119,10 +29,10 @@ export class TicketChecklistService extends TenantBoundBaseService<TicketCheckli
             });
         }
 
-        return this.ticketChecklistRepository.find({
+        return this.checklistItemRepository.find({
             where: { ticketId, tenantId: accessProfile.tenantId },
-            relations: ['items', 'items.assignedTo'],
-            order: { order: 'ASC', items: { order: 'ASC' } },
+            relations: ['assignedTo'],
+            order: { order: 'ASC' },
         });
     }
 
@@ -130,22 +40,22 @@ export class TicketChecklistService extends TenantBoundBaseService<TicketCheckli
         accessProfile: AccessProfile,
         dto: CreateChecklistItemDto,
     ): Promise<TicketChecklistItem> {
-        // Verify checklist exists and belongs to tenant
-        const checklist = await this.findOne(accessProfile, {
-            where: { id: dto.checklistId },
+        // Verify ticket exists and belongs to tenant
+        const ticket = await this.ticketRepository.findOne({
+            where: { id: dto.ticketId, tenantId: accessProfile.tenantId },
         });
 
-        if (!checklist) {
+        if (!ticket) {
             throw new CustomNotFoundException({
-                message: 'Checklist not found',
-                code: 'checklist-not-found',
+                message: 'Ticket not found',
+                code: 'ticket-not-found',
             });
         }
 
         // Get max order for this checklist
         const maxOrderResult = await this.checklistItemRepository
             .createQueryBuilder('item')
-            .where('item.checklistId = :checklistId', { checklistId: dto.checklistId })
+            .where('item.ticketId = :ticketId', { ticketId: dto.ticketId })
             .select('MAX(item.order)', 'maxOrder')
             .getRawOne();
 
@@ -153,7 +63,7 @@ export class TicketChecklistService extends TenantBoundBaseService<TicketCheckli
 
         const item = this.checklistItemRepository.create({
             title: dto.title,
-            checklistId: dto.checklistId,
+            ticketId: dto.ticketId,
             assignedToId: dto.assignedToId,
             dueDate: dto.dueDate,
             tenantId: accessProfile.tenantId,
@@ -172,7 +82,7 @@ export class TicketChecklistService extends TenantBoundBaseService<TicketCheckli
     ): Promise<TicketChecklistItem> {
         const item = await this.checklistItemRepository.findOne({
             where: { id, tenantId: accessProfile.tenantId },
-            relations: ['checklist'],
+            relations: ['assignedTo'],
         });
 
         if (!item) {

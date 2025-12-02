@@ -1,7 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { User } from '../../user/entities/user.entity';
-import { TicketChecklist } from './ticket-checklist.entity';
+import { Ticket } from '../../ticket/entities/ticket.entity';
 
 @Entity()
 export class TicketChecklistItem extends TenantBoundBaseEntity {
@@ -11,12 +11,12 @@ export class TicketChecklistItem extends TenantBoundBaseEntity {
     @Column({ default: false })
     isCompleted: boolean;
 
-    @ManyToOne(() => TicketChecklist, (checklist) => checklist.items, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'checklistId' })
-    checklist: TicketChecklist;
+    @ManyToOne(() => Ticket, (ticket) => ticket.checklistItems, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'ticketId' })
+    ticket: Ticket;
 
     @Column()
-    checklistId: number;
+    ticketId: number;
 
     @Column({ nullable: true })
     assignedToId: number;

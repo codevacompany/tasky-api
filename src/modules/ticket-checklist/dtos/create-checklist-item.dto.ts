@@ -8,7 +8,7 @@ export class CreateChecklistItemDto {
 
     @IsNotEmpty()
     @IsNumber()
-    checklistId: number;
+    ticketId: number;
 
     @IsOptional()
     @IsNumber()

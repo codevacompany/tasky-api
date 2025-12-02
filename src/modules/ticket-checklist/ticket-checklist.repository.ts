@@ -1,10 +1,3 @@
-import { Injectable } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
-import { TicketChecklist } from './entities/ticket-checklist.entity';
-
-@Injectable()
-export class TicketChecklistRepository extends Repository<TicketChecklist> {
-    constructor(private dataSource: DataSource) {
-        super(TicketChecklist, dataSource.createEntityManager());
-    }
-}
+// Legacy repository kept only for historical reasons; no longer used.
+// The TicketChecklist entity has been removed in favor of attaching
+// checklist items directly to tickets.
