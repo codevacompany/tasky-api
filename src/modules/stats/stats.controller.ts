@@ -12,6 +12,7 @@ import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-
 import { TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto } from './dtos/ticket-trends.dto';
 import { UserRankingResponseDto } from './dtos/user-ranking.dto';
+import { PerformanceTrendsResponseDto } from './dtos/performance-trends.dto';
 import { TicketStatsService } from './ticket-stats.service';
 import { TicketStatus } from '../ticket/entities/ticket.entity';
 
@@ -55,6 +56,14 @@ export class StatsController {
         return this.ticketStatsService.getTicketTrends(accessProfile);
     }
 
+    @Get('performance-trends')
+    async getPerformanceTrends(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('period') period: StatsPeriod = StatsPeriod.TRIMESTRAL,
+    ): Promise<PerformanceTrendsResponseDto> {
+        return this.ticketStatsService.getPerformanceTrends(accessProfile, period);
+    }
+
     @Get('status-durations')
     async getStatusDurations(
         @GetAccessProfile() accessProfile: AccessProfile,
@@ -66,15 +75,17 @@ export class StatsController {
     @Get('by-status')
     async getTicketStatusCounts(
         @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<TicketStatusCountResponseDto> {
-        return this.ticketStatsService.getTicketsByStatus(accessProfile);
+        return this.ticketStatsService.getTicketsByStatus(accessProfile, period);
     }
 
     @Get('by-priority')
     async getTicketPriorityCounts(
         @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<TicketPriorityCountResponseDto> {
-        return this.ticketStatsService.getTicketsByPriority(accessProfile);
+        return this.ticketStatsService.getTicketsByPriority(accessProfile, period);
     }
 
     @Get('department-stats')
@@ -106,8 +117,15 @@ export class StatsController {
         @Query('limit') limit: number = 5,
         @Query('all') all?: string,
         @Query('sort') sort: string = 'top',
+        @Query('period') period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<UserRankingResponseDto> {
         const returnAll = all === 'true' || all === '1';
-        return this.ticketStatsService.getUserRanking(accessProfile, limit, returnAll, sort);
+        return this.ticketStatsService.getUserRanking(
+            accessProfile,
+            limit,
+            returnAll,
+            sort,
+            period,
+        );
     }
 }

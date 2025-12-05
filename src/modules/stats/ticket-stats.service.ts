@@ -38,6 +38,7 @@ import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-
 import { TicketStatusCountDto, TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto, TrendDataPointDto } from './dtos/ticket-trends.dto';
 import { UserRankingItemDto, UserRankingResponseDto } from './dtos/user-ranking.dto';
+import { PerformanceTrendsResponseDto } from './dtos/performance-trends.dto';
 import { TicketStats } from './entities/ticket-stats.entity';
 import { StatsPeriod } from './stats.controller';
 import { RoleService } from '../role/role.service';
@@ -76,6 +77,56 @@ export class TicketStatsService {
         return user.departmentId;
     }
 
+    /**
+     * Helper method to get period filter configuration based on StatsPeriod
+     * Centralizes the period filter logic to avoid repetition (DRY principle)
+     * @param period - The stats period to filter by
+     * @returns Object containing dateFilter (for TypeORM find), startDate (for query builders), limit, and order
+     */
+    private getPeriodFilter(period: StatsPeriod = StatsPeriod.ALL): {
+        dateFilter: Record<string, any>;
+        startDate: Date | null;
+        limit?: number;
+        order?: Record<string, 'ASC' | 'DESC'>;
+    } {
+        const now = new Date();
+        let dateFilter: Record<string, any> = {};
+        let startDate: Date | null = null;
+        let limit: number | undefined = undefined;
+        let order: Record<string, 'ASC' | 'DESC'> | undefined = undefined;
+
+        switch (period) {
+            case StatsPeriod.WEEKLY:
+                startDate = startOfDay(subDays(now, 7));
+                dateFilter = { createdAt: MoreThanOrEqual(startDate) };
+                break;
+            case StatsPeriod.MONTHLY:
+                startDate = startOfDay(subDays(now, 30));
+                dateFilter = { createdAt: MoreThanOrEqual(startDate) };
+                break;
+            case StatsPeriod.TRIMESTRAL:
+                startDate = startOfDay(subMonths(now, 3));
+                dateFilter = { createdAt: MoreThanOrEqual(startDate) };
+                break;
+            case StatsPeriod.SEMESTRAL:
+                startDate = startOfDay(subMonths(now, 6));
+                dateFilter = { createdAt: MoreThanOrEqual(startDate) };
+                break;
+            case StatsPeriod.ANNUAL:
+                startDate = startOfDay(subMonths(now, 12));
+                dateFilter = { createdAt: MoreThanOrEqual(startDate) };
+                break;
+            case StatsPeriod.ALL:
+            default:
+                // For ALL period, some methods use limit/order instead of date filter
+                limit = 50;
+                order = { createdAt: 'DESC' };
+                break;
+        }
+
+        return { dateFilter, startDate, limit, order };
+    }
+
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<TicketStats>) {
         const filters = {
             ...options,
@@ -108,34 +159,7 @@ export class TicketStatsService {
         period: StatsPeriod = StatsPeriod.ALL,
         excludeCanceled: boolean = false,
     ): Promise<TicketStatsResponseDto> {
-        let dateFilter = {};
-        let limit = undefined;
-        let order = undefined;
-        const now = new Date();
-
-        switch (period) {
-            case StatsPeriod.WEEKLY:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 7))) };
-                break;
-            case StatsPeriod.MONTHLY:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 30))) };
-                break;
-            case StatsPeriod.TRIMESTRAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 3))) };
-                break;
-            case StatsPeriod.SEMESTRAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 6))) };
-                break;
-            case StatsPeriod.ANNUAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 12))) };
-                break;
-            case StatsPeriod.ALL:
-            default:
-                // Get the last 50 tickets stats instead of all
-                limit = 50;
-                order = { createdAt: 'DESC' };
-                break;
-        }
+        const { dateFilter, startDate, limit, order } = this.getPeriodFilter(period);
 
         // Check if user is Supervisor and get their departmentId
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
@@ -181,6 +205,8 @@ export class TicketStatsService {
         const itemsWithWeekendExclusion = await this.applyWeekendExclusion(filteredItems);
         const ticketStats = { items: itemsWithWeekendExclusion, total: filteredItems.length };
 
+        const filteredTicketIds = ticketStats.items.map((stat) => stat.ticketId);
+
         // Calculate overall stats
         const totalTickets = ticketStats.items.length;
         const resolvedTickets = ticketStats.items.filter((stat) => stat.isResolved).length;
@@ -192,83 +218,89 @@ export class TicketStatsService {
         // Calculate resolution and acceptance rates
         const resolutionRate = closedTickets > 0 ? resolvedTickets / closedTickets : 0;
 
-        // Calculate average resolution time using timeSecondsInLastStatus from ticket_update
-        const resolutionQuery = this.ticketUpdateRepository
-            .createQueryBuilder('update')
-            .leftJoin('update.ticket', 'ticket')
-            .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.InProgress })
-            .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
-            .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        let avgResolutionTimeSeconds = 0;
+        let avgAcceptanceTimeSeconds = 0;
 
-        if (dateFilter['createdAt']) {
-            const startDate = (dateFilter['createdAt'] as any)._value;
-            resolutionQuery.andWhere('update.createdAt >= :startDate', {
-                startDate,
-            });
-        }
+        // Only calculate time-based metrics when there are tickets in the selected period
+        if (filteredTicketIds.length > 0) {
+            // Calculate average resolution time using timeSecondsInLastStatus from ticket_update
+            const resolutionQuery = this.ticketUpdateRepository
+                .createQueryBuilder('update')
+                .leftJoin('update.ticket', 'ticket')
+                .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.InProgress })
+                .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+                .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+                .andWhere('ticket.id IN (:...ticketIds)', { ticketIds: filteredTicketIds });
 
-        // Filter by department if Supervisor
-        if (supervisorDepartmentId !== null) {
-            resolutionQuery.andWhere(
-                `EXISTS (
-                    SELECT 1
-                    FROM ticket_target_user ttu
-                    INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id
-                    AND u."departmentId" = :departmentId
-                )`,
-                { departmentId: supervisorDepartmentId },
+            if (startDate) {
+                resolutionQuery.andWhere('update.createdAt >= :startDate', {
+                    startDate,
+                });
+            }
+
+            // Filter by department if Supervisor
+            if (supervisorDepartmentId !== null) {
+                resolutionQuery.andWhere(
+                    `EXISTS (
+                        SELECT 1
+                        FROM ticket_target_user ttu
+                        INNER JOIN "user" u ON u.id = ttu."userId"
+                        WHERE ttu."ticketId" = ticket.id
+                        AND u."departmentId" = :departmentId
+                    )`,
+                    { departmentId: supervisorDepartmentId },
+                );
+            }
+
+            const resolutionUpdates = await resolutionQuery.getMany();
+            const resolutionTimeSum = resolutionUpdates.reduce(
+                (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
+                0,
             );
-        }
 
-        const resolutionUpdates = await resolutionQuery.getMany();
-        const resolutionTimeSum = resolutionUpdates.reduce(
-            (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
-            0,
-        );
+            const resolutionTicketIds = new Set(resolutionUpdates.map((update) => update.ticketId));
+            avgResolutionTimeSeconds =
+                resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionTicketIds.size : 0;
 
-        const resolutionTicketIds = new Set(resolutionUpdates.map((update) => update.ticketId));
-        const avgResolutionTimeSeconds =
-            resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionTicketIds.size : 0;
+            // Calculate average acceptance time using timeSecondsInLastStatus from ticket_update
+            const acceptanceQuery = this.ticketUpdateRepository
+                .createQueryBuilder('update')
+                .leftJoin('update.ticket', 'ticket')
+                .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
+                .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+                .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+                .andWhere('ticket.id IN (:...ticketIds)', { ticketIds: filteredTicketIds });
 
-        // Calculate average acceptance time using timeSecondsInLastStatus from ticket_update
-        const acceptanceQuery = this.ticketUpdateRepository
-            .createQueryBuilder('update')
-            .leftJoin('update.ticket', 'ticket')
-            .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
-            .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
-            .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+            if (startDate) {
+                acceptanceQuery.andWhere('update.createdAt >= :startDate', {
+                    startDate,
+                });
+            }
 
-        if (dateFilter['createdAt']) {
-            const startDate = (dateFilter['createdAt'] as any)._value;
-            acceptanceQuery.andWhere('update.createdAt >= :startDate', {
-                startDate,
-            });
-        }
+            // Filter by department if Supervisor
+            if (supervisorDepartmentId !== null) {
+                acceptanceQuery.andWhere(
+                    `EXISTS (
+                        SELECT 1
+                        FROM ticket_target_user ttu
+                        INNER JOIN "user" u ON u.id = ttu."userId"
+                        WHERE ttu."ticketId" = ticket.id
+                        AND u."departmentId" = :departmentId
+                    )`,
+                    { departmentId: supervisorDepartmentId },
+                );
+            }
 
-        // Filter by department if Supervisor
-        if (supervisorDepartmentId !== null) {
-            acceptanceQuery.andWhere(
-                `EXISTS (
-                    SELECT 1
-                    FROM ticket_target_user ttu
-                    INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id
-                    AND u."departmentId" = :departmentId
-                )`,
-                { departmentId: supervisorDepartmentId },
+            const acceptanceUpdates = await acceptanceQuery.getMany();
+            const acceptanceTimeSum = acceptanceUpdates.reduce(
+                (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
+                0,
             );
+
+            const acceptanceTicketIds = new Set(acceptanceUpdates.map((update) => update.ticketId));
+            avgAcceptanceTimeSeconds =
+                acceptanceTicketIds.size > 0 ? acceptanceTimeSum / acceptanceTicketIds.size : 0;
         }
-
-        const acceptanceUpdates = await acceptanceQuery.getMany();
-        const acceptanceTimeSum = acceptanceUpdates.reduce(
-            (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
-            0,
-        );
-
-        const acceptanceTicketIds = new Set(acceptanceUpdates.map((update) => update.ticketId));
-        const avgAcceptanceTimeSeconds =
-            acceptanceTicketIds.size > 0 ? acceptanceTimeSum / acceptanceTicketIds.size : 0;
 
         const avgTotalTimeSeconds = avgResolutionTimeSeconds + avgAcceptanceTimeSeconds;
 
@@ -288,29 +320,7 @@ export class TicketStatsService {
         accessProfile: AccessProfile,
         period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<DepartmentStatsDto[]> {
-        let dateFilter = {};
-        const now = new Date();
-
-        switch (period) {
-            case StatsPeriod.WEEKLY:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 7))) };
-                break;
-            case StatsPeriod.MONTHLY:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 30))) };
-                break;
-            case StatsPeriod.TRIMESTRAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 3))) };
-                break;
-            case StatsPeriod.SEMESTRAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 6))) };
-                break;
-            case StatsPeriod.ANNUAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 12))) };
-                break;
-            case StatsPeriod.ALL:
-            default:
-                break;
-        }
+        const { dateFilter, startDate } = this.getPeriodFilter(period);
 
         const filters = {
             where: {
@@ -392,8 +402,7 @@ export class TicketStatsService {
                         })
                         .andWhere('ticket.id IN (:...ticketIds)', { ticketIds: deptTicketIds });
 
-                    if (dateFilter['createdAt']) {
-                        const startDate = (dateFilter['createdAt'] as any)._value;
+                    if (startDate) {
                         resolutionQuery.andWhere('update.createdAt >= :startDate', {
                             startDate,
                         });
@@ -429,8 +438,7 @@ export class TicketStatsService {
                         })
                         .andWhere('ticket.id IN (:...ticketIds)', { ticketIds: deptTicketIds });
 
-                    if (dateFilter['createdAt']) {
-                        const startDate = (dateFilter['createdAt'] as any)._value;
+                    if (startDate) {
                         acceptanceQuery.andWhere('update.createdAt >= :startDate', {
                             startDate,
                         });
@@ -487,6 +495,77 @@ export class TicketStatsService {
             weekly,
             monthly,
             trimestral,
+        };
+    }
+
+    async getPerformanceTrends(
+        accessProfile: AccessProfile,
+        period: StatsPeriod = StatsPeriod.TRIMESTRAL,
+    ): Promise<PerformanceTrendsResponseDto> {
+        const { startDate } = this.getPeriodFilter(period);
+
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        // Build query for created tickets
+        const createdQuery = this.ticketRepository.createQueryBuilder('ticket');
+        createdQuery
+            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+
+        if (startDate) {
+            createdQuery.andWhere('ticket.createdAt >= :startDate', { startDate });
+        }
+
+        // Filter by department if Supervisor
+        if (supervisorDepartmentId !== null) {
+            createdQuery.andWhere(
+                `EXISTS (
+                    SELECT 1
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const createdTickets = await createdQuery.getMany();
+        const totalCreated = createdTickets.length;
+
+        // Build query for resolved tickets (completed in the period)
+        const resolvedQuery = this.ticketRepository.createQueryBuilder('ticket');
+        resolvedQuery
+            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.completedAt IS NOT NULL')
+            .andWhere('ticketStatus.key = :status', { status: TicketStatus.Completed });
+
+        if (startDate) {
+            resolvedQuery.andWhere('ticket.completedAt >= :startDate', { startDate });
+        }
+
+        // Filter by department if Supervisor
+        if (supervisorDepartmentId !== null) {
+            resolvedQuery.andWhere(
+                `EXISTS (
+                    SELECT 1
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const resolvedTickets = await resolvedQuery.getMany();
+        const totalResolved = resolvedTickets.length;
+
+        return {
+            totalCreated,
+            totalResolved,
         };
     }
 
@@ -773,13 +852,23 @@ export class TicketStatsService {
         return sum / validValues.length;
     }
 
-    async getTicketsByStatus(accessProfile: AccessProfile): Promise<TicketStatusCountResponseDto> {
+    async getTicketsByStatus(
+        accessProfile: AccessProfile,
+        period: StatsPeriod = StatsPeriod.ALL,
+    ): Promise<TicketStatusCountResponseDto> {
         // Check if user is Supervisor and get their departmentId
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        const { startDate } = this.getPeriodFilter(period);
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
         qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
         qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+
+        if (startDate) {
+            qb.andWhere('ticket.createdAt >= :startDate', { startDate });
+        }
+
         qb.select(['ticket.id', 'ticketStatus.key']);
 
         // Filter by department if Supervisor using EXISTS subquery
@@ -826,12 +915,21 @@ export class TicketStatsService {
 
     async getTicketsByPriority(
         accessProfile: AccessProfile,
+        period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<TicketPriorityCountResponseDto> {
         // Check if user is Supervisor and get their departmentId
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
+        const { startDate } = this.getPeriodFilter(period);
+
         const qb = this.ticketRepository.createQueryBuilder('ticket');
         qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+
+        // Apply period filter
+        if (startDate) {
+            qb.andWhere('ticket.createdAt >= :startDate', { startDate });
+        }
+
         qb.select(['ticket.id', 'ticket.priority']);
 
         // Filter by department if Supervisor using EXISTS subquery
@@ -880,33 +978,7 @@ export class TicketStatsService {
         userId: number,
         period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<TicketStatsResponseDto> {
-        let dateFilter = {};
-        let limit = undefined;
-        let order = undefined;
-        const now = new Date();
-
-        switch (period) {
-            case StatsPeriod.WEEKLY:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 7))) };
-                break;
-            case StatsPeriod.MONTHLY:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subDays(now, 30))) };
-                break;
-            case StatsPeriod.TRIMESTRAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 3))) };
-                break;
-            case StatsPeriod.SEMESTRAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 6))) };
-                break;
-            case StatsPeriod.ANNUAL:
-                dateFilter = { createdAt: MoreThanOrEqual(startOfDay(subMonths(now, 12))) };
-                break;
-            case StatsPeriod.ALL:
-            default:
-                limit = 50;
-                order = { createdAt: 'DESC' };
-                break;
-        }
+        const { dateFilter, startDate, limit, order } = this.getPeriodFilter(period);
 
         const filters = {
             where: {
@@ -940,8 +1012,7 @@ export class TicketStatsService {
             .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere('ticket.currentTargetUserId = :userId', { userId });
 
-        if (dateFilter['createdAt']) {
-            const startDate = (dateFilter['createdAt'] as any)._value;
+        if (startDate) {
             resolutionQuery.andWhere('update.createdAt >= :startDate', {
                 startDate,
             });
@@ -965,8 +1036,7 @@ export class TicketStatsService {
             .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere('ticket.currentTargetUserId = :userId', { userId });
 
-        if (dateFilter['createdAt']) {
-            const startDate = (dateFilter['createdAt'] as any)._value;
+        if (startDate) {
             acceptanceQuery.andWhere('update.createdAt >= :startDate', {
                 startDate,
             });
@@ -998,29 +1068,7 @@ export class TicketStatsService {
         accessProfile: AccessProfile,
         period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<StatusDurationResponseDto> {
-        let startDate = null;
-        const now = new Date();
-
-        switch (period) {
-            case StatsPeriod.WEEKLY:
-                startDate = startOfDay(subDays(now, 7));
-                break;
-            case StatsPeriod.MONTHLY:
-                startDate = startOfDay(subDays(now, 30));
-                break;
-            case StatsPeriod.TRIMESTRAL:
-                startDate = startOfDay(subMonths(now, 3));
-                break;
-            case StatsPeriod.SEMESTRAL:
-                startDate = startOfDay(subMonths(now, 6));
-                break;
-            case StatsPeriod.ANNUAL:
-                startDate = startOfDay(subMonths(now, 12));
-                break;
-            case StatsPeriod.ALL:
-            default:
-                break;
-        }
+        const { startDate } = this.getPeriodFilter(period);
 
         // Check if user is Supervisor and get their departmentId
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
@@ -1104,14 +1152,14 @@ export class TicketStatsService {
             }
         });
 
-        const statusDurations: StatusDurationDto[] = Array.from(statusDurationsMap.entries())
-            .map(([status, data]) => ({
+        const statusDurations: StatusDurationDto[] = Array.from(statusDurationsMap.entries()).map(
+            ([status, data]) => ({
                 status: status as TicketStatus,
                 totalDurationSeconds: data.total,
                 count: data.count,
                 averageDurationSeconds: data.count > 0 ? Math.round(data.total / data.count) : 0,
-            }))
-            .filter((item) => item.count > 0); // Only include statuses with data
+            }),
+        );
 
         return {
             statusDurations,
@@ -1398,17 +1446,17 @@ export class TicketStatsService {
         limit: number = 5,
         returnAll: boolean = false,
         sort: string = 'top',
+        period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<UserRankingResponseDto> {
-        const now = new Date();
-        const threeMonthsAgo = startOfDay(subMonths(now, 3));
+        const { dateFilter } = this.getPeriodFilter(period);
 
         // Check if user is Supervisor and get their departmentId
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
         const filters: any = {
             tenantId: accessProfile.tenantId,
-            createdAt: MoreThanOrEqual(threeMonthsAgo),
             currentTargetUserId: Not(IsNull()),
+            ...dateFilter,
         };
 
         const ticketStats = await this.ticketStatsRepository.find({
