@@ -342,7 +342,7 @@ export class TicketStatsService {
             );
         }
 
-        // Filter out canceled tickets
+        // Filter out canceled tickets and only include finished tasks (Completed or Rejected)
         if (filteredItems.length > 0) {
             const ticketIds = filteredItems.map((stat) => stat.ticketId);
             const tickets = await this.ticketRepository.find({
@@ -351,13 +351,19 @@ export class TicketStatsService {
                 select: ['id', 'ticketStatus'],
             });
 
-            const canceledTicketIds = new Set(
+            // Only include tickets that are Completed or Rejected (finished tasks)
+            // Exclude Cancelled ones
+            const finishedTicketIds = new Set(
                 tickets
-                    .filter((ticket) => ticket.ticketStatus?.key === TicketStatus.Canceled)
+                    .filter(
+                        (ticket) =>
+                            ticket.ticketStatus?.key === TicketStatus.Completed ||
+                            ticket.ticketStatus?.key === TicketStatus.Rejected,
+                    )
                     .map((ticket) => ticket.id),
             );
 
-            filteredItems = filteredItems.filter((stat) => !canceledTicketIds.has(stat.ticketId));
+            filteredItems = filteredItems.filter((stat) => finishedTicketIds.has(stat.ticketId));
         }
 
         // Apply weekend exclusion to time calculations
@@ -383,6 +389,15 @@ export class TicketStatsService {
                 const resolvedDeptTickets = departmentTickets.filter(
                     (stat) => stat.isResolved,
                 ).length;
+
+                // Count active users in this department
+                const userCount = await this.userRepository.count({
+                    where: {
+                        tenantId: accessProfile.tenantId,
+                        departmentId: department.id,
+                        isActive: true,
+                    },
+                });
 
                 // Get department ticket IDs
                 const deptTicketIds = departmentTickets.map((stat) => stat.ticketId);
@@ -465,6 +480,11 @@ export class TicketStatsService {
                 const deptResolutionRate =
                     totalDeptTickets > 0 ? resolvedDeptTickets / totalDeptTickets : 0;
 
+                const efficiencyScore = this.calculateWilsonScore(
+                    resolvedDeptTickets,
+                    totalDeptTickets,
+                );
+
                 return {
                     departmentId: department.id,
                     departmentName: department.name,
@@ -474,6 +494,8 @@ export class TicketStatsService {
                     averageAcceptanceTimeSeconds: avgDeptAcceptanceTimeSeconds,
                     averageTotalTimeSeconds: avgDeptTotalTimeSeconds,
                     resolutionRate: parseFloat(deptResolutionRate.toFixed(2)),
+                    efficiencyScore,
+                    userCount,
                 };
             }),
         );
@@ -1122,6 +1144,11 @@ export class TicketStatsService {
                     });
 
                     if (previousStatusUpdate) {
+                        // Filter by period: only include if ticket entered the status within the period
+                        if (startDate && previousStatusUpdate.createdAt < startDate) {
+                            return null; // Skip this update as it started before the period
+                        }
+
                         const businessHours = this.businessHoursService.calculateBusinessHours(
                             previousStatusUpdate.createdAt,
                             update.createdAt,
@@ -1136,21 +1163,24 @@ export class TicketStatsService {
                         }
                     }
                 }
-                return update;
+                return null; // Return null for updates that don't meet criteria
             }),
         );
 
-        updatesWithWeekendExclusion.forEach((update) => {
-            if (update.fromStatus && update.timeSecondsInLastStatus) {
-                const statusData = statusDurationsMap.get(update.fromStatus) || {
-                    total: 0,
-                    count: 0,
-                };
-                statusData.total += update.timeSecondsInLastStatus;
-                statusData.count += 1;
-                statusDurationsMap.set(update.fromStatus, statusData);
-            }
-        });
+        // Filter out null values and process valid updates
+        updatesWithWeekendExclusion
+            .filter((update): update is NonNullable<typeof update> => update !== null)
+            .forEach((update) => {
+                if (update.fromStatus && update.timeSecondsInLastStatus) {
+                    const statusData = statusDurationsMap.get(update.fromStatus) || {
+                        total: 0,
+                        count: 0,
+                    };
+                    statusData.total += update.timeSecondsInLastStatus;
+                    statusData.count += 1;
+                    statusDurationsMap.set(update.fromStatus, statusData);
+                }
+            });
 
         const statusDurations: StatusDurationDto[] = Array.from(statusDurationsMap.entries()).map(
             ([status, data]) => ({
@@ -1342,10 +1372,72 @@ export class TicketStatsService {
     async getStatusDurationTimeSeries(
         accessProfile: AccessProfile,
         status: TicketStatus,
+        period: 'week' | 'month' | 'quarter' = 'month',
     ): Promise<StatusDurationTimeSeriesResponseDto> {
         const now = new Date();
+        let timeSeriesData: StatusDurationTimePointDto[] = [];
+
+        if (period === 'week') {
+            timeSeriesData = await this.getWeeklyStatusDuration(accessProfile, status, now);
+        } else if (period === 'month') {
+            timeSeriesData = await this.getMonthlyStatusDuration(accessProfile, status, now);
+        } else if (period === 'quarter') {
+            timeSeriesData = await this.getQuarterlyStatusDuration(accessProfile, status, now);
+        }
+
+        // Calculate the overall average in seconds
+        const totalDurationSecondsOverall = timeSeriesData.reduce(
+            (sum, item) => sum + item.value * item.count,
+            0,
+        );
+        const totalCount = timeSeriesData.reduce((sum, item) => sum + item.count, 0);
+        const averageDuration = totalCount > 0 ? totalDurationSecondsOverall / totalCount : 0;
+
+        return {
+            status,
+            data: timeSeriesData,
+            averageDuration: Math.round(averageDuration), // Round to whole seconds
+        };
+    }
+
+    private async getWeeklyStatusDuration(
+        accessProfile: AccessProfile,
+        status: TicketStatus,
+        endDate: Date,
+    ): Promise<StatusDurationTimePointDto[]> {
+        const weeks = 6;
+        const weekData: StatusDurationTimePointDto[] = [];
+
+        for (let i = weeks - 1; i >= 0; i--) {
+            const startDate = startOfWeek(subWeeks(endDate, i));
+            const endDateOfWeek = endOfWeek(startDate);
+
+            const label = `${startDate.getDate().toString().padStart(2, '0')}/${(startDate.getMonth() + 1).toString().padStart(2, '0')} - ${endDateOfWeek.getDate().toString().padStart(2, '0')}/${(endDateOfWeek.getMonth() + 1).toString().padStart(2, '0')}`;
+
+            const { averageDurationSeconds, count } = await this.getAverageStatusDurationForPeriod(
+                accessProfile,
+                status,
+                startDate,
+                endDateOfWeek,
+            );
+
+            weekData.push({
+                month: label,
+                value: Math.round(averageDurationSeconds),
+                count,
+            });
+        }
+
+        return weekData;
+    }
+
+    private async getMonthlyStatusDuration(
+        accessProfile: AccessProfile,
+        status: TicketStatus,
+        endDate: Date,
+    ): Promise<StatusDurationTimePointDto[]> {
         const months = 6;
-        const monthlyData: StatusDurationTimePointDto[] = [];
+        const monthData: StatusDurationTimePointDto[] = [];
 
         const ptMonthNames = [
             'Jan',
@@ -1362,83 +1454,111 @@ export class TicketStatsService {
             'Dez',
         ];
 
-        // Calculate data for each of the last 6 months
         for (let i = months - 1; i >= 0; i--) {
-            const startDate = startOfMonth(subMonths(now, i));
-            const endDate = endOfMonth(startDate);
+            const startDate = startOfMonth(subMonths(endDate, i));
+            const endDateOfMonth = endOfMonth(startDate);
 
             const monthIndex = startDate.getMonth();
-            const monthLabel = `${ptMonthNames[monthIndex]}/${startDate.getFullYear().toString().substr(2)}`;
+            const label = `${ptMonthNames[monthIndex]}/${startDate.getFullYear().toString().substr(2)}`;
 
-            // Check if user is Supervisor and get their departmentId
-            const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+            const { averageDurationSeconds, count } = await this.getAverageStatusDurationForPeriod(
+                accessProfile,
+                status,
+                startDate,
+                endDateOfMonth,
+            );
 
-            // Get all ticket updates for this month where the status changed from the requested status
-            const qb = this.ticketUpdateRepository.createQueryBuilder('update');
-            qb.innerJoin('update.ticket', 'ticket');
-            qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
-            qb.andWhere('update.fromStatus = :status', { status });
-            qb.andWhere('update.timeSecondsInLastStatus IS NOT NULL');
-            qb.andWhere('update.createdAt >= :startDate', { startDate });
-            qb.andWhere('update.updatedAt <= :endDate', { endDate });
-
-            // Filter by department if Supervisor using EXISTS subquery
-            if (supervisorDepartmentId !== null) {
-                qb.andWhere(
-                    `EXISTS (
-                        SELECT 1
-                        FROM ticket_target_user ttu
-                        INNER JOIN "user" u ON u.id = ttu."userId"
-                        WHERE ttu."ticketId" = ticket.id
-                        AND u."departmentId" = :departmentId
-                    )`,
-                    { departmentId: supervisorDepartmentId },
-                );
-            }
-
-            const ticketUpdates = await qb.getMany();
-
-            // Calculate average time spent in the status for this month
-            let totalDurationSeconds = 0;
-            const count = ticketUpdates.length;
-
-            if (count > 0) {
-                totalDurationSeconds = ticketUpdates.reduce(
-                    (sum, update) => sum + Number(update.timeSecondsInLastStatus || 0),
-                    0,
-                );
-
-                // Keep the duration in seconds instead of converting to hours
-                const averageDurationSeconds = totalDurationSeconds / count;
-
-                monthlyData.push({
-                    month: monthLabel,
-                    value: Math.round(averageDurationSeconds), // Round to whole seconds
-                    count,
-                });
-            } else {
-                // If no data for this month, add zero
-                monthlyData.push({
-                    month: monthLabel,
-                    value: 0,
-                    count: 0,
-                });
-            }
+            monthData.push({
+                month: label,
+                value: Math.round(averageDurationSeconds),
+                count,
+            });
         }
 
-        // Calculate the overall average in seconds
-        const totalDurationSecondsOverall = monthlyData.reduce(
-            (sum, item) => sum + item.value * item.count,
-            0,
-        );
-        const totalCount = monthlyData.reduce((sum, item) => sum + item.count, 0);
-        const averageDuration = totalCount > 0 ? totalDurationSecondsOverall / totalCount : 0;
+        return monthData;
+    }
 
-        return {
-            status,
-            data: monthlyData,
-            averageDuration: Math.round(averageDuration), // Round to whole seconds
-        };
+    private async getQuarterlyStatusDuration(
+        accessProfile: AccessProfile,
+        status: TicketStatus,
+        endDate: Date,
+    ): Promise<StatusDurationTimePointDto[]> {
+        const quarters = 4;
+        const quarterData: StatusDurationTimePointDto[] = [];
+
+        for (let i = quarters - 1; i >= 0; i--) {
+            const startDate = startOfQuarter(subQuarters(endDate, i));
+            const endDateOfQuarter = endOfQuarter(startDate);
+
+            const quarter = getQuarter(startDate);
+            const year = startDate.getFullYear();
+            const label = `T${quarter}/${year.toString().substr(2)}`;
+
+            const { averageDurationSeconds, count } = await this.getAverageStatusDurationForPeriod(
+                accessProfile,
+                status,
+                startDate,
+                endDateOfQuarter,
+            );
+
+            quarterData.push({
+                month: label,
+                value: Math.round(averageDurationSeconds),
+                count,
+            });
+        }
+
+        return quarterData;
+    }
+
+    private async getAverageStatusDurationForPeriod(
+        accessProfile: AccessProfile,
+        status: TicketStatus,
+        startDate: Date,
+        endDate: Date,
+    ): Promise<{ averageDurationSeconds: number; count: number }> {
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        // Get all ticket updates for this period where the status changed from the requested status
+        const qb = this.ticketUpdateRepository.createQueryBuilder('update');
+        qb.innerJoin('update.ticket', 'ticket');
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.andWhere('update.fromStatus = :status', { status });
+        qb.andWhere('update.timeSecondsInLastStatus IS NOT NULL');
+        qb.andWhere('update.createdAt >= :startDate', { startDate });
+        qb.andWhere('update.updatedAt <= :endDate', { endDate });
+
+        // Filter by department if Supervisor using EXISTS subquery
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const ticketUpdates = await qb.getMany();
+
+        // Calculate average time spent in the status for this period
+        let totalDurationSeconds = 0;
+        const count = ticketUpdates.length;
+
+        if (count > 0) {
+            totalDurationSeconds = ticketUpdates.reduce(
+                (sum, update) => sum + Number(update.timeSecondsInLastStatus || 0),
+                0,
+            );
+            const averageDurationSeconds = totalDurationSeconds / count;
+            return { averageDurationSeconds, count };
+        }
+
+        return { averageDurationSeconds: 0, count: 0 };
     }
 
     async getUserRanking(
@@ -1471,7 +1591,7 @@ export class TicketStatsService {
             );
         }
 
-        // Filter out canceled tickets
+        // Filter out canceled tickets and only include finished tasks (Completed or Rejected)
         if (filteredTicketStats.length > 0) {
             const ticketIds = filteredTicketStats.map((stat) => stat.ticketId);
             const tickets = await this.ticketRepository.find({
@@ -1480,14 +1600,20 @@ export class TicketStatsService {
                 select: ['id', 'ticketStatus'],
             });
 
-            const canceledTicketIds = new Set(
+            // Only include tickets that are Completed or Rejected (finished tasks)
+            // Exclude Cancelled ones
+            const finishedTicketIds = new Set(
                 tickets
-                    .filter((ticket) => ticket.ticketStatus?.key === TicketStatus.Canceled)
+                    .filter(
+                        (ticket) =>
+                            ticket.ticketStatus?.key === TicketStatus.Completed ||
+                            ticket.ticketStatus?.key === TicketStatus.Rejected,
+                    )
                     .map((ticket) => ticket.id),
             );
 
-            filteredTicketStats = filteredTicketStats.filter(
-                (stat) => !canceledTicketIds.has(stat.ticketId),
+            filteredTicketStats = filteredTicketStats.filter((stat) =>
+                finishedTicketIds.has(stat.ticketId),
             );
         }
 
@@ -1522,6 +1648,9 @@ export class TicketStatsService {
                 totalTickets: 0,
                 resolvedTickets: 0,
                 resolutionRate: 0,
+                efficiencyScore: 0,
+                averageAcceptanceTimeSeconds: 0,
+                averageResolutionTimeSeconds: 0,
                 avatarUrl: null,
             });
         }
@@ -1541,33 +1670,155 @@ export class TicketStatsService {
             }
         }
 
-        // Calculate resolution rate and sort by the three criteria
+        // Calculate average acceptance and resolution times for each user
+        const { startDate } = this.getPeriodFilter(period);
+        const userIds = Array.from(userStatsMap.keys());
+
+        // Calculate average acceptance time for each user
+        if (userIds.length > 0) {
+            const acceptanceQuery = this.ticketUpdateRepository
+                .createQueryBuilder('update')
+                .leftJoinAndSelect('update.ticket', 'ticket')
+                .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
+                .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+                .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+                .andWhere('ticket.currentTargetUserId IN (:...userIds)', { userIds });
+
+            if (startDate) {
+                acceptanceQuery.andWhere('update.createdAt >= :startDate', { startDate });
+            }
+
+            const acceptanceUpdates = await acceptanceQuery.getMany();
+
+            // Group by userId and calculate averages
+            const acceptanceByUser = new Map<number, { sum: number; count: number }>();
+            for (const update of acceptanceUpdates) {
+                const userId = update.ticket?.currentTargetUserId;
+                if (userId) {
+                    const timeSeconds = update.timeSecondsInLastStatus || 0;
+                    if (!acceptanceByUser.has(userId)) {
+                        acceptanceByUser.set(userId, { sum: 0, count: 0 });
+                    }
+                    const stats = acceptanceByUser.get(userId)!;
+                    stats.sum += timeSeconds;
+                    stats.count += 1;
+                }
+            }
+
+            // Calculate averages
+            for (const [userId, stats] of acceptanceByUser.entries()) {
+                if (userStatsMap.has(userId)) {
+                    const userStats = userStatsMap.get(userId);
+                    userStats.averageAcceptanceTimeSeconds =
+                        stats.count > 0 ? stats.sum / stats.count : 0;
+                }
+            }
+        }
+
+        // Calculate average resolution time for each user
+        if (userIds.length > 0) {
+            const resolutionQuery = this.ticketUpdateRepository
+                .createQueryBuilder('update')
+                .leftJoinAndSelect('update.ticket', 'ticket')
+                .where('update.fromStatus = :fromStatus', {
+                    fromStatus: TicketStatus.InProgress,
+                })
+                .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+                .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+                .andWhere('ticket.currentTargetUserId IN (:...userIds)', { userIds });
+
+            if (startDate) {
+                resolutionQuery.andWhere('update.createdAt >= :startDate', { startDate });
+            }
+
+            const resolutionUpdates = await resolutionQuery.getMany();
+
+            // Group by userId and calculate averages
+            const resolutionByUser = new Map<number, { sum: number; count: number }>();
+            for (const update of resolutionUpdates) {
+                const userId = update.ticket?.currentTargetUserId;
+                if (userId) {
+                    const timeSeconds = update.timeSecondsInLastStatus || 0;
+                    if (!resolutionByUser.has(userId)) {
+                        resolutionByUser.set(userId, { sum: 0, count: 0 });
+                    }
+                    const stats = resolutionByUser.get(userId)!;
+                    stats.sum += timeSeconds;
+                    stats.count += 1;
+                }
+            }
+
+            // Calculate averages
+            for (const [userId, stats] of resolutionByUser.entries()) {
+                if (userStatsMap.has(userId)) {
+                    const userStats = userStatsMap.get(userId);
+                    userStats.averageResolutionTimeSeconds =
+                        stats.count > 0 ? stats.sum / stats.count : 0;
+                }
+            }
+        }
+
+        // Calculate resolution rate and Wilson Score (efficiency)
         const rankedUsers = Array.from(userStatsMap.values())
             .map((user) => {
                 user.resolutionRate =
                     user.totalTickets > 0
                         ? parseFloat((user.resolvedTickets / user.totalTickets).toFixed(2))
                         : 0;
+                user.efficiencyScore = this.calculateWilsonScore(
+                    user.resolvedTickets,
+                    user.totalTickets,
+                );
                 return user;
             })
             .sort((a, b) => {
                 if (sort === 'bottom') {
-                    if (a.resolvedTickets !== b.resolvedTickets) {
-                        return a.resolvedTickets - b.resolvedTickets;
-                    }
-
-                    return a.resolutionRate - b.resolutionRate;
+                    // Sort by efficiency score (ascending) for worst performers
+                    return a.efficiencyScore - b.efficiencyScore;
                 } else {
-                    if (b.resolvedTickets !== a.resolvedTickets) {
-                        return b.resolvedTickets - a.resolvedTickets;
-                    }
-
-                    return b.resolutionRate - a.resolutionRate;
+                    // Sort by efficiency score (descending) for top performers
+                    return b.efficiencyScore - a.efficiencyScore;
                 }
             })
             .slice(0, returnAll ? undefined : limit);
 
         return { users: rankedUsers };
+    }
+
+    /**
+     * Calculate Wilson Score for statistical correction of small sample sizes
+     * Formula: Score = (p + z²/(2n) - z * sqrt((p(1-p)+z²/(4n))/n)) / (1+z²/n)
+     * Where:
+     *   p = success rate (resolved / total)
+     *   n = total number of tasks
+     *   z = 1.96 (95% confidence level)
+     *
+     * This method automatically penalizes rates with few data points.
+     * Example: 100% with 1 task is much less reliable than 70% with 100 tasks.
+     *
+     * @param resolvedCount Number of resolved/resolved items
+     * @param totalCount Total number of items
+     * @returns Wilson Score between 0 and 1
+     */
+    calculateWilsonScore(resolvedCount: number, totalCount: number): number {
+        if (totalCount === 0) {
+            return 0;
+        }
+
+        const p = resolvedCount / totalCount; // Success rate
+        const n = totalCount; // Total number of tasks
+        const z = 1.96; // 95% confidence level
+
+        // Calculate Wilson Score
+        const zSquared = z * z;
+        const denominator = 1 + zSquared / n;
+        const numerator =
+            p + zSquared / (2 * n) - z * Math.sqrt((p * (1 - p) + zSquared / (4 * n)) / n);
+
+        const score = numerator / denominator;
+
+        // Ensure score is between 0 and 1
+        return Math.max(0, Math.min(1, score));
     }
 
     private async applyWeekendExclusion(items: TicketStats[]): Promise<TicketStats[]> {

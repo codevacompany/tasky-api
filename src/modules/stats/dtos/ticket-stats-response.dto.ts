@@ -7,6 +7,8 @@ export class DepartmentStatsDto {
     averageAcceptanceTimeSeconds: number;
     averageTotalTimeSeconds: number;
     resolutionRate: number;
+    efficiencyScore: number;
+    userCount: number;
 }
 
 export class TicketStatsResponseDto {

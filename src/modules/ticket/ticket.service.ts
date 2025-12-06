@@ -133,7 +133,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        
+
         // Only apply pagination if paginated is not explicitly set to false
         if (options?.paginated !== false) {
             qb.skip((page - 1) * limit).take(limit);
@@ -192,7 +192,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         // Apply pagination
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        
+
         // Only apply pagination if paginated is not explicitly set to false
         if (options?.paginated !== false) {
             qb.skip((page - 1) * limit).take(limit);
@@ -350,7 +350,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        
+
         // Only apply pagination if paginated is not explicitly set to false
         if (options?.paginated !== false) {
             qb.skip((page - 1) * limit).take(limit);
@@ -559,7 +559,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        
+
         // Only apply pagination if paginated is not explicitly set to false
         if (options?.paginated !== false) {
             qb.skip((page - 1) * limit).take(limit);
@@ -638,7 +638,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const page = options?.page || 1;
         const limit = options?.limit || 10;
-        
+
         // Only apply pagination if paginated is not explicitly set to false
         if (options?.paginated !== false) {
             qb.skip((page - 1) * limit).take(limit);
@@ -787,14 +787,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     updatedById: requester.id,
                     action: TicketActionType.Creation,
                     toStatus: TicketStatus.Pending,
-                    description: '<p><span>user</span> criou este ticket.</p>',
+                    description: '<p><span>user</span> criou esta tarefa.</p>',
                 }),
             );
 
             const isGroupTicket = targetUserIds.length > 1;
             const messagePrefix = isGroupTicket
-                ? 'criou um ticket em grupo para você'
-                : 'criou um novo ticket para você';
+                ? 'criou uma tarefa em grupo para você'
+                : 'criou uma nova tarefa para você';
 
             for (const targetUser of targetUsers) {
                 if (ticketDto.requesterId !== targetUser.id) {
@@ -811,15 +811,15 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         }),
                     );
 
-                    const message = `Novo ticket criado por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
+                    const message = `Nova tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
 
                     const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(
                         accessProfile.tenantId,
                     );
                     if (emailNotificationsEnabled) {
-                        const ticketLink = `${process.env.FRONTEND_URL}/meus-tickets?ticket=${createdTicket.customId}`;
+                        const ticketLink = `${process.env.FRONTEND_URL}/minhas-tarefas?ticket=${createdTicket.customId}`;
                         this.emailService.sendMail({
-                            subject: `Um novo ticket foi criado para você.`,
+                            subject: `Uma nova tarefa foi criada para você.`,
                             html: this.emailService.compileTemplate('ticket-update', {
                                 message,
                                 ticketLink,
@@ -873,7 +873,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             action: TicketActionType.Update,
             fromStatus: ticketResponse.ticketStatus?.key || null,
             toStatus: ticketResponse.ticketStatus?.key || null,
-            description: '<p><span>user</span> atualizou este ticket.</p>',
+            description: '<p><span>user</span> atualizou esta tarefa.</p>',
         });
 
         const targetUsers = await this.ticketTargetUserRepository.find({
@@ -886,7 +886,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 await this.notificationRepository.save({
                     tenantId: accessProfile.tenantId,
                     type: NotificationType.TicketUpdate,
-                    message: '<p><span>user</span> atualizou o ticket <span>resource</span>.</p>',
+                    message: '<p><span>user</span> atualizou a tarefa <span>resource</span>.</p>',
                     createdById: accessProfile.userId,
                     updatedById: accessProfile.userId,
                     targetUserId: ticketTargetUser.userId,
@@ -961,7 +961,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         tenantId: accessProfile.tenantId,
                         type: NotificationType.StatusUpdate,
                         message:
-                            '<p><span>user</span> enviou o ticket <span>resource</span> para verificação.</p>',
+                            '<p><span>user</span> enviou a tarefa <span>resource</span> para verificação.</p>',
                         createdById: ticket.currentTargetUser.id,
                         updatedById: ticket.currentTargetUser.id,
                         targetUserId: ticket.reviewer.id,
@@ -970,11 +970,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     }),
                 ]);
 
-                const message = `<span style="font-weight: 600;">${ticket.currentTargetUser.firstName} ${ticket.currentTargetUser.lastName}</span> enviou o ticket <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
+                const message = `<span style="font-weight: 600;">${ticket.currentTargetUser.firstName} ${ticket.currentTargetUser.lastName}</span> enviou a tarefa <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
 
                 await this.sendEmailWithPermissionCheck(
                     accessProfile.tenantId,
-                    `O ticket ${ticket.customId} está pronto para verificação.`,
+                    `A tarefa ${ticket.customId} está pronta para verificação.`,
                     message,
                     ticket.reviewer.email,
                     ticket.customId,
@@ -1015,7 +1015,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         tenantId: accessProfile.tenantId,
                         type: NotificationType.StatusUpdate,
                         message:
-                            '<p><span>user</span> cancelou o envio do ticket <span>resource</span> para verificação.</p>',
+                            '<p><span>user</span> cancelou o envio da tarefa <span>resource</span> para verificação.</p>',
                         createdById: ticket.currentTargetUser.id,
                         updatedById: ticket.currentTargetUser.id,
                         targetUserId: ticket.reviewer.id,
@@ -1051,7 +1051,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         tenantId: accessProfile.tenantId,
                         type: NotificationType.StatusUpdate,
                         message:
-                            '<p><span>user</span> iniciou a verificação do ticket <span>resource</span>.</p>',
+                            '<p><span>user</span> iniciou a verificação da tarefa <span>resource</span>.</p>',
                         createdById: ticket.reviewer.id,
                         updatedById: ticket.reviewer.id,
                         targetUserId: ticketTargetUser.userId,
@@ -1072,7 +1072,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         fromStatus: TicketStatus.AwaitingVerification,
                         toStatus: TicketStatus.UnderVerification,
                         timeSecondsInLastStatus,
-                        description: '<p><span>user</span> iniciou a verificação do ticket.</p>',
+                        description: '<p><span>user</span> iniciou a verificação da tarefa.</p>',
                     }),
                     ...notifications,
                 ]);
@@ -1106,13 +1106,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         fromStatus: TicketStatus.Returned,
                         toStatus: TicketStatus.InProgress,
                         timeSecondsInLastStatus,
-                        description: '<p><span>user</span> iniciou a correção do ticket.</p>',
+                        description: '<p><span>user</span> iniciou a correção da tarefa.</p>',
                     }),
                     this.notificationRepository.save({
                         tenantId: accessProfile.tenantId,
                         type: NotificationType.StatusUpdate,
                         message:
-                            '<p><span>user</span> iniciou a correção do ticket <span>resource</span>.</p>',
+                            '<p><span>user</span> iniciou a correção da tarefa <span>resource</span>.</p>',
                         createdById: ticket.currentTargetUser.id,
                         updatedById: ticket.currentTargetUser.id,
                         targetUserId: ticket.reviewer.id,
@@ -1206,8 +1206,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             timeSecondsInLastStatus,
             description: `<p><span>user</span> ${
                 ticketResponse.requester.id === currentTargetUser.id
-                    ? 'começou a trabalhar neste ticket'
-                    : 'aceitou este ticket'
+                    ? 'começou a trabalhar nesta tarefa'
+                    : 'aceitou esta tarefa'
             }.</p>`,
         });
 
@@ -1215,7 +1215,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             await this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.StatusUpdate,
-                message: '<p><span>user</span> aceitou o ticket <span>resource</span>.</p>',
+                message: '<p><span>user</span> aceitou a tarefa <span>resource</span>.</p>',
                 createdById: currentTargetUser.id,
                 updatedById: currentTargetUser.id,
                 targetUserId: requester.id,
@@ -1223,11 +1223,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 resourceCustomId: ticketResponse.customId,
             });
 
-            const message = `<span style="font-weight: 600;">${currentTargetUser.firstName} ${currentTargetUser.lastName}</span> aceitou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
+            const message = `<span style="font-weight: 600;">${currentTargetUser.firstName} ${currentTargetUser.lastName}</span> aceitou a tarefa <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
 
             await this.sendEmailWithPermissionCheck(
                 accessProfile.tenantId,
-                `O ticket ${ticketResponse.customId} foi aceite`,
+                `A tarefa ${ticketResponse.customId} foi aceita`,
                 message,
                 requester.email,
                 ticketResponse.customId,
@@ -1289,7 +1289,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: TicketStatus.UnderVerification,
             toStatus: TicketStatus.Completed,
             timeSecondsInLastStatus,
-            description: '<p><span>user</span> aprovou este ticket.</p>',
+            description: '<p><span>user</span> aprovou esta tarefa.</p>',
         });
 
         const targetUsers = await this.ticketTargetUserRepository.find({
@@ -1301,7 +1301,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.StatusUpdate,
-                message: '<p><span>user</span> aprovou o ticket <span>resource</span>.</p>',
+                message: '<p><span>user</span> aprovou a tarefa <span>resource</span>.</p>',
                 createdById: ticketResponse.reviewer.id,
                 updatedById: ticketResponse.reviewer.id,
                 targetUserId: ticketTargetUser.userId,
@@ -1312,12 +1312,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         await Promise.all(notifications);
 
-        const message = `<span style="font-weight: 600;">${ticketResponse.reviewer.firstName} ${ticketResponse.reviewer.lastName}</span> aprovou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
+        const message = `<span style="font-weight: 600;">${ticketResponse.reviewer.firstName} ${ticketResponse.reviewer.lastName}</span> aprovou a tarefa <span style="font-weight: 600;">${ticketResponse.customId}</span>.`;
 
         for (const ticketTargetUser of targetUsers) {
             await this.sendEmailWithPermissionCheck(
                 accessProfile.tenantId,
-                `O ticket ${ticketResponse.customId} foi aprovado.`,
+                `A tarefa ${ticketResponse.customId} foi aprovada.`,
                 message,
                 ticketTargetUser.user.email,
                 ticketResponse.customId,
@@ -1377,7 +1377,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: ticketResponse.ticketStatus?.key || null,
             toStatus: TicketStatus.Rejected,
             timeSecondsInLastStatus,
-            description: `<p><span>user</span> reprovou este ticket.</p>`,
+            description: `<p><span>user</span> reprovou esta tarefa.</p>`,
         });
 
         const targetUsers = await this.ticketTargetUserRepository.find({
@@ -1389,7 +1389,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.StatusUpdate,
-                message: `<p><span>user</span> reprovou o ticket <span>resource</span>.</p>`,
+                message: `<p><span>user</span> reprovou a tarefa <span>resource</span>.</p>`,
                 createdById: ticketResponse.reviewer.id,
                 updatedById: ticketResponse.reviewer.id,
                 targetUserId: ticketTargetUser.userId,
@@ -1407,12 +1407,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             reasonDto,
         );
 
-        const message = `<span style="font-weight: 600;">${ticketResponse.reviewer.firstName} ${ticketResponse.reviewer.lastName}</span> reprovou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${reasonDto.reason}</span>.`;
+        const message = `<span style="font-weight: 600;">${ticketResponse.reviewer.firstName} ${ticketResponse.reviewer.lastName}</span> reprovou a tarefa <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${reasonDto.reason}</span>.`;
 
         for (const ticketTargetUser of targetUsers) {
             await this.sendEmailWithPermissionCheck(
                 accessProfile.tenantId,
-                `O ticket ${ticketResponse.customId} foi reprovado.`,
+                `A tarefa ${ticketResponse.customId} foi reprovada.`,
                 message,
                 ticketTargetUser.user.email,
                 ticketResponse.customId,
@@ -1479,7 +1479,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: ticketResponse.ticketStatus?.key || null,
             toStatus: TicketStatus.Canceled,
             timeSecondsInLastStatus,
-            description: `<p><span>user</span> cancelou este ticket.</p>`,
+            description: `<p><span>user</span> cancelou esta tarefa.</p>`,
         });
 
         const targetUsers = await this.ticketTargetUserRepository.find({
@@ -1491,7 +1491,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.Cancellation,
-                message: `<p><span>user</span> cancelou o ticket <span>resource</span> por ${formatSnakeToNaturalCase(reasonDto.reason)}.</p>`,
+                message: `<p><span>user</span> cancelou a tarefa <span>resource</span> por ${formatSnakeToNaturalCase(reasonDto.reason)}.</p>`,
                 createdById: requester.id,
                 updatedById: requester.id,
                 targetUserId: ticketTargetUser.userId,
@@ -1510,12 +1510,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             reasonDto,
         );
 
-        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> cancelou o ticket <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${formatSnakeToNaturalCase(reasonDto.reason)}</span>.`;
+        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> cancelou a tarefa <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${formatSnakeToNaturalCase(reasonDto.reason)}</span>.`;
 
         for (const ticketTargetUser of targetUsers) {
             await this.sendEmailWithPermissionCheck(
                 accessProfile.tenantId,
-                `O ticket ${ticketResponse.customId} foi cancelado.`,
+                `A tarefa ${ticketResponse.customId} foi cancelada.`,
                 message,
                 ticketTargetUser.user.email,
                 ticketResponse.customId,
@@ -1583,7 +1583,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(tenantId);
         if (emailNotificationsEnabled) {
             const ticketLink = ticketCustomId
-                ? `${process.env.FRONTEND_URL}/meus-tickets?ticket=${ticketCustomId}`
+                ? `${process.env.FRONTEND_URL}/minhas-tarefas?ticket=${ticketCustomId}`
                 : undefined;
 
             this.emailService.sendMail({
@@ -1630,7 +1630,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 action: TicketActionType.Update,
                 fromStatus: ticket.ticketStatus?.key || null,
                 toStatus: ticket.ticketStatus?.key || null,
-                description: `<p><span>user</span> adicionou ${files.length} arquivo(s) ao ticket.</p>`,
+                description: `<p><span>user</span> adicionou ${files.length} arquivo(s) à tarefa.</p>`,
             }),
         );
 
@@ -1799,14 +1799,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: TicketStatus.UnderVerification,
             toStatus: TicketStatus.Returned,
             timeSecondsInLastStatus,
-            description: `<p><span>user</span> devolveu este ticket para correção.</p>`,
+            description: `<p><span>user</span> devolveu esta tarefa para correção.</p>`,
         });
 
         const notifications = targetUsers.map((ticketTargetUser) =>
             this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.CorrectionRequest,
-                message: `<p><span>user</span> solicitou uma correção no ticket <span>resource</span> por ${formatSnakeToNaturalCase(dto.reason)}.</p>`,
+                message: `<p><span>user</span> solicitou uma correção na tarefa <span>resource</span> por ${formatSnakeToNaturalCase(dto.reason)}.</p>`,
                 createdById: accessProfile.userId,
                 updatedById: accessProfile.userId,
                 targetUserId: ticketTargetUser.userId,
@@ -1834,12 +1834,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         if (reviewer && targetUser) {
-            const message = `<span style="font-weight: 600;">${reviewer.firstName} ${reviewer.lastName}</span> solicitou uma correção no ticket <span style="font-weight: 600;">${ticket.customId}</span>.`;
+            const message = `<span style="font-weight: 600;">${reviewer.firstName} ${reviewer.lastName}</span> solicitou uma correção na tarefa <span style="font-weight: 600;">${ticket.customId}</span>.`;
 
             for (const ticketTargetUser of targetUsers) {
                 await this.sendEmailWithPermissionCheck(
                     accessProfile.tenantId,
-                    `Uma correção foi solicitada no ticket ${ticket.customId}.`,
+                    `Uma correção foi solicitada na tarefa ${ticket.customId}.`,
                     message,
                     ticketTargetUser.user.email,
                     ticket.customId,
@@ -1930,7 +1930,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         await this.notificationRepository.save({
             tenantId: accessProfile.tenantId,
             type: NotificationType.TicketUpdate,
-            message: `<p><span>user</span> atribuiu o ticket a você.</p>`,
+            message: `<p><span>user</span> atribuiu a tarefa a você.</p>`,
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             targetUserId: newTargetUserId,
@@ -1941,7 +1941,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         await this.notificationRepository.save({
             tenantId: accessProfile.tenantId,
             type: NotificationType.TicketUpdate,
-            message: `<p><span>user</span> removeu você do ticket <span>resource</span>.</p>`,
+            message: `<p><span>user</span> removeu você da tarefa <span>resource</span>.</p>`,
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             targetUserId: targetUserToReplace.userId,
@@ -2017,13 +2017,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.AssigneeChange,
-            description: `<p><span>user</span> enviou este ticket para o próximo departamento.</p>`,
+            description: `<p><span>user</span> enviou esta tarefa para o próximo departamento.</p>`,
         });
 
         await this.notificationRepository.save({
             tenantId: accessProfile.tenantId,
             type: NotificationType.TicketUpdate,
-            message: `<p><span>user</span> enviou o ticket <span>resource</span> para você.</p>`,
+            message: `<p><span>user</span> enviou a tarefa <span>resource</span> para você.</p>`,
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             targetUserId: nextUser.userId,
@@ -2036,7 +2036,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 await this.notificationRepository.save({
                     tenantId: accessProfile.tenantId,
                     type: NotificationType.TicketUpdate,
-                    message: `<p><span>user</span> enviou o ticket <span>resource</span> para o próximo departamento.</p>`,
+                    message: `<p><span>user</span> enviou a tarefa <span>resource</span> para o próximo departamento.</p>`,
                     createdById: accessProfile.userId,
                     updatedById: accessProfile.userId,
                     targetUserId: targetUser.userId,
@@ -2055,11 +2055,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         if (currentUser && nextUserDetails) {
-            const message = `<span style="font-weight: 600;">${currentUser.firstName} ${currentUser.lastName}</span> enviou o ticket <span style="font-weight: 600;">${ticket.customId}</span> para o próximo departamento.`;
+            const message = `<span style="font-weight: 600;">${currentUser.firstName} ${currentUser.lastName}</span> enviou a tarefa <span style="font-weight: 600;">${ticket.customId}</span> para o próximo departamento.`;
 
             await this.sendEmailWithPermissionCheck(
                 accessProfile.tenantId,
-                `O ticket ${ticket.customId} foi enviado para você.`,
+                `A tarefa ${ticket.customId} foi enviada para você.`,
                 message,
                 nextUserDetails.email,
                 ticket.customId,
@@ -2069,7 +2069,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 if (targetUser.userId !== nextUser.userId) {
                     await this.sendEmailWithPermissionCheck(
                         accessProfile.tenantId,
-                        `O ticket ${ticket.customId} foi enviado para o próximo departamento.`,
+                        `A tarefa ${ticket.customId} foi enviada para o próximo departamento.`,
                         message,
                         targetUser.user.email,
                         ticket.customId,
@@ -2122,13 +2122,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.Update,
-            description: `<p><span>user</span> definiu ${newReviewer.firstName} ${newReviewer.lastName} como revisor deste ticket.</p>`,
+            description: `<p><span>user</span> definiu ${newReviewer.firstName} ${newReviewer.lastName} como revisor desta tarefa.</p>`,
         });
 
         await this.notificationRepository.save({
             tenantId: accessProfile.tenantId,
             type: NotificationType.TicketUpdate,
-            message: `<p><span>user</span> definiu você como revisor do ticket <span>resource</span>.</p>`,
+            message: `<p><span>user</span> definiu você como revisor da tarefa <span>resource</span>.</p>`,
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             targetUserId: newReviewer.id,
