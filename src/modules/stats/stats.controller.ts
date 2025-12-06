@@ -107,8 +107,9 @@ export class StatsController {
     async getStatusDurationTimeSeries(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Query('status') status: TicketStatus,
+        @Query('period') period: 'week' | 'month' | 'quarter' = 'month',
     ): Promise<StatusDurationTimeSeriesResponseDto> {
-        return this.ticketStatsService.getStatusDurationTimeSeries(accessProfile, status);
+        return this.ticketStatsService.getStatusDurationTimeSeries(accessProfile, status, period);
     }
 
     @Get('top-users')

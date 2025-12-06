@@ -7,6 +7,9 @@ export class UserRankingItemDto {
     totalTickets: number;
     resolvedTickets: number;
     resolutionRate: number;
+    efficiencyScore: number; // Wilson Score for ranking
+    averageAcceptanceTimeSeconds: number;
+    averageResolutionTimeSeconds: number;
     avatarUrl?: string;
 }
 
