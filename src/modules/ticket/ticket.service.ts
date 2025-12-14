@@ -73,11 +73,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             ...options,
             relations: [
                 'requester',
+                'requester.department',
                 'currentTargetUser',
+                'currentTargetUser.department',
                 'targetUsers',
                 'targetUsers.user',
                 'targetUsers.user.department',
                 'reviewer',
+                'reviewer.department',
                 'category',
                 'files',
                 'cancellationReason',
@@ -85,6 +88,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'correctionRequests',
                 'checklistItems',
                 'checklistItems.assignedTo',
+                'checklistItems.assignedTo.department',
             ],
             order: options?.order || ({ createdAt: 'DESC' } as any),
             tenantAware: false,
@@ -214,20 +218,26 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             where: { customId },
             relations: [
                 'requester',
+                'requester.department',
                 'currentTargetUser',
+                'currentTargetUser.department',
                 'targetUsers',
                 'targetUsers.user',
                 'targetUsers.user.department',
                 'reviewer',
+                'reviewer.department',
                 'category',
                 'files',
                 'comments',
+                'comments.user',
+                'comments.user.department',
                 'cancellationReason',
                 'disapprovalReason',
                 'correctionRequests',
                 'ticketStatus',
                 'checklistItems',
                 'checklistItems.assignedTo',
+                'checklistItems.assignedTo.department',
             ],
         });
 
@@ -371,11 +381,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         return this.repository
             .createQueryBuilder('ticket')
             .leftJoinAndSelect('ticket.requester', 'requester')
+            .leftJoinAndSelect('requester.department', 'requesterDepartment')
             .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
+            .leftJoinAndSelect('currentTargetUser.department', 'currentTargetUserDepartment')
             .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
             .leftJoinAndSelect('targetUsers.user', 'targetUser')
             .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
             .leftJoinAndSelect('ticket.reviewer', 'reviewer')
+            .leftJoinAndSelect('reviewer.department', 'reviewerDepartment')
             .leftJoinAndSelect('ticket.category', 'category')
             .leftJoinAndSelect('ticket.files', 'files')
             .leftJoinAndSelect('ticket.comments', 'comments')
@@ -387,6 +400,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
             .leftJoinAndSelect('ticket.checklistItems', 'checklistItems')
             .leftJoinAndSelect('checklistItems.assignedTo', 'checklistItemAssignedTo')
+            .leftJoinAndSelect('checklistItemAssignedTo.department', 'checklistItemAssignedToDepartment')
             .where('ticket.tenantId = :tenantId', { tenantId });
     }
 
