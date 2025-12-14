@@ -9,12 +9,13 @@ import {
 } from '../../shared/exceptions/http-exception';
 import { CnpjService } from '../../shared/services/cnpj/cnpj.service';
 import { EmailService } from '../../shared/services/email/email.service';
-// import { TokenService } from '../../shared/services/token/token.service';
+import { TokenService } from '../../shared/services/token/token.service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { DepartmentService } from '../department/department.service';
 // import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { RoleName } from '../role/entities/role.entity';
 import { RoleRepository } from '../role/role.repository';
+import { SubscriptionStatus } from '../tenant-subscription/entities/tenant-subscription.entity';
 import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { TenantService } from '../tenant/tenant.service';
 import { UserService } from '../user/user.service';
@@ -35,7 +36,7 @@ export class SignUpService {
         private readonly departmentService: DepartmentService,
         // private readonly legalDocumentService: LegalDocumentService,
         private readonly tenantSubscriptionService: TenantSubscriptionService,
-        // private readonly tokenService: TokenService,
+        private readonly tokenService: TokenService,
     ) {}
 
     async create(createSignUpDto: CreateSignUpDto): Promise<SignUp> {
@@ -299,8 +300,39 @@ export class SignUpService {
         return updatedSignUp;
     }
 
-    async completeSignUp(token: string, customKey: string, password: string) {
-        const signUp = await this.findByActivationToken(token);
+    async resendActivationEmail(id: number): Promise<SignUp> {
+        const signUp = await this.findOne(id);
+
+        if (signUp.status !== SignUpStatus.APPROVED) {
+            throw new CustomBadRequestException({
+                message: 'Can only resend email for approved sign-ups',
+                code: 'sign-up-not-approved',
+            });
+        }
+
+        if (!signUp.activationToken) {
+            throw new CustomBadRequestException({
+                message: 'Activation token not found',
+                code: 'activation-token-not-found',
+            });
+        }
+
+        this.emailService.sendMail({
+            subject: 'Complete seu cadastro no Tasky System',
+            html: this.emailService.compileTemplate('complete-your-sign-up', {
+                companyName: signUp.companyName,
+                contactName: signUp.contactName,
+                activationToken: signUp.activationToken,
+                frontendUrl: process.env.FRONTEND_URL,
+            }),
+            to: signUp.contactEmail,
+        });
+
+        return signUp;
+    }
+
+    async completeSignUp(activationToken: string, customKey: string, password: string) {
+        const signUp = await this.findByActivationToken(activationToken);
 
         if (signUp.status !== SignUpStatus.APPROVED) {
             throw new CustomNotFoundException({
@@ -383,7 +415,45 @@ export class SignUpService {
             to: signUp.contactEmail,
         });
 
-        return userData;
+        // Fetch the complete user with relations
+        const user = await this.userService.findById(userData.id);
+
+        // Get tenant permissions
+        const tenantPermissions = await this.tenantSubscriptionService.getTenantPermissions(
+            tenant.id,
+        );
+
+        // Check subscription status
+        const subscription = await this.tenantSubscriptionService.findCurrentTenantSubscription(
+            tenant.id,
+        );
+
+        const hasActiveSubscription =
+            subscription &&
+            (subscription.status === SubscriptionStatus.ACTIVE ||
+                (subscription.status === SubscriptionStatus.TRIAL &&
+                    subscription.trialEndDate &&
+                    subscription.trialEndDate > new Date()));
+
+        const tokenSub: Record<string, unknown> = {
+            userId: user.id,
+            tenantId: user.tenantId,
+        };
+
+        const tokenPair = this.tokenService.createPair(tokenSub);
+
+        delete user.password;
+
+        const response: any = {
+            token: tokenPair,
+            user: { ...user, permissions: tenantPermissions },
+        };
+
+        if (user.role?.name === RoleName.TenantAdmin) {
+            response.hasActiveSubscription = hasActiveSubscription;
+        }
+
+        return response;
     }
 
     private buildQuery(where?: { companyName?: string; status?: string }) {

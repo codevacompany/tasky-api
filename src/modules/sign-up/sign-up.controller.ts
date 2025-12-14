@@ -1,13 +1,4 @@
-import {
-    Body,
-    Controller,
-    Get,
-    Param,
-    ParseIntPipe,
-    Post,
-    Query,
-    UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
@@ -57,6 +48,12 @@ export class SignUpController {
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     rejectSignUp(@Param('id', ParseIntPipe) id: number) {
         return this.signUpService.rejectSignUp(id);
+    }
+
+    @Post(':id/resend-email')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    resendEmail(@Param('id', ParseIntPipe) id: number) {
+        return this.signUpService.resendActivationEmail(id);
     }
 
     @Post('complete/:token')
