@@ -149,9 +149,14 @@ export class UserService extends TenantBoundBaseService<User> {
      * Find user by UUID (public-facing identifier)
      * Use this for public API endpoints
      */
-    async findByUuid(accessProfile: AccessProfile, uuid: string): Promise<User> {
+    async findByUuid(
+        accessProfile: AccessProfile,
+        uuid: string,
+        options?: { tenantAware?: boolean },
+    ): Promise<User> {
         const user = await super.findByUuid(accessProfile, uuid, {
             relations: ['department', 'role'],
+            tenantAware: options?.tenantAware ?? true,
         });
 
         if (!user) {
@@ -171,13 +176,15 @@ export class UserService extends TenantBoundBaseService<User> {
         accessProfile: AccessProfile,
         uuid: string,
         updateUserDto: UpdateUserDto,
+        options?: { tenantAware?: boolean },
     ): Promise<User> {
         await super.updateByUuid(
             accessProfile,
             uuid,
             updateUserDto as QueryDeepPartialEntity<User>,
+            options?.tenantAware !== false,
         );
-        return this.findByUuid(accessProfile, uuid);
+        return this.findByUuid(accessProfile, uuid, options);
     }
 
     /**

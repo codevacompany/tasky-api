@@ -352,7 +352,10 @@ export class AuthService {
         accessProfile: AccessProfile,
         uuid: string,
     ): Promise<{ message: string }> {
-        const user = await this.userService.findByUuid(accessProfile, uuid);
+        // For global admin operations, bypass tenant filtering
+        const user = await this.userService.findByUuid(accessProfile, uuid, {
+            tenantAware: false,
+        });
 
         if (!user) {
             throw new CustomNotFoundException({
@@ -365,10 +368,15 @@ export class AuthService {
         const temporaryPassword = generateRandomPassword(12);
         const hashedPassword = this.encryptionService.hashSync(temporaryPassword);
 
-        // Update user password
-        await this.userService.updateUserByUuid(accessProfile, uuid, {
-            password: hashedPassword,
-        });
+        // Update user password (bypass tenant filtering for global admin)
+        await this.userService.updateUserByUuid(
+            accessProfile,
+            uuid,
+            {
+                password: hashedPassword,
+            },
+            { tenantAware: false },
+        );
 
         // Send email with the new password
         try {
@@ -389,7 +397,8 @@ export class AuthService {
         }
 
         return {
-            message: 'Password reset successfully. A new password has been sent to the user\'s email.',
+            message:
+                "Password reset successfully. A new password has been sent to the user's email.",
         };
     }
 

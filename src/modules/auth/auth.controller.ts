@@ -63,6 +63,15 @@ export class AuthController {
         return this.authService.changePassword(accessProfile, changePasswordDto);
     }
 
+    @Patch('admin/reset-password-uuid/:uuid')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async adminResetPasswordWithRandomPassword(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
+    ) {
+        return this.authService.adminResetPasswordWithRandomPassword(accessProfile, uuid);
+    }
+
     @Patch('admin/reset-password/:userId')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async adminResetPassword(
@@ -71,14 +80,5 @@ export class AuthController {
         @Body() adminResetPasswordDto: AdminResetPasswordDto,
     ) {
         return this.authService.adminResetPassword(accessProfile, userId, adminResetPasswordDto);
-    }
-
-    @Patch('admin/reset-password-uuid/:uuid')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
-    async adminResetPasswordWithRandomPassword(
-        @GetAccessProfile() accessProfile: AccessProfile,
-        @Param('uuid', UUIDValidationPipe) uuid: string,
-    ) {
-        return this.authService.adminResetPasswordWithRandomPassword(accessProfile, uuid);
     }
 }
