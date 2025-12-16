@@ -1,5 +1,6 @@
 export interface UserWithStats {
     id: number;
+    uuid: string;
     firstName: string;
     lastName: string;
     email: string;

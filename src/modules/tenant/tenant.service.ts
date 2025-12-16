@@ -220,6 +220,7 @@ export class TenantService {
 
             const userStats = users.map((user) => ({
                 id: user.id,
+                uuid: user.uuid,
                 firstName: user.firstName,
                 lastName: user.lastName,
                 email: user.email,
