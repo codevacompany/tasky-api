@@ -16,6 +16,7 @@ import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscri
 import { TenantService } from '../tenant/tenant.service';
 import { RoleName } from '../role/entities/role.entity';
 import { SubscriptionStatus } from '../tenant-subscription/entities/tenant-subscription.entity';
+import { generateRandomPassword } from '../../shared/utils/password-generator.util';
 import { LoginDto } from './dtos/login.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
 import { ChangePasswordDto } from './dtos/change-password.dto';
@@ -344,6 +345,51 @@ export class AuthService {
 
         return {
             message: 'Password reset successfully',
+        };
+    }
+
+    async adminResetPasswordWithRandomPassword(
+        accessProfile: AccessProfile,
+        uuid: string,
+    ): Promise<{ message: string }> {
+        const user = await this.userService.findByUuid(accessProfile, uuid);
+
+        if (!user) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        // Generate a random password
+        const temporaryPassword = generateRandomPassword(12);
+        const hashedPassword = this.encryptionService.hashSync(temporaryPassword);
+
+        // Update user password
+        await this.userService.updateUserByUuid(accessProfile, uuid, {
+            password: hashedPassword,
+        });
+
+        // Send email with the new password
+        try {
+            const html = this.emailService.compileTemplate('password-reset', {
+                firstName: user.firstName,
+                lastName: user.lastName,
+                newPassword: temporaryPassword,
+            });
+
+            await this.emailService.sendMail({
+                to: user.email,
+                subject: 'Senha Redefinida - Tasky Pro',
+                html,
+            });
+        } catch (error) {
+            console.error('Failed to send password reset email:', error);
+            // Don't throw error here - password was already reset
+        }
+
+        return {
+            message: 'Password reset successfully. A new password has been sent to the user\'s email.',
         };
     }
 

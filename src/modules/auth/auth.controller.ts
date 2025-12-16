@@ -11,6 +11,7 @@ import { AccessProfile, GetAccessProfile } from '../../shared/common/access-prof
 import { ChangePasswordDto } from './dtos/change-password.dto';
 import { AdminResetPasswordDto } from './dtos/admin-reset-password.dto';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
+import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 
 @Controller('auth')
 export class AuthController {
@@ -70,5 +71,14 @@ export class AuthController {
         @Body() adminResetPasswordDto: AdminResetPasswordDto,
     ) {
         return this.authService.adminResetPassword(accessProfile, userId, adminResetPasswordDto);
+    }
+
+    @Patch('admin/reset-password-uuid/:uuid')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async adminResetPasswordWithRandomPassword(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Param('uuid', UUIDValidationPipe) uuid: string,
+    ) {
+        return this.authService.adminResetPasswordWithRandomPassword(accessProfile, uuid);
     }
 }
