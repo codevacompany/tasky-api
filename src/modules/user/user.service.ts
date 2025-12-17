@@ -390,4 +390,17 @@ export class UserService extends TenantBoundBaseService<User> {
             relations: ['department', 'role'],
         });
     }
+
+    async updateLoginTracking(user: User): Promise<{ loginCount: number; lastLogin: Date }> {
+        const newLoginCount = (user.loginCount || 0) + 1;
+        const newLastLogin = new Date();
+
+        await this.userRepository.increment({ id: user.id }, 'loginCount', 1);
+        await this.userRepository.update(user.id, { lastLogin: newLastLogin });
+
+        return {
+            loginCount: newLoginCount,
+            lastLogin: newLastLogin,
+        };
+    }
 }

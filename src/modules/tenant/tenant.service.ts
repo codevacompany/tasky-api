@@ -227,6 +227,8 @@ export class TenantService {
                 departmentName: user.department?.name || 'N/A',
                 role: user.role?.name || 'N/A',
                 isActive: user.isActive,
+                loginCount: user.loginCount || 0,
+                lastLogin: user.lastLogin || null,
             }));
 
             return {

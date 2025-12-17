@@ -112,7 +112,7 @@ async function bootstrap() {
 
 ### SubscriptionPlanSeeder
 
--   Creates subscription plans: Iniciante, Crescer, Profissional, Usuários Adicionais
+-   Creates subscription plans: Básico, Essencial, Avançado, Usuários Adicionais
 -   Maps permissions to each plan based on plan capabilities
 -   **Dependencies**: PermissionSeeder
 
@@ -271,9 +271,9 @@ The seeding system creates the following sample data:
 
 ### Subscription Plans
 
--   Plano Iniciante (R$ 99/mês, 5 users)
--   Plano Crescer (R$ 199/mês, 15 users)
--   Plano Profissional (R$ 399/mês, 30 users)
+-   Plano Básico (R$ 99/mês, 5 users)
+-   Plano Essencial (R$ 199/mês, 15 users)
+-   Plano Avançado (R$ 399/mês, 30 users)
 -   Usuários Adicionais (R$ 15/mês per user)
 
 All sample users use the password `123456` for development convenience.

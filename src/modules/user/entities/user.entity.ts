@@ -47,4 +47,10 @@ export class User extends TenantBoundBaseEntity {
     @ManyToOne(() => Role)
     @JoinColumn({ name: 'roleId' })
     role: Role;
+
+    @Column({ type: 'int', default: 0 })
+    loginCount: number;
+
+    @Column({ type: 'timestamp', nullable: true })
+    lastLogin: Date | null;
 }

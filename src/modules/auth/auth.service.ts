@@ -95,6 +95,10 @@ export class AuthService {
 
         const token = this.tokenService.createPair(tokenSub);
 
+        const loginTracking = await this.userService.updateLoginTracking(user);
+        user.loginCount = loginTracking.loginCount;
+        user.lastLogin = loginTracking.lastLogin;
+
         delete user.password;
 
         const response: any = {
@@ -146,6 +150,10 @@ export class AuthService {
         const tenantPermissions = await this.tenantSubscriptionService.getTenantPermissions(
             user.tenantId,
         );
+
+        const loginTracking = await this.userService.updateLoginTracking(user);
+        user.loginCount = loginTracking.loginCount;
+        user.lastLogin = loginTracking.lastLogin;
 
         delete user.password;
 

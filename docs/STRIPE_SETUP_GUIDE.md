@@ -6,19 +6,19 @@ This guide will help you set up Stripe for your Tasky Pro subscription plans.
 
 Your application has the following subscription plans:
 
-1. **Plano Iniciante** (Starter Plan)
+1. **Plano Básico** (Basic Plan)
 
     - Monthly: R$ 99.00
     - Yearly: R$ 950.00
     - Max Users: 5
 
-2. **Plano Crescer** (Growth Plan)
+2. **Plano Essencial** (Essential Plan)
 
     - Monthly: R$ 199.00
     - Yearly: R$ 1,900.00
     - Max Users: 15
 
-3. **Plano Profissional** (Professional Plan)
+3. **Plano Avançado** (Advanced Plan)
 
     - Monthly: R$ 399.00
     - Yearly: R$ 3,800.00
@@ -41,38 +41,38 @@ Your application has the following subscription plans:
 
 For each plan, you'll create a Product in Stripe:
 
-### 2.1 Create Product: Plano Iniciante
+### 2.1 Create Product: Plano Básico
 
 1. Navigate to **Products** → **Add product**
 2. Fill in the details:
-    - **Name**: `Plano Iniciante`
+    - **Name**: `Plano Básico`
     - **Description**: `Ideal para microempresas e startups`
     - **Metadata** (optional but recommended):
-        - `slug`: `iniciante`
+        - `slug`: `basico`
         - `max_users`: `5`
         - `plan_id`: `1` (or your database plan ID)
 3. Click **Save product**
 
-### 2.2 Create Product: Plano Crescer
+### 2.2 Create Product: Plano Essencial
 
 1. Navigate to **Products** → **Add product**
 2. Fill in the details:
-    - **Name**: `Plano Crescer`
+    - **Name**: `Plano Essencial`
     - **Description**: `Ideal para pequenas empresas em crescimento`
     - **Metadata**:
-        - `slug`: `crescer`
+        - `slug`: `essencial`
         - `max_users`: `15`
         - `plan_id`: `2`
 3. Click **Save product**
 
-### 2.3 Create Product: Plano Profissional
+### 2.3 Create Product: Plano Avançado
 
 1. Navigate to **Products** → **Add product**
 2. Fill in the details:
-    - **Name**: `Plano Profissional`
+    - **Name**: `Plano Avançado`
     - **Description**: `Ideal para empresas médias`
     - **Metadata**:
-        - `slug`: `profissional`
+        - `slug`: `avancado`
         - `max_users`: `30`
         - `plan_id`: `3`
 3. Click **Save product**
@@ -94,7 +94,7 @@ For each plan, you'll create a Product in Stripe:
 
 For each product, create two prices: Monthly and Yearly.
 
-### 3.1 Plano Iniciante Prices
+### 3.1 Plano Básico Prices
 
 #### Monthly Price:
 
@@ -104,7 +104,7 @@ For each product, create two prices: Monthly and Yearly.
     - **Currency**: `BRL` (Brazilian Real)
     - **Billing period**: `Monthly`
     - **Recurring**: ✅ Enabled
-    - **Price ID** (save this): `price_xxxxx_iniciante_monthly`
+    - **Price ID** (save this): `price_xxxxx_basico_monthly`
 3. Click **Add price**
 
 #### Yearly Price:
@@ -115,36 +115,36 @@ For each product, create two prices: Monthly and Yearly.
     - **Currency**: `BRL`
     - **Billing period**: `Yearly`
     - **Recurring**: ✅ Enabled
-    - **Price ID** (save this): `price_xxxxx_iniciante_yearly`
+    - **Price ID** (save this): `price_xxxxx_basico_yearly`
 3. Click **Add price**
 
-### 3.2 Plano Crescer Prices
+### 3.2 Plano Essencial Prices
 
 #### Monthly Price:
 
 -   **Price**: `199.00 BRL`
 -   **Billing period**: `Monthly`
--   **Price ID**: `price_xxxxx_crescer_monthly`
+-   **Price ID**: `price_xxxxx_essencial_monthly`
 
 #### Yearly Price:
 
 -   **Price**: `1900.00 BRL`
 -   **Billing period**: `Yearly`
--   **Price ID**: `price_xxxxx_crescer_yearly`
+-   **Price ID**: `price_xxxxx_essencial_yearly`
 
-### 3.3 Plano Profissional Prices
+### 3.3 Plano Avançado Prices
 
 #### Monthly Price:
 
 -   **Price**: `399.00 BRL`
 -   **Billing period**: `Monthly`
--   **Price ID**: `price_xxxxx_profissional_monthly`
+-   **Price ID**: `price_xxxxx_avancado_monthly`
 
 #### Yearly Price:
 
 -   **Price**: `3800.00 BRL`
 -   **Billing period**: `Yearly`
--   **Price ID**: `price_xxxxx_profissional_yearly`
+-   **Price ID**: `price_xxxxx_avancado_yearly`
 
 ### 3.4 Plano Customizado Prices (Metered Billing)
 
@@ -313,23 +313,23 @@ ADD COLUMN stripe_price_id_per_user VARCHAR(255);
 Then update your plans with the Stripe Price IDs:
 
 ```sql
--- Plano Iniciante
+-- Plano Básico
 UPDATE subscription_plan
-SET stripe_price_id_monthly = 'price_xxxxx_iniciante_monthly',
-    stripe_price_id_yearly = 'price_xxxxx_iniciante_yearly'
-WHERE slug = 'iniciante';
+SET stripe_price_id_monthly = 'price_xxxxx_basico_monthly',
+    stripe_price_id_yearly = 'price_xxxxx_basico_yearly'
+WHERE slug = 'basico';
 
--- Plano Crescer
+-- Plano Essencial
 UPDATE subscription_plan
-SET stripe_price_id_monthly = 'price_xxxxx_crescer_monthly',
-    stripe_price_id_yearly = 'price_xxxxx_crescer_yearly'
-WHERE slug = 'crescer';
+SET stripe_price_id_monthly = 'price_xxxxx_essencial_monthly',
+    stripe_price_id_yearly = 'price_xxxxx_essencial_yearly'
+WHERE slug = 'essencial';
 
--- Plano Profissional
+-- Plano Avançado
 UPDATE subscription_plan
-SET stripe_price_id_monthly = 'price_xxxxx_profissional_monthly',
-    stripe_price_id_yearly = 'price_xxxxx_profissional_yearly'
-WHERE slug = 'profissional';
+SET stripe_price_id_monthly = 'price_xxxxx_avancado_monthly',
+    stripe_price_id_yearly = 'price_xxxxx_avancado_yearly'
+WHERE slug = 'avancado';
 
 -- Plano Customizado (metered billing)
 UPDATE subscription_plan

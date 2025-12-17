@@ -141,7 +141,7 @@ export class TenantSubscriptionController {
         @GetAccessProfile() _accessProfile: AccessProfile,
         @Body() body: { planSlug?: string },
     ) {
-        const planSlug = body.planSlug || 'iniciante';
+        const planSlug = body.planSlug || 'basico';
         return this.tenantSubscriptionService.createTrialSubscription(tenantId, planSlug);
     }
 
