@@ -41,6 +41,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StatusAction } from '../status-action/entities/status-action.entity';
 import { TicketStatus as TicketStatusEntity } from '../ticket-status/entities/ticket-status.entity';
+import { DepartmentService } from '../department/department.service';
 
 @Injectable()
 export class TicketService extends TenantBoundBaseService<Ticket> {
@@ -60,6 +61,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly tenantSubscriptionService: TenantSubscriptionService,
         private readonly ticketTargetUserRepository: TicketTargetUserRepository,
         private readonly roleService: RoleService,
+        private readonly departmentService: DepartmentService,
         @InjectRepository(StatusAction)
         private readonly statusActionRepository: Repository<StatusAction>,
         @InjectRepository(TicketStatusEntity)
@@ -124,7 +126,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         if (options?.where) {
-            this.applyWhereFilters(qb, options.where);
+            await this.applyWhereFilters(qb, accessProfile, options.where);
         }
 
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
@@ -181,7 +183,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         // Apply where filters
         if (options?.where) {
-            this.applyWhereFilters(qb, options.where);
+            await this.applyWhereFilters(qb, accessProfile, options.where);
         }
 
         // Apply status filter
@@ -354,7 +356,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
-        this.applyWhereFilters(qb, whereWithStatus);
+        await this.applyWhereFilters(qb, accessProfile, whereWithStatus);
         this.applyDefaultStatusFilter(qb, whereWithStatus?.status);
         this.applySorting(qb, options?.order);
 
@@ -400,7 +402,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
             .leftJoinAndSelect('ticket.checklistItems', 'checklistItems')
             .leftJoinAndSelect('checklistItems.assignedTo', 'checklistItemAssignedTo')
-            .leftJoinAndSelect('checklistItemAssignedTo.department', 'checklistItemAssignedToDepartment')
+            .leftJoinAndSelect(
+                'checklistItemAssignedTo.department',
+                'checklistItemAssignedToDepartment',
+            )
             .where('ticket.tenantId = :tenantId', { tenantId });
     }
 
@@ -430,9 +435,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
     }
 
-    private applyWhereFilters(
+    private async applyWhereFilters(
         qb: ReturnType<typeof this.repository.createQueryBuilder>,
-        where?: FindOptionsWhere<Ticket> & { status?: any },
+        accessProfile: AccessProfile,
+        where?: FindOptionsWhere<Ticket> & {
+            status?: any;
+            departmentId?: number;
+            departmentUuid?: string;
+        },
     ) {
         if (!where) return;
 
@@ -452,6 +462,33 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
                 name: `%${where.name}%`,
             });
+        }
+
+        let departmentId = where.departmentId;
+        if (where.departmentUuid && !departmentId) {
+            try {
+                const department = await this.departmentService.findByUuid(
+                    accessProfile,
+                    where.departmentUuid,
+                );
+                departmentId = department.id;
+            } catch {
+                // Department not found, skip filter
+                return;
+            }
+        }
+
+        if (departmentId !== undefined && departmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId },
+            );
         }
     }
 

@@ -17,6 +17,7 @@ import { TicketUpdateModule } from '../ticket-updates/ticket-update.module';
 import { UserModule } from '../user/user.module';
 import { StatusActionModule } from '../status-action/status-action.module';
 import { TicketStatusModule } from '../ticket-status/ticket-status.module';
+import { DepartmentModule } from '../department/department.module';
 import { Ticket } from './entities/ticket.entity';
 import { TicketController } from './ticket.controller';
 import { TicketRepository } from './ticket.repository';
@@ -40,6 +41,7 @@ import { TicketService } from './ticket.service';
         RoleModule,
         StatusActionModule,
         TicketStatusModule,
+        DepartmentModule,
     ],
     exports: [TicketService, TicketRepository],
     controllers: [TicketController],
