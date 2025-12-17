@@ -8,6 +8,8 @@ export interface UserWithStats {
     role: string;
     isActive: boolean;
     lastAccess?: string;
+    loginCount?: number;
+    lastLogin?: string | Date | null;
 }
 
 export interface SubscriptionInfo {

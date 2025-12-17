@@ -24,8 +24,8 @@ export class SubscriptionPlanSeeder extends Seeder {
 
         const plansData: PlanData[] = [
             {
-                name: 'Plano Iniciante',
-                slug: 'iniciante',
+                name: 'Plano Básico',
+                slug: 'basico',
                 maxUsers: 5,
                 priceMonthly: 99.0,
                 priceYearly: 950.0,
@@ -33,8 +33,8 @@ export class SubscriptionPlanSeeder extends Seeder {
                 permissions: [],
             },
             {
-                name: 'Plano Crescer',
-                slug: 'crescer',
+                name: 'Plano Essencial',
+                slug: 'essencial',
                 maxUsers: 15,
                 priceMonthly: 199.0,
                 priceYearly: 1900.0,
@@ -46,12 +46,28 @@ export class SubscriptionPlanSeeder extends Seeder {
                 ],
             },
             {
-                name: 'Plano Profissional',
-                slug: 'profissional',
+                name: 'Plano Avançado',
+                slug: 'avancado',
                 maxUsers: 30,
                 priceMonthly: 399.0,
                 priceYearly: 3800.0,
                 description: 'Ideal para empresas médias',
+                permissions: [
+                    'view_basic_analytics',
+                    'view_advanced_analytics',
+                    'view_department_analytics',
+                    'view_users_analytics',
+                    'export_reports',
+                    'email_notifications',
+                ],
+            },
+            {
+                name: 'Plano Customizado',
+                slug: 'customizado',
+                maxUsers: null,
+                priceMonthly: 399.0,
+                priceYearly: 3800.0,
+                description: 'Ideal para grandesempresas',
                 permissions: [
                     'view_basic_analytics',
                     'view_advanced_analytics',

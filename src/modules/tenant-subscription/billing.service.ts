@@ -30,7 +30,7 @@ export class BillingService {
 
     /**
      * Calculate the billing amount for a tenant based on their subscription and user count
-     * For Plano Profissional: R$ 399 base + R$ 15 per additional user beyond 30 users
+     * For Plano Avançado: R$ 399 base + R$ 15 per additional user beyond 30 users
      */
     async calculateTenantBilling(tenantId: number): Promise<BillingCalculation> {
         const subscription = await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
@@ -46,8 +46,8 @@ export class BillingService {
         let additionalUsers = 0;
         let description = `${plan.name}`;
 
-        // For Plano Profissional (30 users max), calculate additional user costs
-        if (plan.slug === 'profissional' && plan.maxUsers && currentUsers > plan.maxUsers) {
+        // For Plano Avançado (30 users max), calculate additional user costs
+        if (plan.slug === 'avancado' && plan.maxUsers && currentUsers > plan.maxUsers) {
             additionalUsers = currentUsers - plan.maxUsers;
             const additionalPlan = await this.subscriptionPlanService.findBySlug('adicional');
 
@@ -58,7 +58,7 @@ export class BillingService {
             }
         }
 
-        // For other plans that exceed their limits (but aren't profissional)
+        // For other plans that exceed their limits (but aren't avancado)
         else if (plan.maxUsers && currentUsers > plan.maxUsers && plan.slug !== 'adicional') {
             // This shouldn't happen normally, but we handle it for completeness
             additionalUsers = currentUsers - plan.maxUsers;

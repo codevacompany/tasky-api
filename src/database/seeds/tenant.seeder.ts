@@ -36,12 +36,12 @@ export class TenantSeeder extends Seeder {
         const tenantSubscriptionRepository = dataSource.getRepository(TenantSubscription);
         const subscriptionPlanRepository = dataSource.getRepository(SubscriptionPlan);
 
-        const profissionalPlan = await subscriptionPlanRepository.findOne({
-            where: { slug: 'profissional' },
+        const avancadoPlan = await subscriptionPlanRepository.findOne({
+            where: { slug: 'avancado' },
         });
 
-        if (!profissionalPlan) {
-            console.log('⚠️ Professional plan not found, skipping trial subscriptions');
+        if (!avancadoPlan) {
+            console.log('⚠️ Avançado plan not found, skipping trial subscriptions');
         }
 
         const tenantsData: TenantData[] = [
@@ -123,7 +123,7 @@ export class TenantSeeder extends Seeder {
 
         console.log(`✅ Created/updated ${tenantsData.length} tenants`);
 
-        if (profissionalPlan) {
+        if (avancadoPlan) {
             console.log('💳 Creating trial subscriptions...');
 
             const createdTenants = await tenantRepository.find();
@@ -135,7 +135,7 @@ export class TenantSeeder extends Seeder {
 
                 trialSubscriptions.push({
                     tenantId: tenant.id,
-                    subscriptionPlanId: profissionalPlan.id,
+                    subscriptionPlanId: avancadoPlan.id,
                     startDate: new Date(),
                     trialEndDate,
                     status: SubscriptionStatus.TRIAL,

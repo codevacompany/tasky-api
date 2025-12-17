@@ -98,7 +98,7 @@ export class TenantSubscriptionService {
         return this.userService.getActiveUserCount(tenantId);
     }
 
-    async createTrialSubscription(tenantId: number, planSlug: string = 'profissional') {
+    async createTrialSubscription(tenantId: number, planSlug: string = 'avancado') {
         const plan = await this.subscriptionPlanService.findBySlug(planSlug);
         if (!plan) {
             throw new Error('Subscription plan not found');
