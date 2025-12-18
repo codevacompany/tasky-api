@@ -443,6 +443,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             departmentId?: number;
             departmentUuid?: string;
             targetUserId?: number;
+            targetUserUuid?: string;
         },
     ) {
         if (!where) return;
@@ -465,7 +466,23 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        if (where.targetUserId !== undefined && where.targetUserId !== null) {
+        let targetUserId = where.targetUserId;
+        if (where.targetUserUuid && !targetUserId) {
+            try {
+                const user = await this.userRepository.findOne({
+                    where: { uuid: where.targetUserUuid, tenantId: accessProfile.tenantId },
+                });
+                if (user) {
+                    targetUserId = user.id;
+                } else {
+                    return;
+                }
+            } catch {
+                return;
+            }
+        }
+
+        if (targetUserId !== undefined && targetUserId !== null) {
             qb.andWhere(
                 `EXISTS (
                     SELECT 1
@@ -473,7 +490,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     WHERE ttu."ticketId" = ticket.id
                     AND ttu."userId" = :targetUserId
                 )`,
-                { targetUserId: where.targetUserId },
+                { targetUserId },
             );
         }
 
