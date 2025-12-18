@@ -442,6 +442,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             status?: any;
             departmentId?: number;
             departmentUuid?: string;
+            targetUserId?: number;
         },
     ) {
         if (!where) return;
@@ -462,6 +463,18 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
                 name: `%${where.name}%`,
             });
+        }
+
+        if (where.targetUserId !== undefined && where.targetUserId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1
+                    FROM ticket_target_user ttu
+                    WHERE ttu."ticketId" = ticket.id
+                    AND ttu."userId" = :targetUserId
+                )`,
+                { targetUserId: where.targetUserId },
+            );
         }
 
         let departmentId = where.departmentId;
