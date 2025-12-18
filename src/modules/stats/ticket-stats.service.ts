@@ -1637,8 +1637,9 @@ export class TicketStatsService {
         // Initialize stats for all users
         const userStatsMap = new Map<number, UserRankingItemDto>();
 
-        // First, initialize entries for all users (even those without tickets)
+        // First, initialize entries for all active users (even those without tickets)
         for (const user of allUsers) {
+            if (!user.isActive) continue;
             userStatsMap.set(user.id, {
                 userId: user.id,
                 firstName: user.firstName,
@@ -1652,6 +1653,7 @@ export class TicketStatsService {
                 averageAcceptanceTimeSeconds: 0,
                 averageResolutionTimeSeconds: 0,
                 avatarUrl: null,
+                isActive: user.isActive,
             });
         }
 
@@ -1760,6 +1762,7 @@ export class TicketStatsService {
 
         // Calculate resolution rate and Wilson Score (efficiency)
         const rankedUsers = Array.from(userStatsMap.values())
+            .filter((user) => user.isActive)
             .map((user) => {
                 user.resolutionRate =
                     user.totalTickets > 0
