@@ -32,8 +32,8 @@ export class PermissionSeeder extends Seeder {
             },
             {
                 key: 'view_department_analytics',
-                name: 'Analytics por Departamento',
-                description: 'Ver métricas específicas por departamento',
+                name: 'Analytics por Setor',
+                description: 'Ver métricas específicas por setor',
             },
             {
                 key: 'view_users_analytics',
