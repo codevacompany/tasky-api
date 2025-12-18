@@ -11,6 +11,7 @@ export class UserRankingItemDto {
     averageAcceptanceTimeSeconds: number;
     averageResolutionTimeSeconds: number;
     avatarUrl?: string;
+    isActive: boolean;
 }
 
 export class UserRankingResponseDto {
