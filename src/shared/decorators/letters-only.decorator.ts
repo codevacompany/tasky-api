@@ -9,7 +9,7 @@ import {
 export class LettersOnlyConstraint implements ValidatorConstraintInterface {
     validate(name: string) {
         const regex =
-            /^(?=(?:.*[a-zA-ZçÇáÁàÀéÉèÈíÍúÚôÔâÂãÃõÕ]){2})[a-zA-ZçÇáÁàÀéÉíÍúÚôÔâÂãÃõÕ\s]+$/;
+            /^(?=(?:.*[a-zA-ZçÇáÁàÀâÂãÃéÉêÊèÈíÍóÓôÔõÕúÚûÛ]){2})[a-zA-ZçÇáÁàÀâÂãÃéÉêÊèÈíÍóÓôÔõÕúÚûÛ\s]+$/;
         return regex.test(name);
     }
 
