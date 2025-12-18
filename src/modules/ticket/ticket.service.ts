@@ -167,16 +167,24 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         if (user) {
             const role = await this.roleService.findById(user.roleId);
             if (role && role.name === 'Supervisor') {
-                // Filter by department if Supervisor using EXISTS subquery
                 qb.andWhere(
-                    `EXISTS (
-                        SELECT 1
-                        FROM ticket_target_user ttu
-                        INNER JOIN "user" u ON u.id = ttu."userId"
-                        WHERE ttu."ticketId" = ticket.id
-                        AND u."departmentId" = :departmentId
+                    `(
+                        ticket.requesterId = :supervisorId
+                        OR EXISTS (
+                            SELECT 1
+                            FROM ticket_target_user ttu
+                            WHERE ttu."ticketId" = ticket.id
+                            AND ttu."userId" = :supervisorId
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM ticket_target_user ttu
+                            INNER JOIN "user" u ON u.id = ttu."userId"
+                            WHERE ttu."ticketId" = ticket.id
+                            AND u."departmentId" = :departmentId
+                        )
                     )`,
-                    { departmentId: user.departmentId },
+                    { supervisorId: user.id, departmentId: user.departmentId },
                 );
             }
         }
@@ -341,16 +349,28 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         if (user) {
             const role = await this.roleService.findById(user.roleId);
             if (role && role.name === 'Supervisor') {
-                // Filter by department if Supervisor using EXISTS subquery
+                // Filter by department if Supervisor:
+                // - Show tickets created by the Supervisor
+                // - Show tickets where Supervisor is assigned as target user
+                // - Show tickets where at least one target user is from Supervisor's department
                 qb.andWhere(
-                    `EXISTS (
-                        SELECT 1
-                        FROM ticket_target_user ttu
-                        INNER JOIN "user" u ON u.id = ttu."userId"
-                        WHERE ttu."ticketId" = ticket.id
-                        AND u."departmentId" = :departmentId
+                    `(
+                        ticket.requesterId = :supervisorId
+                        OR EXISTS (
+                            SELECT 1
+                            FROM ticket_target_user ttu
+                            WHERE ttu."ticketId" = ticket.id
+                            AND ttu."userId" = :supervisorId
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM ticket_target_user ttu
+                            INNER JOIN "user" u ON u.id = ttu."userId"
+                            WHERE ttu."ticketId" = ticket.id
+                            AND u."departmentId" = :departmentId
+                        )
                     )`,
-                    { departmentId: user.departmentId },
+                    { supervisorId: user.id, departmentId: user.departmentId },
                 );
             }
         }
@@ -2098,7 +2118,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.AssigneeChange,
-            description: `<p><span>user</span> enviou esta tarefa para o próximo departamento.</p>`,
+            description: `<p><span>user</span> enviou esta tarefa para o próximo setor.</p>`,
         });
 
         await this.notificationRepository.save({
@@ -2117,7 +2137,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 await this.notificationRepository.save({
                     tenantId: accessProfile.tenantId,
                     type: NotificationType.TicketUpdate,
-                    message: `<p><span>user</span> enviou a tarefa <span>resource</span> para o próximo departamento.</p>`,
+                    message: `<p><span>user</span> enviou a tarefa <span>resource</span> para o próximo setor.</p>`,
                     createdById: accessProfile.userId,
                     updatedById: accessProfile.userId,
                     targetUserId: targetUser.userId,
@@ -2136,7 +2156,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         if (currentUser && nextUserDetails) {
-            const message = `<span style="font-weight: 600;">${currentUser.firstName} ${currentUser.lastName}</span> enviou a tarefa <span style="font-weight: 600;">${ticket.customId}</span> para o próximo departamento.`;
+            const message = `<span style="font-weight: 600;">${currentUser.firstName} ${currentUser.lastName}</span> enviou a tarefa <span style="font-weight: 600;">${ticket.customId}</span> para o próximo setor.`;
 
             await this.sendEmailWithPermissionCheck(
                 accessProfile.tenantId,
@@ -2150,7 +2170,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 if (targetUser.userId !== nextUser.userId) {
                     await this.sendEmailWithPermissionCheck(
                         accessProfile.tenantId,
-                        `A tarefa ${ticket.customId} foi enviada para o próximo departamento.`,
+                        `A tarefa ${ticket.customId} foi enviada para o próximo setor.`,
                         message,
                         targetUser.user.email,
                         ticket.customId,
