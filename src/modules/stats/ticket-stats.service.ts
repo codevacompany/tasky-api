@@ -507,7 +507,7 @@ export class TicketStatsService {
         // Run all trend calculations in parallel
         const [daily, weekly, monthly, trimestral] = await Promise.all([
             this.calculateDailyTrends(accessProfile, today, 30),
-            this.calculateWeeklyTrends(accessProfile, today, 12),
+            this.calculateWeeklyTrends(accessProfile, today, 8), // 2 months = 8 weeks
             this.calculateMonthlyTrends(accessProfile, today, 6),
             this.calculateTrimestralTrends(accessProfile, today, 9), // 9 intervals of 10 days = ~3 months
         ]);

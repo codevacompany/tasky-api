@@ -34,7 +34,7 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
     ): Promise<PaginatedResponse<Notification>> {
         return super.findMany(accessProfile, {
             ...options,
-            relations: ['createdBy', 'targetUser'],
+            relations: ['createdBy', 'createdBy.department', 'targetUser', 'targetUser.department'],
         });
     }
 
@@ -44,7 +44,7 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
     ): Promise<PaginatedResponse<Notification>> {
         return super.findMany(accessProfile, {
             ...options,
-            relations: ['createdBy', 'targetUser'],
+            relations: ['createdBy', 'createdBy.department', 'targetUser', 'targetUser.department'],
         });
     }
 
