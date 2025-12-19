@@ -24,6 +24,7 @@ import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { UpdateTicketAssigneeDto } from './dtos/update-ticket-assignee.dto';
+import { AddTicketAssigneeDto } from './dtos/add-ticket-assignee.dto';
 import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketService } from './ticket.service';
 
@@ -244,6 +245,35 @@ export class TicketController {
             updateAssigneeDto.targetUserId,
             updateAssigneeDto.order,
         );
+    }
+
+    /**
+     * Add new ticket assignee by customId (public-facing endpoint)
+     */
+    @Post(':customId/assignee')
+    addAssignee(
+        @Param('customId') customId: string,
+        @Body() addAssigneeDto: AddTicketAssigneeDto,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.addAssignee(
+            accessProfile,
+            customId,
+            addAssigneeDto.targetUserId,
+            addAssigneeDto.order,
+        );
+    }
+
+    /**
+     * Remove target user from ticket by customId (public-facing endpoint)
+     */
+    @Delete(':customId/assignee/:targetUserId')
+    removeAssignee(
+        @Param('customId') customId: string,
+        @Param('targetUserId', ParseIntPipe) targetUserId: number,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.removeAssignee(accessProfile, customId, targetUserId);
     }
 
     /**

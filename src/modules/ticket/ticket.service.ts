@@ -16,6 +16,7 @@ import {
     formatSnakeToNaturalCase,
 } from '../../shared/utils/file-helper';
 import { CorrectionRequestService } from '../correction-request-reason/correction-request-reason.service';
+import { CorrectionReason } from '../correction-request-reason/entities/correction-request-reason.entity';
 import { CreateCorrectionRequestDto } from '../correction-request-reason/dtos/create-correction-request-reason.dto';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
@@ -23,8 +24,10 @@ import { NotificationService } from '../notification/notification.service';
 import { TenantRepository } from '../tenant/tenant.repository';
 import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { CreateTicketCancellationReasonDto } from '../ticket-cancellation-reason/dtos/create-ticket-cancellation-reason.dto';
+import { CancellationReason } from '../ticket-cancellation-reason/entities/ticket-cancellation-reason.entity';
 import { TicketCancellationReasonService } from '../ticket-cancellation-reason/ticket-cancellation-reason.service';
 import { CreateTicketDisapprovalReasonDto } from '../ticket-disapproval-reason/dtos/create-ticket-rejection-reason.dto';
+import { DisapprovalReason } from '../ticket-disapproval-reason/entities/ticket-disapproval-reason.entity';
 import { TicketDisapprovalReasonService } from '../ticket-disapproval-reason/ticket-disapproval-reason.service';
 import { TicketFileRepository } from '../ticket-file/ticket-file.repository';
 import { TicketActionType } from '../ticket-updates/entities/ticket-update.entity';
@@ -1583,11 +1586,16 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: ['user'],
         });
 
+        const disapprovalReasonText =
+            reasonDto.reason === DisapprovalReason.Other
+                ? ''
+                : ` por ${formatSnakeToNaturalCase(reasonDto.reason)}`;
+
         const notifications = targetUsers.map((ticketTargetUser) =>
             this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.StatusUpdate,
-                message: `<p><span>user</span> reprovou a tarefa <span>resource</span>.</p>`,
+                message: `<p><span>user</span> reprovou a tarefa <span>resource</span>${disapprovalReasonText}.</p>`,
                 createdById: ticketResponse.reviewer.id,
                 updatedById: ticketResponse.reviewer.id,
                 targetUserId: ticketTargetUser.userId,
@@ -1605,7 +1613,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             reasonDto,
         );
 
-        const message = `<span style="font-weight: 600;">${ticketResponse.reviewer.firstName} ${ticketResponse.reviewer.lastName}</span> reprovou a tarefa <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${reasonDto.reason}</span>.`;
+        const emailDisapprovalReasonText =
+            reasonDto.reason === DisapprovalReason.Other
+                ? ''
+                : ` por <span style="font-weight: 600;">${formatSnakeToNaturalCase(reasonDto.reason)}</span>`;
+
+        const message = `<span style="font-weight: 600;">${ticketResponse.reviewer.firstName} ${ticketResponse.reviewer.lastName}</span> reprovou a tarefa <span style="font-weight: 600;">${ticketResponse.customId}</span>${emailDisapprovalReasonText}.`;
 
         for (const ticketTargetUser of targetUsers) {
             await this.sendEmailWithPermissionCheck(
@@ -1685,11 +1698,16 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: ['user'],
         });
 
+        const reasonText =
+            reasonDto.reason === CancellationReason.Other
+                ? ''
+                : ` por ${formatSnakeToNaturalCase(reasonDto.reason)}`;
+
         const notifications = targetUsers.map((ticketTargetUser) =>
             this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.Cancellation,
-                message: `<p><span>user</span> cancelou a tarefa <span>resource</span> por ${formatSnakeToNaturalCase(reasonDto.reason)}.</p>`,
+                message: `<p><span>user</span> cancelou a tarefa <span>resource</span>${reasonText}.</p>`,
                 createdById: requester.id,
                 updatedById: requester.id,
                 targetUserId: ticketTargetUser.userId,
@@ -1708,7 +1726,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             reasonDto,
         );
 
-        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> cancelou a tarefa <span style="font-weight: 600;">${ticketResponse.customId}</span> por <span style="font-weight: 600;">${formatSnakeToNaturalCase(reasonDto.reason)}</span>.`;
+        const emailReasonText =
+            reasonDto.reason === CancellationReason.Other
+                ? ''
+                : ` por <span style="font-weight: 600;">${formatSnakeToNaturalCase(reasonDto.reason)}</span>`;
+
+        const message = `<span style="font-weight: 600;">${ticketResponse.requester.firstName} ${ticketResponse.requester.lastName}</span> cancelou a tarefa <span style="font-weight: 600;">${ticketResponse.customId}</span>${emailReasonText}.`;
 
         for (const ticketTargetUser of targetUsers) {
             await this.sendEmailWithPermissionCheck(
@@ -2000,11 +2023,16 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             description: `<p><span>user</span> devolveu esta tarefa para correção.</p>`,
         });
 
+        const correctionReasonText =
+            dto.reason === CorrectionReason.Other
+                ? ''
+                : ` por ${formatSnakeToNaturalCase(dto.reason)}`;
+
         const notifications = targetUsers.map((ticketTargetUser) =>
             this.notificationRepository.save({
                 tenantId: accessProfile.tenantId,
                 type: NotificationType.CorrectionRequest,
-                message: `<p><span>user</span> solicitou uma correção na tarefa <span>resource</span> por ${formatSnakeToNaturalCase(dto.reason)}.</p>`,
+                message: `<p><span>user</span> solicitou uma correção na tarefa <span>resource</span>${correctionReasonText}.</p>`,
                 createdById: accessProfile.userId,
                 updatedById: accessProfile.userId,
                 targetUserId: ticketTargetUser.userId,
@@ -2032,7 +2060,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         if (reviewer && targetUser) {
-            const message = `<span style="font-weight: 600;">${reviewer.firstName} ${reviewer.lastName}</span> solicitou uma correção na tarefa <span style="font-weight: 600;">${ticket.customId}</span>.`;
+            const emailCorrectionReasonText =
+                dto.reason === CorrectionReason.Other
+                    ? ''
+                    : ` por <span style="font-weight: 600;">${formatSnakeToNaturalCase(dto.reason)}</span>`;
+
+            const message = `<span style="font-weight: 600;">${reviewer.firstName} ${reviewer.lastName}</span> solicitou uma correção na tarefa <span style="font-weight: 600;">${ticket.customId}</span>${emailCorrectionReasonText}.`;
 
             for (const ticketTargetUser of targetUsers) {
                 await this.sendEmailWithPermissionCheck(
@@ -2148,6 +2181,214 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         return ticket;
+    }
+
+    async addAssignee(
+        accessProfile: AccessProfile,
+        customId: string,
+        newTargetUserId: number,
+        order?: number,
+    ) {
+        const ticket = await this.findById(accessProfile, customId);
+
+        const newTargetUser = await this.userRepository.findOne({
+            where: {
+                id: newTargetUserId,
+                tenantId: accessProfile.tenantId,
+                isActive: true,
+            },
+        });
+
+        if (!newTargetUser) {
+            throw new CustomNotFoundException({
+                message: 'Target user not found or inactive',
+                code: 'target-user-not-found',
+            });
+        }
+
+        const assigningUser = await this.userRepository.findOne({
+            where: { id: accessProfile.userId, tenantId: accessProfile.tenantId },
+        });
+
+        if (!assigningUser) {
+            throw new CustomNotFoundException({
+                message: 'Assigning user not found',
+                code: 'assigning-user-not-found',
+            });
+        }
+
+        const targetUsers = await this.ticketTargetUserRepository.find({
+            where: { ticketId: ticket.id, tenantId: accessProfile.tenantId },
+            relations: ['user'],
+            order: { order: 'ASC' },
+        });
+
+        // Check if user is already a target user
+        const existingTargetUser = targetUsers.find((tu) => tu.userId === newTargetUserId);
+        if (existingTargetUser) {
+            throw new CustomForbiddenException({
+                message: 'User is already assigned to this ticket',
+                code: 'user-already-assigned',
+            });
+        }
+
+        // Determine the order - if not provided, add at the end
+        let targetOrder: number;
+        if (order !== undefined && order !== null) {
+            if (order < 1 || order > targetUsers.length + 1) {
+                throw new CustomForbiddenException({
+                    message: 'Invalid order position',
+                    code: 'invalid-order-position',
+                });
+            }
+            targetOrder = order;
+            // Shift existing users if inserting in the middle
+            if (order <= targetUsers.length) {
+                await this.ticketTargetUserRepository
+                    .createQueryBuilder()
+                    .update()
+                    .set({
+                        order: () => '"order" + 1',
+                    })
+                    .where('ticketId = :ticketId', { ticketId: ticket.id })
+                    .andWhere('tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+                    .andWhere('"order" >= :order', { order })
+                    .execute();
+            }
+        } else {
+            targetOrder = targetUsers.length + 1;
+        }
+
+        // Create new target user
+        const newTargetUserEntity = this.ticketTargetUserRepository.create({
+            ticketId: ticket.id,
+            userId: newTargetUserId,
+            order: targetOrder,
+            tenantId: accessProfile.tenantId,
+        });
+
+        await this.ticketTargetUserRepository.save(newTargetUserEntity);
+
+        // Create ticket update
+        await this.ticketUpdateRepository.save({
+            tenantId: accessProfile.tenantId,
+            ticketId: ticket.id,
+            ticketCustomId: ticket.customId,
+            performedById: accessProfile.userId,
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
+            action: TicketActionType.AssigneeChange,
+            description: `<p><span>user</span> adicionou ${newTargetUser.firstName} ${newTargetUser.lastName} como responsável.</p>`,
+        });
+
+        // Send notification to the new target user
+        await this.notificationRepository.save({
+            tenantId: accessProfile.tenantId,
+            type: NotificationType.TicketUpdate,
+            message: `<p><span>user</span> atribuiu a tarefa <span>resource</span> a você.</p>`,
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
+            targetUserId: newTargetUserId,
+            resourceId: ticket.id,
+            resourceCustomId: ticket.customId,
+        });
+
+        return this.findById(accessProfile, customId);
+    }
+
+    async removeAssignee(
+        accessProfile: AccessProfile,
+        customId: string,
+        targetUserIdToRemove: number,
+    ) {
+        const ticket = await this.findById(accessProfile, customId);
+
+        // Check if user is the requester
+        if (accessProfile.userId !== ticket.requester.id) {
+            throw new CustomForbiddenException({
+                message: 'Only the requester can remove target users',
+                code: 'only-requester-can-remove',
+            });
+        }
+
+        // Check if ticket is pending
+        const currentStatus = ticket.ticketStatus?.key || '';
+        if (currentStatus !== TicketStatus.Pending) {
+            throw new CustomForbiddenException({
+                message: 'Can only remove target users when ticket is pending',
+                code: 'ticket-not-pending',
+            });
+        }
+
+        // Cannot remove current target user
+        if (ticket.currentTargetUserId === targetUserIdToRemove) {
+            throw new CustomForbiddenException({
+                message: 'Cannot remove the current target user',
+                code: 'cannot-remove-current-target-user',
+            });
+        }
+
+        const targetUsers = await this.ticketTargetUserRepository.find({
+            where: { ticketId: ticket.id, tenantId: accessProfile.tenantId },
+            relations: ['user'],
+            order: { order: 'ASC' },
+        });
+
+        const targetUserToRemove = targetUsers.find((tu) => tu.userId === targetUserIdToRemove);
+        if (!targetUserToRemove) {
+            throw new CustomNotFoundException({
+                message: 'Target user not found',
+                code: 'target-user-not-found',
+            });
+        }
+
+        const currentTargetUser = targetUsers.find(
+            (tu) => tu.userId === ticket.currentTargetUserId,
+        );
+        if (!currentTargetUser) {
+            throw new CustomNotFoundException({
+                message: 'Current target user not found',
+                code: 'current-target-user-not-found',
+            });
+        }
+
+        // Cannot remove if user has already worked (order < currentTargetUser.order)
+        if (targetUserToRemove.order < currentTargetUser.order) {
+            throw new CustomForbiddenException({
+                message: 'Cannot remove target user who has already worked on the task',
+                code: 'cannot-remove-user-who-worked',
+            });
+        }
+
+        const removedUser = targetUserToRemove.user;
+
+        // Delete the target user
+        await this.ticketTargetUserRepository.delete({
+            id: targetUserToRemove.id,
+            tenantId: accessProfile.tenantId,
+        });
+
+        // Reorder remaining target users
+        const remainingTargetUsers = targetUsers.filter((tu) => tu.id !== targetUserToRemove.id);
+        for (let i = 0; i < remainingTargetUsers.length; i++) {
+            remainingTargetUsers[i].order = i + 1;
+        }
+
+        await this.ticketTargetUserRepository.save(remainingTargetUsers);
+
+        // Create ticket update
+        await this.ticketUpdateRepository.save({
+            tenantId: accessProfile.tenantId,
+            ticketId: ticket.id,
+            ticketCustomId: ticket.customId,
+            performedById: accessProfile.userId,
+            createdById: accessProfile.userId,
+            updatedById: accessProfile.userId,
+            action: TicketActionType.AssigneeRemove,
+            description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável.</p>`,
+        });
+
+        return this.findById(accessProfile, customId);
     }
 
     async sendToNextDepartment(accessProfile: AccessProfile, customId: string) {
