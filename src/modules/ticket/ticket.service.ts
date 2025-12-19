@@ -8,6 +8,7 @@ import {
     CustomNotFoundException,
 } from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
+import { EncryptionService } from '../../shared/services/encryption/encryption.service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import {
     extractFileName,
@@ -58,6 +59,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly ticketDisapprovalReasonService: TicketDisapprovalReasonService,
         private readonly correctionRequestService: CorrectionRequestService,
         private readonly emailService: EmailService,
+        private readonly encryptionService: EncryptionService,
         private readonly tenantSubscriptionService: TenantSubscriptionService,
         private readonly ticketTargetUserRepository: TicketTargetUserRepository,
         private readonly roleService: RoleService,
@@ -390,12 +392,69 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const [items, total] = await qb.getManyAndCount();
 
+        // Filter old tickets (without tokens) in memory if name search was performed
+        let filteredItems = items;
+        let filteredTotal = total;
+
+        if (whereWithStatus?.name && typeof whereWithStatus.name === 'string') {
+            const nameValue = whereWithStatus.name.toLowerCase();
+            const normalizedSearch = nameValue
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '') // Remove accents
+                .trim();
+
+            filteredItems = items.filter((ticket) => {
+                // If ticket has tokens, it was already matched by the query
+                if (ticket.nameSearchTokens && ticket.nameSearchTokens.length > 0) {
+                    return true;
+                }
+
+                // For old tickets without tokens, filter by decrypted name
+                if (ticket.name) {
+                    const normalizedName = ticket.name
+                        .toLowerCase()
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '') // Remove accents
+                        .trim();
+
+                    return normalizedName.includes(normalizedSearch);
+                }
+
+                return false;
+            });
+
+            // Recalculate total if we filtered items
+            if (filteredItems.length !== items.length) {
+                // Need to recalculate total count including old tickets
+                const countQb = this.buildBaseQueryBuilder(accessProfile.tenantId);
+                await this.applyWhereFilters(countQb, accessProfile, whereWithStatus);
+                this.applyDefaultStatusFilter(countQb, whereWithStatus?.status);
+
+                // Remove pagination for count
+                const allItems = await countQb.getMany();
+                filteredTotal = allItems.filter((ticket) => {
+                    if (ticket.nameSearchTokens && ticket.nameSearchTokens.length > 0) {
+                        return true;
+                    }
+                    if (ticket.name) {
+                        const normalizedName = ticket.name
+                            .toLowerCase()
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .trim();
+                        return normalizedName.includes(normalizedSearch);
+                    }
+                    return false;
+                }).length;
+            }
+        }
+
         return {
-            items,
-            total,
+            items: filteredItems,
+            total: filteredTotal,
             page,
             limit,
-            totalPages: options?.paginated === false ? 1 : Math.ceil(total / limit),
+            totalPages: options?.paginated === false ? 1 : Math.ceil(filteredTotal / limit),
         };
     }
 
@@ -481,9 +540,35 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         if (where.name) {
-            qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
-                name: `%${where.name}%`,
-            });
+            // Handle both string and FindOperator types
+            const nameValue = typeof where.name === 'string' ? where.name : null;
+
+            if (nameValue) {
+                // Search using tokens for encrypted name field
+                const searchTokens = this.encryptionService.createSearchTokens(nameValue);
+
+                if (searchTokens.length > 0) {
+                    // Use PostgreSQL array overlap operator (&&) to check if any token matches
+                    // This allows partial search: if user searches "bug crítico", it will find tickets
+                    // that contain either "bug" OR "crítico" (or both)
+                    // Also include tickets without tokens (old tickets) - they will be filtered in memory
+                    qb.andWhere(
+                        `(
+                            ticket."nameSearchTokens" && :searchTokens::text[]
+                            OR ticket."nameSearchTokens" IS NULL
+                            OR array_length(ticket."nameSearchTokens", 1) IS NULL
+                            OR ticket.customId ILIKE :name
+                        )`,
+                    );
+                    qb.setParameter('searchTokens', searchTokens);
+                    qb.setParameter('name', `%${nameValue}%`);
+                } else {
+                    // Fallback to customId search if no valid tokens
+                    qb.andWhere('ticket.customId ILIKE :name', {
+                        name: `%${nameValue}%`,
+                    });
+                }
+            }
         }
 
         let targetUserId = where.targetUserId;
@@ -840,9 +925,15 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 });
             }
 
+            // Generate search tokens for encrypted name field
+            const nameSearchTokens = ticketDto.name
+                ? this.encryptionService.createSearchTokens(ticketDto.name)
+                : [];
+
             const ticket = manager.create(Ticket, {
                 ...ticketData,
                 customId,
+                nameSearchTokens,
                 tenantId: accessProfile.tenantId,
                 createdById: requester.id,
                 updatedById: requester.id,
@@ -962,7 +1053,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        await this.repository.update(ticketResponse.id, ticketDto);
+        // Generate search tokens if name is being updated
+        const updateData: any = { ...ticketDto };
+        if (ticketDto.name !== undefined) {
+            updateData.nameSearchTokens = this.encryptionService.createSearchTokens(ticketDto.name);
+        }
+
+        await this.repository.update(ticketResponse.id, updateData);
 
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,

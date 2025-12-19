@@ -39,7 +39,19 @@ export class TenantController {
         return this.tenantService.findWithStats({ name }, options);
     }
 
-    @Get(':name')
+    @Get('by-email/:email')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async findByEmail(@Param('email') email: string) {
+        return this.tenantService.findByEmail(email);
+    }
+
+    @Get('by-cnpj/:cnpj')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async findByCnpj(@Param('cnpj') cnpj: string) {
+        return this.tenantService.findByCnpj(cnpj);
+    }
+
+    @Get('by-name/:name')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async findByName(@Param('name') name: string) {
         return this.tenantService.findByName(name);

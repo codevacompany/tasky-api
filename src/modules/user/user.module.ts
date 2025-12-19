@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
+import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
 import { EmailModule } from '../../shared/services/email/email.module';
 import { EncryptionModule } from '../../shared/services/encryption/encryption.module';
 import { AuthModule } from '../auth/auth.module';
@@ -25,6 +26,12 @@ import { UserService } from './user.service';
     ],
     exports: [UserService, UserRepository],
     controllers: [UserController],
-    providers: [UserService, UserRepository, GlobalAdminGuard, SubscriptionRequiredGuard],
+    providers: [
+        UserService,
+        UserRepository,
+        GlobalAdminGuard,
+        SubscriptionRequiredGuard,
+        TermsAcceptanceRequiredGuard,
+    ],
 })
 export class UserModule {}

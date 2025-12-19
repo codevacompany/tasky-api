@@ -344,7 +344,7 @@ export class AuthService {
 
             await this.emailService.sendMail({
                 to: user.email,
-                subject: 'Senha Redefinida - Tasky System',
+                subject: 'Senha Redefinida - Tasky Pro',
                 html,
             });
         } catch (error) {

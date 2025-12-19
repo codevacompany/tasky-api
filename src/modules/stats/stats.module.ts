@@ -6,6 +6,7 @@ import { Ticket } from '../ticket/entities/ticket.entity';
 import { User } from '../user/entities/user.entity';
 import { BusinessHoursService } from '../../shared/services/business-hours.service';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
+import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
 import { TicketStats } from './entities/ticket-stats.entity';
 import { StatsController } from './stats.controller';
 import { TicketStatsService } from './ticket-stats.service';
@@ -23,7 +24,12 @@ import { TenantSubscriptionModule } from '../tenant-subscription/tenant-subscrip
         forwardRef(() => TenantModule),
         forwardRef(() => TenantSubscriptionModule),
     ],
-    providers: [TicketStatsService, BusinessHoursService, SubscriptionRequiredGuard],
+    providers: [
+        TicketStatsService,
+        BusinessHoursService,
+        SubscriptionRequiredGuard,
+        TermsAcceptanceRequiredGuard,
+    ],
     controllers: [StatsController],
     exports: [TicketStatsService],
 })

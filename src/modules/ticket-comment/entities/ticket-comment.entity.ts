@@ -2,6 +2,7 @@ import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { Ticket } from '../../ticket/entities/ticket.entity';
 import { User } from '../../user/entities/user.entity';
+import { encryptedTransformer } from '../../../shared/decorators/encrypted-column.decorator';
 
 @Entity()
 export class TicketComment extends TenantBoundBaseEntity {
@@ -22,6 +23,6 @@ export class TicketComment extends TenantBoundBaseEntity {
     @JoinColumn({ name: 'userId' })
     user: User;
 
-    @Column('text')
+    @Column('text', { transformer: encryptedTransformer })
     content: string;
 }
