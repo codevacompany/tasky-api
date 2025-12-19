@@ -53,4 +53,23 @@ export class User extends TenantBoundBaseEntity {
 
     @Column({ type: 'timestamp', nullable: true })
     lastLogin: Date | null;
+
+    // Terms acceptance tracking
+    @Column({ default: false })
+    termsAccepted: boolean;
+
+    @Column({ type: 'timestamp', nullable: true })
+    termsAcceptedAt: Date | null;
+
+    @Column({ nullable: true })
+    termsVersion: string | null;
+
+    @Column({ default: false })
+    privacyPolicyAccepted: boolean;
+
+    @Column({ type: 'timestamp', nullable: true })
+    privacyPolicyAcceptedAt: Date | null;
+
+    @Column({ nullable: true })
+    privacyPolicyVersion: string | null;
 }

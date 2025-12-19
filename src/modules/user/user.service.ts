@@ -18,6 +18,7 @@ import { RoleRepository } from '../role/role.repository';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy';
 import { UpdateUserDto } from './dtos/update-user.dto';
+import { AcceptTermsDto } from './dtos/accept-terms.dto';
 import { User } from './entities/user.entity';
 import { UserRepository } from './user.repository';
 
@@ -131,7 +132,7 @@ export class UserService extends TenantBoundBaseService<User> {
     ): Promise<User> {
         return await this.findOne(accessProfile, {
             ...options,
-            where: { ...options?.where, email },
+            where: { ...options?.where, email: email.toLowerCase() },
             relations: ['department', 'role'],
         });
     }
@@ -402,5 +403,34 @@ export class UserService extends TenantBoundBaseService<User> {
             loginCount: newLoginCount,
             lastLogin: newLastLogin,
         };
+    }
+
+    async acceptTerms(userId: number, acceptTermsDto: AcceptTermsDto): Promise<User> {
+        const user = await this.userRepository.findOne({ where: { id: userId } });
+
+        if (!user) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        if (!acceptTermsDto.termsAccepted || !acceptTermsDto.privacyPolicyAccepted) {
+            throw new CustomBadRequestException({
+                code: 'terms-must-be-accepted',
+                message: 'Both terms of use and privacy policy must be accepted',
+            });
+        }
+
+        await this.userRepository.update(userId, {
+            termsAccepted: acceptTermsDto.termsAccepted,
+            termsAcceptedAt: new Date(),
+            termsVersion: acceptTermsDto.termsVersion || null,
+            privacyPolicyAccepted: acceptTermsDto.privacyPolicyAccepted,
+            privacyPolicyAcceptedAt: new Date(),
+            privacyPolicyVersion: acceptTermsDto.privacyPolicyVersion || null,
+        });
+
+        return this.userRepository.findOne({ where: { id: userId } }) as Promise<User>;
     }
 }

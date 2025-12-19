@@ -13,6 +13,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { In, Not } from 'typeorm';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
+import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
 import { CreateCorrectionRequestDto } from '../correction-request-reason/dtos/create-correction-request-reason.dto';
@@ -27,7 +28,7 @@ import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketService } from './ticket.service';
 
 @Controller('tickets')
-@UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard)
+@UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
 export class TicketController {
     constructor(private readonly ticketService: TicketService) {}
 

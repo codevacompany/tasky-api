@@ -255,7 +255,7 @@ export class SignUpService {
         const updatedSignUp = await this.findOne(id);
 
         this.emailService.sendMail({
-            subject: 'Complete seu cadastro no Tasky System',
+            subject: 'Complete seu cadastro no Tasky Pro',
             html: this.emailService.compileTemplate('complete-your-sign-up', {
                 companyName: updatedSignUp.companyName,
                 contactName: updatedSignUp.contactName,
@@ -289,7 +289,7 @@ export class SignUpService {
         const updatedSignUp = await this.findOne(id);
 
         this.emailService.sendMail({
-            subject: 'Sobre sua solicitação de cadastro no Tasky System',
+            subject: 'Sobre sua solicitação de cadastro no Tasky Pro',
             html: this.emailService.compileTemplate('sign-up-rejected', {
                 companyName: updatedSignUp.companyName,
                 contactName: updatedSignUp.contactName,
@@ -318,7 +318,7 @@ export class SignUpService {
         }
 
         this.emailService.sendMail({
-            subject: 'Complete seu cadastro no Tasky System',
+            subject: 'Complete seu cadastro no Tasky Pro',
             html: this.emailService.compileTemplate('complete-your-sign-up', {
                 companyName: signUp.companyName,
                 contactName: signUp.contactName,
@@ -404,7 +404,7 @@ export class SignUpService {
         });
 
         await this.emailService.sendMail({
-            subject: 'Bem-vindo ao Tasky System',
+            subject: 'Bem-vindo ao Tasky Pro',
             html: this.emailService.compileTemplate('sign-up-completed', {
                 companyName: signUp.companyName,
                 contactName: signUp.contactName,

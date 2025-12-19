@@ -1,22 +1,29 @@
 import { Column, Entity } from 'typeorm';
 import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
+import { encryptedTransformer } from '../../../shared/decorators/encrypted-column.decorator';
 
 @Entity()
 export class Tenant extends IdTimestampBaseEntity {
     @Column()
     name: string;
 
-    @Column({ default: '' })
+    @Column({ default: '', transformer: encryptedTransformer })
     email: string;
 
     @Column({ nullable: true })
+    emailHash: string;
+
+    @Column({ nullable: true, transformer: encryptedTransformer })
     phoneNumber: string;
 
     @Column({ unique: true })
     customKey: string;
 
-    @Column({ nullable: true })
+    @Column({ nullable: true, transformer: encryptedTransformer })
     cnpj: string;
+
+    @Column({ nullable: true })
+    cnpjHash: string;
 
     @Column({ default: false })
     isInternal: boolean;

@@ -6,6 +6,8 @@ import {
     CustomNotFoundException,
 } from '../../shared/exceptions/http-exception';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
+import { EncryptionService } from '../../shared/services/encryption/encryption.service';
+import { normalizeEmail, normalizeCnpj } from '../../shared/utils/normalize.util';
 import { LegalDocumentType } from '../legal-document/entities/legal-document.entity';
 import { LegalDocumentService } from '../legal-document/legal-document.service';
 import { CreateTenantDto } from './dtos/create-tenant.dto';
@@ -27,6 +29,7 @@ export class TenantService {
     constructor(
         private tenantRepository: TenantRepository,
         private legalDocumentService: LegalDocumentService,
+        private encryptionService: EncryptionService,
         @InjectRepository(User)
         private userRepository: Repository<User>,
         @InjectRepository(Ticket)
@@ -57,10 +60,48 @@ export class TenantService {
         };
     }
 
-    async findByCnpj(cnpj: string): Promise<Tenant> {
+    /**
+     * Find tenant by CNPJ using hash (works with encrypted CNPJ)
+     * @param cnpj CNPJ with or without formatting
+     * @returns Tenant if found, null otherwise
+     */
+    async findByCnpj(cnpj: string): Promise<Tenant | null> {
+        const normalizedCnpj = normalizeCnpj(cnpj);
+        if (!normalizedCnpj) {
+            return null;
+        }
+
+        const cnpjHash = this.encryptionService.hashSearchable(normalizedCnpj);
+        if (!cnpjHash) {
+            return null;
+        }
+
         return await this.tenantRepository.findOne({
             where: {
-                cnpj,
+                cnpjHash,
+            },
+        });
+    }
+
+    /**
+     * Find tenant by email using hash (works with encrypted email)
+     * @param email Email address
+     * @returns Tenant if found, null otherwise
+     */
+    async findByEmail(email: string): Promise<Tenant | null> {
+        const normalizedEmail = normalizeEmail(email);
+        if (!normalizedEmail) {
+            return null;
+        }
+
+        const emailHash = this.encryptionService.hashSearchable(normalizedEmail);
+        if (!emailHash) {
+            return null;
+        }
+
+        return await this.tenantRepository.findOne({
+            where: {
+                emailHash,
             },
         });
     }
@@ -112,7 +153,23 @@ export class TenantService {
             });
         }
 
-        const savedTenant = await this.tenantRepository.save(Tenant);
+        const tenantData: any = { ...Tenant };
+
+        if (Tenant.email) {
+            const normalizedEmail = normalizeEmail(Tenant.email);
+            tenantData.emailHash = normalizedEmail
+                ? this.encryptionService.hashSearchable(normalizedEmail)
+                : null;
+        }
+
+        if (Tenant.cnpj) {
+            const normalizedCnpj = normalizeCnpj(Tenant.cnpj);
+            tenantData.cnpjHash = normalizedCnpj
+                ? this.encryptionService.hashSearchable(normalizedCnpj)
+                : null;
+        }
+
+        const savedTenant = await this.tenantRepository.save(tenantData);
 
         await this.ticketStatusInitService.initializeTenantStatuses(savedTenant.id);
 
@@ -120,7 +177,24 @@ export class TenantService {
     }
 
     async update(id: number, Tenant: UpdateTenantDto) {
-        await this.tenantRepository.update(id, Tenant);
+        // Generate hashes if email or CNPJ are being updated
+        const updateData: any = { ...Tenant };
+
+        if (Tenant.email !== undefined) {
+            const normalizedEmail = normalizeEmail(Tenant.email);
+            updateData.emailHash = normalizedEmail
+                ? this.encryptionService.hashSearchable(normalizedEmail)
+                : null;
+        }
+
+        if (Tenant.cnpj !== undefined) {
+            const normalizedCnpj = normalizeCnpj(Tenant.cnpj);
+            updateData.cnpjHash = normalizedCnpj
+                ? this.encryptionService.hashSearchable(normalizedCnpj)
+                : null;
+        }
+
+        await this.tenantRepository.update(id, updateData);
 
         return {
             message: 'Successfully updated!',

@@ -27,26 +27,25 @@ export class AuthController {
 
     @Get('whoami')
     @UseGuards(AuthGuard('jwt'))
-    async whoami(@GetAccessProfile() accessProfile: AccessProfile) {
+    whoami(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.authService.whoami(accessProfile);
     }
 
     @Post('reset-password/request')
-    async requestPasswordReset(@Body() { email }: ResetPasswordRequestDto) {
+    requestPasswordReset(@Body() { email }: ResetPasswordRequestDto) {
         const accessProfile = new AccessProfile();
-
-        return await this.authService.requestPasswordReset(accessProfile, email);
+        return this.authService.requestPasswordReset(accessProfile, email);
     }
 
     @Post('reset-password/validate')
-    async validateVerificationCode(@Body() body: VerificationCodeValidationDto) {
+    validateVerificationCode(@Body() body: VerificationCodeValidationDto) {
         const accessProfile = new AccessProfile();
-        return await this.authService.validateVerificationCode(accessProfile, body);
+        return this.authService.validateVerificationCode(accessProfile, body);
     }
 
     @Post('reset-password')
-    async resetPasswordWithToken(@Body() { token, newPassword }: ResetPasswordWithTokenDto) {
-        return await this.authService.resetPasswordWithToken(token, newPassword);
+    resetPasswordWithToken(@Body() { token, newPassword }: ResetPasswordWithTokenDto) {
+        return this.authService.resetPasswordWithToken(token, newPassword);
     }
 
     @Post('refresh-token')
@@ -56,7 +55,7 @@ export class AuthController {
 
     @Post('change-password')
     @UseGuards(AuthGuard('jwt'))
-    async changePassword(
+    changePassword(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Body() changePasswordDto: ChangePasswordDto,
     ) {
@@ -65,7 +64,7 @@ export class AuthController {
 
     @Patch('admin/reset-password-uuid/:uuid')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
-    async adminResetPasswordWithRandomPassword(
+    adminResetPasswordWithRandomPassword(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Param('uuid', UUIDValidationPipe) uuid: string,
     ) {
@@ -74,7 +73,7 @@ export class AuthController {
 
     @Patch('admin/reset-password/:userId')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
-    async adminResetPassword(
+    adminResetPassword(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Param('userId', ParseIntPipe) userId: number,
         @Body() adminResetPasswordDto: AdminResetPasswordDto,

@@ -11,6 +11,7 @@ import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-targe
 import { TicketUpdate } from '../../ticket-updates/entities/ticket-update.entity';
 import { User } from '../../user/entities/user.entity';
 import { TicketStatus as TicketStatusEntity } from '../../ticket-status/entities/ticket-status.entity';
+import { encryptedTransformer } from '../../../shared/decorators/encrypted-column.decorator';
 
 export enum TicketPriority {
     Low = 'baixa',
@@ -35,8 +36,11 @@ export class Ticket extends TenantBoundBaseEntity {
     @Column()
     customId: string;
 
-    @Column()
+    @Column({ transformer: encryptedTransformer })
     name: string;
+
+    @Column('text', { array: true, nullable: true })
+    nameSearchTokens: string[];
 
     @Column({
         type: 'enum',
@@ -45,7 +49,7 @@ export class Ticket extends TenantBoundBaseEntity {
     })
     priority: TicketPriority;
 
-    @Column('text')
+    @Column('text', { transformer: encryptedTransformer })
     description: string;
 
     @Column()

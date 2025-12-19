@@ -13,17 +13,19 @@ import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
+import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
 import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { SuperAdminCreateUserDto } from './dtos/super-admin-create-user.dto copy';
 import { UpdateUserDto } from './dtos/update-user.dto';
+import { AcceptTermsDto } from './dtos/accept-terms.dto';
 import { User } from './entities/user.entity';
 import { UserService } from './user.service';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { FindOneQueryOptions, QueryOptions } from '../../shared/types/http';
 
 @Controller('users')
-@UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard)
+@UseGuards(AuthGuard('jwt'))
 export class UserController {
     constructor(private readonly userService: UserService) {}
 
@@ -31,6 +33,15 @@ export class UserController {
     @UseGuards(AuthGuard('jwt'))
     async me(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.userService.findById(accessProfile.userId);
+    }
+
+    @Post('accept-terms')
+    @UseGuards(AuthGuard('jwt'))
+    async acceptTerms(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Body() acceptTermsDto: AcceptTermsDto,
+    ) {
+        return this.userService.acceptTerms(accessProfile.userId, acceptTermsDto);
     }
 
     @Get('all')
@@ -112,7 +123,7 @@ export class UserController {
     }
 
     @Post()
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
     async create(
         @Body() createUserDto: CreateUserDto,
         @GetAccessProfile() accessProfile: AccessProfile,

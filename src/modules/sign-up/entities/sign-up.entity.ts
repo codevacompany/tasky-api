@@ -1,5 +1,6 @@
 import { Column, Entity } from 'typeorm';
 import { IdTimestampBaseEntity } from '../../../shared/common/id-timestamp.base-entity';
+import { encryptedTransformer } from '../../../shared/decorators/encrypted-column.decorator';
 
 export enum SignUpStatus {
     PENDING = 'pendente',
@@ -16,7 +17,7 @@ export class SignUp extends IdTimestampBaseEntity {
     @Column({ default: '' })
     email: string;
 
-    @Column({ nullable: true })
+    @Column({ nullable: true, transformer: encryptedTransformer })
     cnpj: string;
 
     @Column({ nullable: true })
@@ -52,7 +53,7 @@ export class SignUp extends IdTimestampBaseEntity {
     @Column()
     contactName: string;
 
-    @Column()
+    @Column({ transformer: encryptedTransformer })
     contactCpf: string;
 
     @Column()
@@ -68,7 +69,7 @@ export class SignUp extends IdTimestampBaseEntity {
     })
     status: SignUpStatus;
 
-    @Column({ nullable: true })
+    @Column({ nullable: true, transformer: encryptedTransformer })
     activationToken: string;
 
     @Column({ type: 'timestamp', nullable: true })
