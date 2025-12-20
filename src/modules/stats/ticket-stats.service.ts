@@ -227,6 +227,8 @@ export class TicketStatsService {
             const resolutionQuery = this.ticketUpdateRepository
                 .createQueryBuilder('update')
                 .leftJoin('update.ticket', 'ticket')
+                .leftJoin('update.fromUser', 'fromUser')
+                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
                 .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.InProgress })
                 .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
                 .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
@@ -238,16 +240,14 @@ export class TicketStatsService {
                 });
             }
 
-            // Filter by department if Supervisor
+            // Filter by department if Supervisor - check fromDepartmentId first, then fromUser, then currentTargetUser
             if (supervisorDepartmentId !== null) {
                 resolutionQuery.andWhere(
-                    `EXISTS (
-                        SELECT 1
-                        FROM ticket_target_user ttu
-                        INNER JOIN "user" u ON u.id = ttu."userId"
-                        WHERE ttu."ticketId" = ticket.id
-                        AND u."departmentId" = :departmentId
-                    )`,
+                    `CASE
+                        WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                        WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                        ELSE currentTargetUser.departmentId = :departmentId
+                    END`,
                     { departmentId: supervisorDepartmentId },
                 );
             }
@@ -260,12 +260,14 @@ export class TicketStatsService {
 
             const resolutionTicketIds = new Set(resolutionUpdates.map((update) => update.ticketId));
             avgResolutionTimeSeconds =
-                resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionTicketIds.size : 0;
+                resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionUpdates.length : 0;
 
             // Calculate average acceptance time using timeSecondsInLastStatus from ticket_update
             const acceptanceQuery = this.ticketUpdateRepository
                 .createQueryBuilder('update')
                 .leftJoin('update.ticket', 'ticket')
+                .leftJoin('update.fromUser', 'fromUser')
+                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
                 .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
                 .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
                 .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
@@ -277,16 +279,14 @@ export class TicketStatsService {
                 });
             }
 
-            // Filter by department if Supervisor
+            // Filter by department if Supervisor - check fromDepartmentId first, then fromUser, then currentTargetUser
             if (supervisorDepartmentId !== null) {
                 acceptanceQuery.andWhere(
-                    `EXISTS (
-                        SELECT 1
-                        FROM ticket_target_user ttu
-                        INNER JOIN "user" u ON u.id = ttu."userId"
-                        WHERE ttu."ticketId" = ticket.id
-                        AND u."departmentId" = :departmentId
-                    )`,
+                    `CASE
+                        WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                        WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                        ELSE currentTargetUser.departmentId = :departmentId
+                    END`,
                     { departmentId: supervisorDepartmentId },
                 );
             }
@@ -299,7 +299,7 @@ export class TicketStatsService {
 
             const acceptanceTicketIds = new Set(acceptanceUpdates.map((update) => update.ticketId));
             avgAcceptanceTimeSeconds =
-                acceptanceTicketIds.size > 0 ? acceptanceTimeSum / acceptanceTicketIds.size : 0;
+                acceptanceTicketIds.size > 0 ? acceptanceTimeSum / acceptanceUpdates.length : 0;
         }
 
         const avgTotalTimeSeconds = avgResolutionTimeSeconds + avgAcceptanceTimeSeconds;
@@ -399,31 +399,39 @@ export class TicketStatsService {
                     },
                 });
 
-                // Get department ticket IDs
-                const deptTicketIds = departmentTickets.map((stat) => stat.ticketId);
-
                 // Calculate average resolution time using timeSecondsInLastStatus from ticket_update
+                // Filter directly by fromUserId's department instead of getting all department tickets first
                 let avgDeptResolutionTimeSeconds = 0;
-                if (deptTicketIds.length > 0) {
-                    const resolutionQuery = this.ticketUpdateRepository
-                        .createQueryBuilder('update')
-                        .leftJoin('update.ticket', 'ticket')
-                        .where('update.fromStatus = :fromStatus', {
-                            fromStatus: TicketStatus.InProgress,
-                        })
-                        .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
-                        .andWhere('update.tenantId = :tenantId', {
-                            tenantId: accessProfile.tenantId,
-                        })
-                        .andWhere('ticket.id IN (:...ticketIds)', { ticketIds: deptTicketIds });
+                const resolutionQuery = this.ticketUpdateRepository
+                    .createQueryBuilder('update')
+                    .leftJoin('update.fromUser', 'fromUser')
+                    .leftJoin('update.ticket', 'ticket')
+                    .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
+                    .where('update.fromStatus = :fromStatus', {
+                        fromStatus: TicketStatus.InProgress,
+                    })
+                    .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+                    .andWhere('update.tenantId = :tenantId', {
+                        tenantId: accessProfile.tenantId,
+                    })
+                    .andWhere(
+                        `CASE
+                            WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                            WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                            ELSE currentTargetUser.departmentId = :departmentId
+                        END`,
+                        { departmentId: department.id },
+                    );
 
-                    if (startDate) {
-                        resolutionQuery.andWhere('update.createdAt >= :startDate', {
-                            startDate,
-                        });
-                    }
+                if (startDate) {
+                    resolutionQuery.andWhere('update.createdAt >= :startDate', {
+                        startDate,
+                    });
+                }
 
-                    const resolutionUpdates = await resolutionQuery.getMany();
+                const resolutionUpdates = await resolutionQuery.getMany();
+
+                if (resolutionUpdates.length > 0) {
                     const resolutionTimeSum = resolutionUpdates.reduce(
                         (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
                         0,
@@ -439,27 +447,37 @@ export class TicketStatsService {
                 }
 
                 // Calculate average acceptance time using timeSecondsInLastStatus from ticket_update
+                // Filter directly by fromUserId's department instead of getting all department tickets first
                 let avgDeptAcceptanceTimeSeconds = 0;
-                if (deptTicketIds.length > 0) {
-                    const acceptanceQuery = this.ticketUpdateRepository
-                        .createQueryBuilder('update')
-                        .leftJoin('update.ticket', 'ticket')
-                        .where('update.fromStatus = :fromStatus', {
-                            fromStatus: TicketStatus.Pending,
-                        })
-                        .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
-                        .andWhere('update.tenantId = :tenantId', {
-                            tenantId: accessProfile.tenantId,
-                        })
-                        .andWhere('ticket.id IN (:...ticketIds)', { ticketIds: deptTicketIds });
+                const acceptanceQuery = this.ticketUpdateRepository
+                    .createQueryBuilder('update')
+                    .leftJoin('update.fromUser', 'fromUser')
+                    .leftJoin('update.ticket', 'ticket')
+                    .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
+                    .where('update.fromStatus = :fromStatus', {
+                        fromStatus: TicketStatus.Pending,
+                    })
+                    .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+                    .andWhere('update.tenantId = :tenantId', {
+                        tenantId: accessProfile.tenantId,
+                    })
+                    .andWhere(
+                        `CASE
+                            WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                            WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                            ELSE currentTargetUser.departmentId = :departmentId
+                        END`,
+                        { departmentId: department.id },
+                    );
 
-                    if (startDate) {
-                        acceptanceQuery.andWhere('update.createdAt >= :startDate', {
-                            startDate,
-                        });
-                    }
+                if (startDate) {
+                    acceptanceQuery.andWhere('update.createdAt >= :startDate', {
+                        startDate,
+                    });
+                }
 
-                    const acceptanceUpdates = await acceptanceQuery.getMany();
+                const acceptanceUpdates = await acceptanceQuery.getMany();
+                if (acceptanceUpdates.length > 0) {
                     const acceptanceTimeSum = acceptanceUpdates.reduce(
                         (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
                         0,
@@ -1000,19 +1018,68 @@ export class TicketStatsService {
         userId: number,
         period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<TicketStatsResponseDto> {
-        const { dateFilter, startDate, limit, order } = this.getPeriodFilter(period);
+        const { startDate, limit, order } = this.getPeriodFilter(period);
 
-        const filters = {
-            where: {
-                tenantId: accessProfile.tenantId,
-                currentTargetUserId: userId,
-                ...dateFilter,
-            },
-            ...(limit ? { take: limit } : {}),
-            ...(order ? { order } : {}),
-        };
+        // Find all ticket IDs where the user is involved (either as currentTargetUserId or in targetUsers)
+        const ticketIdsQuery = this.ticketRepository
+            .createQueryBuilder('ticket')
+            .select('ticket.id', 'id')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere(
+                `(
+                    ticket.currentTargetUserId = :userId
+                    OR EXISTS (
+                        SELECT 1
+                        FROM ticket_target_user ttu
+                        WHERE ttu."ticketId" = ticket.id
+                        AND ttu."userId" = :userId
+                        AND ttu."tenantId" = :tenantId
+                    )
+                )`,
+                { userId, tenantId: accessProfile.tenantId },
+            );
 
-        const [items, total] = await this.ticketStatsRepository.findAndCount(filters);
+        if (startDate) {
+            ticketIdsQuery.andWhere('ticket.createdAt >= :startDate', { startDate });
+        }
+
+        const ticketIdsResult = await ticketIdsQuery.getRawMany();
+        const ticketIds = ticketIdsResult.map((row) => row.id).filter(Boolean);
+
+        if (ticketIds.length === 0) {
+            // No tickets found, return empty stats
+            return {
+                totalTickets: 0,
+                openTickets: 0,
+                closedTickets: 0,
+                resolvedTickets: 0,
+                averageResolutionTimeSeconds: 0,
+                averageAcceptanceTimeSeconds: 0,
+                averageTotalTimeSeconds: 0,
+                resolutionRate: 0,
+            };
+        }
+
+        // Query the TicketStats view for these ticket IDs
+        const qb = this.ticketStatsRepository.createQueryBuilder('ticketStats');
+        qb.where('ticketStats.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.andWhere('ticketStats.ticketId IN (:...ticketIds)', { ticketIds });
+
+        // Apply order if provided
+        if (order) {
+            Object.entries(order).forEach(([field, direction]) => {
+                qb.addOrderBy(`ticketStats.${field}`, direction === 'ASC' ? 'ASC' : 'DESC');
+            });
+        } else {
+            qb.addOrderBy('ticketStats.createdAt', 'DESC');
+        }
+
+        // Apply limit if provided
+        if (limit) {
+            qb.take(limit);
+        }
+
+        const [items, total] = await qb.getManyAndCount();
 
         const itemsWithWeekendExclusion = await this.applyWeekendExclusion(items);
         const ticketStats = { items: itemsWithWeekendExclusion, total };
@@ -1032,7 +1099,10 @@ export class TicketStatsService {
             .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.InProgress })
             .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
             .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-            .andWhere('ticket.currentTargetUserId = :userId', { userId });
+            .andWhere(
+                '(update.fromUserId = :userId OR (update.fromUserId IS NULL AND ticket.currentTargetUserId = :userId))',
+                { userId },
+            );
 
         if (startDate) {
             resolutionQuery.andWhere('update.createdAt >= :startDate', {
@@ -1056,7 +1126,10 @@ export class TicketStatsService {
             .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
             .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
             .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-            .andWhere('ticket.currentTargetUserId = :userId', { userId });
+            .andWhere(
+                '(update.fromUserId = :userId OR (update.fromUserId IS NULL AND ticket.currentTargetUserId = :userId))',
+                { userId },
+            );
 
         if (startDate) {
             acceptanceQuery.andWhere('update.createdAt >= :startDate', {
@@ -1334,18 +1407,19 @@ export class TicketStatsService {
             .andWhere('update.createdAt >= :startDate', { startDate })
             .andWhere('update.createdAt <= :endDate', { endDate });
 
-        // Filter by department if Supervisor
+        // Filter by department if Supervisor - check fromDepartmentId first, then fromUser, then currentTargetUser
         if (supervisorDepartmentId !== null) {
-            resolutionQuery.andWhere(
-                `EXISTS (
-                    SELECT 1
-                    FROM ticket_target_user ttu
-                    INNER JOIN "user" u ON u.id = ttu."userId"
-                    WHERE ttu."ticketId" = ticket.id
-                    AND u."departmentId" = :departmentId
-                )`,
-                { departmentId: supervisorDepartmentId },
-            );
+            resolutionQuery
+                .leftJoin('update.fromUser', 'fromUser')
+                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
+                .andWhere(
+                    `CASE
+                        WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                        WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                        ELSE currentTargetUser.departmentId = :departmentId
+                    END`,
+                    { departmentId: supervisorDepartmentId },
+                );
         }
 
         const resolutionUpdates = await resolutionQuery.getMany();
@@ -1359,9 +1433,8 @@ export class TicketStatsService {
             0,
         );
 
-        const resolutionTicketIds = new Set(resolutionUpdates.map((update) => update.ticketId));
         const avgResolutionTimeSeconds =
-            resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionTicketIds.size : 0;
+            resolutionUpdates.length > 0 ? resolutionTimeSum / resolutionUpdates.length : 0;
 
         // Convert seconds to hours
         const avgResolutionTimeHours = avgResolutionTimeSeconds / 3600;
@@ -1658,17 +1731,33 @@ export class TicketStatsService {
         }
 
         // Then count tickets for users who have them
+        // Count tickets where user is currentTargetUserId OR in targetUserIds array
         for (const stat of filteredTicketStats) {
-            const userId = stat.currentTargetUserId;
+            // Get all users involved in this ticket (currentTargetUserId + all targetUserIds)
+            const involvedUserIds = new Set<number>();
 
-            // Skip if we don't have this user (unlikely but as a safeguard)
-            if (!userStatsMap.has(userId)) continue;
+            if (stat.currentTargetUserId) {
+                involvedUserIds.add(stat.currentTargetUserId);
+            }
 
-            const userStats = userStatsMap.get(userId);
-            userStats.totalTickets++;
+            if (stat.targetUserIds && Array.isArray(stat.targetUserIds)) {
+                stat.targetUserIds.forEach((userId: number) => {
+                    if (userId) {
+                        involvedUserIds.add(userId);
+                    }
+                });
+            }
 
-            if (stat.isResolved) {
-                userStats.resolvedTickets++;
+            // Count this ticket for all involved users
+            for (const userId of involvedUserIds) {
+                if (!userStatsMap.has(userId)) continue;
+
+                const userStats = userStatsMap.get(userId);
+                userStats.totalTickets++;
+
+                if (stat.isResolved) {
+                    userStats.resolvedTickets++;
+                }
             }
         }
 
@@ -1684,7 +1773,10 @@ export class TicketStatsService {
                 .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
                 .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
                 .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-                .andWhere('ticket.currentTargetUserId IN (:...userIds)', { userIds });
+                .andWhere(
+                    '(update.fromUserId IN (:...userIds) OR (update.fromUserId IS NULL AND ticket.currentTargetUserId IN (:...userIds)))',
+                    { userIds },
+                );
 
             if (startDate) {
                 acceptanceQuery.andWhere('update.createdAt >= :startDate', { startDate });
@@ -1695,7 +1787,8 @@ export class TicketStatsService {
             // Group by userId and calculate averages
             const acceptanceByUser = new Map<number, { sum: number; count: number }>();
             for (const update of acceptanceUpdates) {
-                const userId = update.ticket?.currentTargetUserId;
+                // Use fromUserId if available, otherwise fall back to currentTargetUserId for backward compatibility
+                const userId = update.fromUserId || update.ticket?.currentTargetUserId;
                 if (userId) {
                     const timeSeconds = update.timeSecondsInLastStatus || 0;
                     if (!acceptanceByUser.has(userId)) {
@@ -1727,7 +1820,10 @@ export class TicketStatsService {
                 })
                 .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
                 .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-                .andWhere('ticket.currentTargetUserId IN (:...userIds)', { userIds });
+                .andWhere(
+                    '(update.fromUserId IN (:...userIds) OR (update.fromUserId IS NULL AND ticket.currentTargetUserId IN (:...userIds)))',
+                    { userIds },
+                );
 
             if (startDate) {
                 resolutionQuery.andWhere('update.createdAt >= :startDate', { startDate });
@@ -1738,7 +1834,8 @@ export class TicketStatsService {
             // Group by userId and calculate averages
             const resolutionByUser = new Map<number, { sum: number; count: number }>();
             for (const update of resolutionUpdates) {
-                const userId = update.ticket?.currentTargetUserId;
+                // Use fromUserId if available, otherwise fall back to currentTargetUserId for backward compatibility
+                const userId = update.fromUserId || update.ticket?.currentTargetUserId;
                 if (userId) {
                     const timeSeconds = update.timeSecondsInLastStatus || 0;
                     if (!resolutionByUser.has(userId)) {
