@@ -70,4 +70,7 @@ export class TicketUpdate extends TenantBoundBaseEntity {
     @ManyToOne(() => User, { nullable: true })
     @JoinColumn({ name: 'toUserId' })
     toUser?: User;
+
+    @Column({ nullable: true })
+    fromDepartmentId?: number;
 }

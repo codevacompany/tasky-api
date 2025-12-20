@@ -75,6 +75,24 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         super(ticketRepository);
     }
 
+    /**
+     * Helper method to get departmentId from a userId
+     * Used to store the department at the time of ticket update creation
+     */
+    private async getDepartmentIdFromUserId(
+        userId: number | null | undefined,
+        tenantId: number,
+    ): Promise<number | null> {
+        if (!userId) return null;
+
+        const user = await this.userRepository.findOne({
+            where: { id: userId, tenantId },
+            select: ['departmentId'],
+        });
+
+        return user?.departmentId || null;
+    }
+
     async findAll(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
         const filters = {
             ...options,
@@ -986,6 +1004,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     toStatus: TicketStatus.Pending,
                     fromUserId: null,
                     toUserId: firstTargetUser.id,
+                    fromDepartmentId: null,
                     description: '<p><span>user</span> criou esta tarefa.</p>',
                 }),
             );
@@ -1068,6 +1087,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         await this.repository.update(ticketResponse.id, updateData);
 
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            accessProfile.userId,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -1080,6 +1104,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             toStatus: ticketResponse.ticketStatus?.key || null,
             fromUserId: accessProfile.userId || null,
             toUserId: accessProfile.userId || null,
+            fromDepartmentId,
             description: '<p><span>user</span> atualizou esta tarefa.</p>',
         });
 
@@ -1149,6 +1174,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     );
                 }
 
+                const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                    ticket.currentTargetUser.id,
+                    accessProfile.tenantId,
+                );
+
                 await this.ticketUpdateRepository.save({
                     tenantId: accessProfile.tenantId,
                     ticketId: ticket.id,
@@ -1162,6 +1192,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     timeSecondsInLastStatus,
                     fromUserId: ticket.currentTargetUser.id,
                     toUserId: ticket.currentTargetUser.id,
+                    fromDepartmentId,
                     description: '<p><span>user</span> enviou este ticket para verificação.</p>',
                 });
 
@@ -1210,6 +1241,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     );
                 }
 
+                const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                    ticket.currentTargetUser.id,
+                    accessProfile.tenantId,
+                );
+
                 await Promise.all([
                     this.ticketUpdateRepository.save({
                         tenantId: accessProfile.tenantId,
@@ -1224,6 +1260,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         timeSecondsInLastStatus,
                         fromUserId: ticket.currentTargetUser.id,
                         toUserId: ticket.currentTargetUser.id,
+                        fromDepartmentId,
                         description: '<p><span>user</span> cancelou o envio para verificação.</p>',
                     }),
                     this.notificationRepository.save({
@@ -1275,6 +1312,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     }),
                 );
 
+                const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                    ticket.currentTargetUser.id,
+                    accessProfile.tenantId,
+                );
+
                 await Promise.all([
                     this.ticketUpdateRepository.save({
                         tenantId: accessProfile.tenantId,
@@ -1289,6 +1331,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         timeSecondsInLastStatus,
                         fromUserId: ticket.currentTargetUser.id,
                         toUserId: ticket.currentTargetUser.id,
+                        fromDepartmentId,
                         description: '<p><span>user</span> iniciou a verificação da tarefa.</p>',
                     }),
                     ...notifications,
@@ -1311,6 +1354,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     );
                 }
 
+                const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                    ticket.currentTargetUser.id,
+                    accessProfile.tenantId,
+                );
+
                 await Promise.all([
                     this.ticketUpdateRepository.save({
                         tenantId: accessProfile.tenantId,
@@ -1325,6 +1373,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         timeSecondsInLastStatus,
                         fromUserId: ticket.currentTargetUser.id,
                         toUserId: ticket.currentTargetUser.id,
+                        fromDepartmentId,
                         description: '<p><span>user</span> iniciou a correção da tarefa.</p>',
                     }),
                     this.notificationRepository.save({
@@ -1412,6 +1461,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
         }
 
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            currentTargetUser.id,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -1425,6 +1479,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             timeSecondsInLastStatus,
             fromUserId: currentTargetUser.id,
             toUserId: currentTargetUser.id,
+            fromDepartmentId,
             description: `<p><span>user</span> ${
                 ticketResponse.requester.id === currentTargetUser.id
                     ? 'começou a trabalhar nesta tarefa'
@@ -1499,6 +1554,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
         }
 
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            ticketResponse.currentTargetUser.id,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -1512,6 +1572,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             timeSecondsInLastStatus,
             fromUserId: ticketResponse.currentTargetUser.id,
             toUserId: ticketResponse.currentTargetUser.id,
+            fromDepartmentId,
             description: '<p><span>user</span> aprovou esta tarefa.</p>',
         });
 
@@ -1589,6 +1650,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
         }
 
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            ticketResponse.currentTargetUser.id,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -1602,6 +1668,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             timeSecondsInLastStatus,
             fromUserId: ticketResponse.currentTargetUser.id,
             toUserId: ticketResponse.currentTargetUser.id,
+            fromDepartmentId,
             description: `<p><span>user</span> reprovou esta tarefa.</p>`,
         });
 
@@ -1703,6 +1770,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
         }
 
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            ticketResponse.currentTargetUser.id,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -1716,6 +1788,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             timeSecondsInLastStatus,
             fromUserId: ticketResponse.currentTargetUser.id,
             toUserId: ticketResponse.currentTargetUser.id,
+            fromDepartmentId,
             description: `<p><span>user</span> cancelou esta tarefa.</p>`,
         });
 
@@ -1866,6 +1939,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         await this.ticketFileRepository.save(this.ticketFileRepository.create(ticketFiles));
 
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            ticket.currentTargetUser.id,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save(
             this.ticketUpdateRepository.create({
                 tenantId: accessProfile.tenantId,
@@ -1879,6 +1957,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 toStatus: ticket.ticketStatus?.key || null,
                 fromUserId: ticket.currentTargetUser.id,
                 toUserId: ticket.currentTargetUser.id,
+                fromDepartmentId,
                 description: `<p><span>user</span> adicionou ${files.length} arquivo(s) à tarefa.</p>`,
             }),
         );
@@ -2037,6 +2116,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
         }
 
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            ticket.currentTargetUser.id,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticket.id,
@@ -2050,6 +2134,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             timeSecondsInLastStatus,
             fromUserId: ticket.currentTargetUser.id,
             toUserId: ticket.currentTargetUser.id,
+            fromDepartmentId,
             description: `<p><span>user</span> devolveu esta tarefa para correção.</p>`,
         });
 
@@ -2178,6 +2263,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         //Is only possible to update the assignee if the ticket is pending
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            targetUserToReplace.userId,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticket.id,
@@ -2190,6 +2280,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             toStatus: TicketStatus.Pending,
             fromUserId: targetUserToReplace.userId,
             toUserId: newTargetUserId,
+            fromDepartmentId,
             description: `<p><span>user</span> substituiu ${targetUserToReplace.user.firstName} ${targetUserToReplace.user.lastName} por ${newTargetUser.firstName} ${newTargetUser.lastName}.</p>`,
         });
 
@@ -2305,6 +2396,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         await this.ticketTargetUserRepository.save(newTargetUserEntity);
 
         // Create ticket update
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            newTargetUserId,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticket.id,
@@ -2317,6 +2413,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             toStatus: ticket.ticketStatus?.key,
             fromUserId: null,
             toUserId: newTargetUserId,
+            fromDepartmentId,
             description: `<p><span>user</span> adicionou ${newTargetUser.firstName} ${newTargetUser.lastName} como responsável.</p>`,
         });
 
@@ -2450,6 +2547,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 });
 
                 // Create ticket update for status change
+                const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                    removedUser.id,
+                    accessProfile.tenantId,
+                );
+
                 await this.ticketUpdateRepository.save({
                     tenantId: accessProfile.tenantId,
                     ticketId: ticket.id,
@@ -2462,6 +2564,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     toStatus: TicketStatus.AwaitingVerification,
                     fromUserId: removedUser.id,
                     toUserId: null,
+                    fromDepartmentId,
                     description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável e enviou a tarefa para verificação.</p>`,
                 });
 
@@ -2517,6 +2620,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 });
 
                 // Create ticket update
+                const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                    removedUser.id,
+                    accessProfile.tenantId,
+                );
+
                 await this.ticketUpdateRepository.save({
                     tenantId: accessProfile.tenantId,
                     ticketId: ticket.id,
@@ -2529,6 +2637,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     toStatus: TicketStatus.Pending,
                     fromUserId: removedUser.id,
                     toUserId: userToAssign.userId,
+                    fromDepartmentId,
                     description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável e enviou a tarefa para ${userToAssign.user.firstName} ${userToAssign.user.lastName}.</p>`,
                 });
 
@@ -2546,6 +2655,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             }
         } else {
             // Create ticket update for regular removal
+            const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                removedUser.id,
+                accessProfile.tenantId,
+            );
+
             await this.ticketUpdateRepository.save({
                 tenantId: accessProfile.tenantId,
                 ticketId: ticket.id,
@@ -2558,6 +2672,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 toStatus: ticket.ticketStatus?.key || null,
                 fromUserId: removedUser.id,
                 toUserId: null,
+                fromDepartmentId,
                 description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável.</p>`,
             });
         }
@@ -2761,6 +2876,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             reviewerId: newReviewerId,
         });
 
+        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+            ticket.currentTargetUser.id,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticket.id,
@@ -2773,6 +2893,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             toStatus: ticket.ticketStatus?.key || null,
             fromUserId: ticket.currentTargetUser.id,
             toUserId: ticket.currentTargetUser.id,
+            fromDepartmentId,
             description: `<p><span>user</span> definiu ${newReviewer.firstName} ${newReviewer.lastName} como revisor desta tarefa.</p>`,
         });
 
@@ -2877,6 +2998,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
 
             // Create ticket update record
+            const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                ticket.currentTargetUserId || null,
+                accessProfile.tenantId,
+            );
+
             await this.ticketUpdateRepository.save({
                 tenantId: accessProfile.tenantId,
                 ticketId: ticket.id,
@@ -2890,6 +3016,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 timeSecondsInLastStatus,
                 fromUserId: ticket.currentTargetUserId || null,
                 toUserId: ticket.currentTargetUserId || null,
+                fromDepartmentId,
                 description: `<p><span>user</span> executou a ação "${action.title}".</p>`,
             });
 

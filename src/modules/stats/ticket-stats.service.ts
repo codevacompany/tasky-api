@@ -227,6 +227,8 @@ export class TicketStatsService {
             const resolutionQuery = this.ticketUpdateRepository
                 .createQueryBuilder('update')
                 .leftJoin('update.ticket', 'ticket')
+                .leftJoin('update.fromUser', 'fromUser')
+                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
                 .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.InProgress })
                 .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
                 .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
@@ -238,15 +240,16 @@ export class TicketStatsService {
                 });
             }
 
-            // Filter by department if Supervisor - filter by fromUserId's department
+            // Filter by department if Supervisor - check fromDepartmentId first, then fromUser, then currentTargetUser
             if (supervisorDepartmentId !== null) {
-                resolutionQuery
-                    .leftJoin('update.fromUser', 'fromUser')
-                    .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
-                    .andWhere(
-                        '(update.fromUserId IS NOT NULL AND fromUser.departmentId = :departmentId) OR (update.fromUserId IS NULL AND currentTargetUser.departmentId = :departmentId)',
-                        { departmentId: supervisorDepartmentId },
-                    );
+                resolutionQuery.andWhere(
+                    `CASE
+                        WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                        WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                        ELSE currentTargetUser.departmentId = :departmentId
+                    END`,
+                    { departmentId: supervisorDepartmentId },
+                );
             }
 
             const resolutionUpdates = await resolutionQuery.getMany();
@@ -263,6 +266,8 @@ export class TicketStatsService {
             const acceptanceQuery = this.ticketUpdateRepository
                 .createQueryBuilder('update')
                 .leftJoin('update.ticket', 'ticket')
+                .leftJoin('update.fromUser', 'fromUser')
+                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
                 .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
                 .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
                 .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
@@ -274,15 +279,16 @@ export class TicketStatsService {
                 });
             }
 
-            // Filter by department if Supervisor - filter by fromUserId's department
+            // Filter by department if Supervisor - check fromDepartmentId first, then fromUser, then currentTargetUser
             if (supervisorDepartmentId !== null) {
-                acceptanceQuery
-                    .leftJoin('update.fromUser', 'fromUser')
-                    .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
-                    .andWhere(
-                        '(update.fromUserId IS NOT NULL AND fromUser.departmentId = :departmentId) OR (update.fromUserId IS NULL AND currentTargetUser.departmentId = :departmentId)',
-                        { departmentId: supervisorDepartmentId },
-                    );
+                acceptanceQuery.andWhere(
+                    `CASE
+                        WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                        WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                        ELSE currentTargetUser.departmentId = :departmentId
+                    END`,
+                    { departmentId: supervisorDepartmentId },
+                );
             }
 
             const acceptanceUpdates = await acceptanceQuery.getMany();
@@ -409,7 +415,11 @@ export class TicketStatsService {
                         tenantId: accessProfile.tenantId,
                     })
                     .andWhere(
-                        '(update.fromUserId IS NOT NULL AND fromUser.departmentId = :departmentId) OR (update.fromUserId IS NULL AND currentTargetUser.departmentId = :departmentId)',
+                        `CASE
+                            WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                            WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                            ELSE currentTargetUser.departmentId = :departmentId
+                        END`,
                         { departmentId: department.id },
                     );
 
@@ -452,7 +462,11 @@ export class TicketStatsService {
                         tenantId: accessProfile.tenantId,
                     })
                     .andWhere(
-                        '(update.fromUserId IS NOT NULL AND fromUser.departmentId = :departmentId) OR (update.fromUserId IS NULL AND currentTargetUser.departmentId = :departmentId)',
+                        `CASE
+                            WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                            WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                            ELSE currentTargetUser.departmentId = :departmentId
+                        END`,
                         { departmentId: department.id },
                     );
 
@@ -1393,13 +1407,17 @@ export class TicketStatsService {
             .andWhere('update.createdAt >= :startDate', { startDate })
             .andWhere('update.createdAt <= :endDate', { endDate });
 
-        // Filter by department if Supervisor - filter by fromUserId's department
+        // Filter by department if Supervisor - check fromDepartmentId first, then fromUser, then currentTargetUser
         if (supervisorDepartmentId !== null) {
             resolutionQuery
                 .leftJoin('update.fromUser', 'fromUser')
                 .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
                 .andWhere(
-                    '(update.fromUserId IS NOT NULL AND fromUser.departmentId = :departmentId) OR (update.fromUserId IS NULL AND currentTargetUser.departmentId = :departmentId)',
+                    `CASE
+                        WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
+                        WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
+                        ELSE currentTargetUser.departmentId = :departmentId
+                    END`,
                     { departmentId: supervisorDepartmentId },
                 );
         }
