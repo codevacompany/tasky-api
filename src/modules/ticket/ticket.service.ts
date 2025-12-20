@@ -871,10 +871,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const firstTargetUser = targetUsers.find((user) => user.id === targetUserIds[0]);
 
-        let reviewerId: number | null =
-            ticketDto.requesterId !== firstTargetUser.id ? ticketDto.requesterId : null;
+        const isRequesterInTargetUsers = targetUserIds.includes(ticketDto.requesterId);
 
-        if (ticketDto.requesterId === firstTargetUser.id) {
+        let reviewerId: number | null = null;
+
+        if (isRequesterInTargetUsers) {
             const supervisorRole = await this.roleService.findByName(RoleName.Supervisor);
             if (supervisorRole) {
                 const departmentSupervisor = await this.userRepository.findOne({
@@ -886,9 +887,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     } as any,
                 });
                 reviewerId = departmentSupervisor ? departmentSupervisor.id : null;
-            } else {
-                reviewerId = null;
             }
+        } else {
+            reviewerId = ticketDto.requesterId;
         }
 
         let createdTicket: Ticket;
@@ -981,7 +982,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     createdById: requester.id,
                     updatedById: requester.id,
                     action: TicketActionType.Creation,
+                    fromStatus: null,
                     toStatus: TicketStatus.Pending,
+                    fromUserId: null,
+                    toUserId: firstTargetUser.id,
                     description: '<p><span>user</span> criou esta tarefa.</p>',
                 }),
             );
@@ -1074,6 +1078,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             action: TicketActionType.Update,
             fromStatus: ticketResponse.ticketStatus?.key || null,
             toStatus: ticketResponse.ticketStatus?.key || null,
+            fromUserId: accessProfile.userId || null,
+            toUserId: accessProfile.userId || null,
             description: '<p><span>user</span> atualizou esta tarefa.</p>',
         });
 
@@ -1143,22 +1149,25 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     );
                 }
 
-                await Promise.all([
-                    this.ticketUpdateRepository.save({
-                        tenantId: accessProfile.tenantId,
-                        ticketId: ticket.id,
-                        ticketCustomId: ticket.customId,
-                        performedById: ticket.currentTargetUser.id,
-                        createdById: ticket.currentTargetUser.id,
-                        updatedById: ticket.currentTargetUser.id,
-                        action: TicketActionType.StatusUpdate,
-                        fromStatus: TicketStatus.InProgress,
-                        toStatus: TicketStatus.AwaitingVerification,
-                        timeSecondsInLastStatus,
-                        description:
-                            '<p><span>user</span> enviou este ticket para verificação.</p>',
-                    }),
-                    this.notificationRepository.save({
+                await this.ticketUpdateRepository.save({
+                    tenantId: accessProfile.tenantId,
+                    ticketId: ticket.id,
+                    ticketCustomId: ticket.customId,
+                    performedById: ticket.currentTargetUser.id,
+                    createdById: ticket.currentTargetUser.id,
+                    updatedById: ticket.currentTargetUser.id,
+                    action: TicketActionType.StatusUpdate,
+                    fromStatus: TicketStatus.InProgress,
+                    toStatus: TicketStatus.AwaitingVerification,
+                    timeSecondsInLastStatus,
+                    fromUserId: ticket.currentTargetUser.id,
+                    toUserId: ticket.currentTargetUser.id,
+                    description: '<p><span>user</span> enviou este ticket para verificação.</p>',
+                });
+
+                // Only notify reviewer if exists
+                if (ticket.reviewer?.id) {
+                    await this.notificationRepository.save({
                         tenantId: accessProfile.tenantId,
                         type: NotificationType.StatusUpdate,
                         message:
@@ -1168,18 +1177,21 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         targetUserId: ticket.reviewer.id,
                         resourceId: ticket.id,
                         resourceCustomId: ticket.customId,
-                    }),
-                ]);
+                    });
+                }
 
-                const message = `<span style="font-weight: 600;">${ticket.currentTargetUser.firstName} ${ticket.currentTargetUser.lastName}</span> enviou a tarefa <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
+                // Only send email if reviewer exists
+                if (ticket.reviewer?.email) {
+                    const message = `<span style="font-weight: 600;">${ticket.currentTargetUser.firstName} ${ticket.currentTargetUser.lastName}</span> enviou a tarefa <span style="font-weight: 600;">${ticket.customId}</span> para verificação.`;
 
-                await this.sendEmailWithPermissionCheck(
-                    accessProfile.tenantId,
-                    `A tarefa ${ticket.customId} está pronta para verificação.`,
-                    message,
-                    ticket.reviewer.email,
-                    ticket.customId,
-                );
+                    await this.sendEmailWithPermissionCheck(
+                        accessProfile.tenantId,
+                        `A tarefa ${ticket.customId} está pronta para verificação.`,
+                        message,
+                        ticket.reviewer.email,
+                        ticket.customId,
+                    );
+                }
             } else if (
                 ticketUpdate.status === TicketStatus.InProgress &&
                 currentStatus === TicketStatus.AwaitingVerification
@@ -1210,6 +1222,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         fromStatus: TicketStatus.AwaitingVerification,
                         toStatus: TicketStatus.InProgress,
                         timeSecondsInLastStatus,
+                        fromUserId: ticket.currentTargetUser.id,
+                        toUserId: ticket.currentTargetUser.id,
                         description: '<p><span>user</span> cancelou o envio para verificação.</p>',
                     }),
                     this.notificationRepository.save({
@@ -1273,6 +1287,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         fromStatus: TicketStatus.AwaitingVerification,
                         toStatus: TicketStatus.UnderVerification,
                         timeSecondsInLastStatus,
+                        fromUserId: ticket.currentTargetUser.id,
+                        toUserId: ticket.currentTargetUser.id,
                         description: '<p><span>user</span> iniciou a verificação da tarefa.</p>',
                     }),
                     ...notifications,
@@ -1307,6 +1323,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         fromStatus: TicketStatus.Returned,
                         toStatus: TicketStatus.InProgress,
                         timeSecondsInLastStatus,
+                        fromUserId: ticket.currentTargetUser.id,
+                        toUserId: ticket.currentTargetUser.id,
                         description: '<p><span>user</span> iniciou a correção da tarefa.</p>',
                     }),
                     this.notificationRepository.save({
@@ -1405,6 +1423,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: TicketStatus.Pending,
             toStatus: TicketStatus.InProgress,
             timeSecondsInLastStatus,
+            fromUserId: currentTargetUser.id,
+            toUserId: currentTargetUser.id,
             description: `<p><span>user</span> ${
                 ticketResponse.requester.id === currentTargetUser.id
                     ? 'começou a trabalhar nesta tarefa'
@@ -1490,6 +1510,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: TicketStatus.UnderVerification,
             toStatus: TicketStatus.Completed,
             timeSecondsInLastStatus,
+            fromUserId: ticketResponse.currentTargetUser.id,
+            toUserId: ticketResponse.currentTargetUser.id,
             description: '<p><span>user</span> aprovou esta tarefa.</p>',
         });
 
@@ -1578,6 +1600,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: ticketResponse.ticketStatus?.key || null,
             toStatus: TicketStatus.Rejected,
             timeSecondsInLastStatus,
+            fromUserId: ticketResponse.currentTargetUser.id,
+            toUserId: ticketResponse.currentTargetUser.id,
             description: `<p><span>user</span> reprovou esta tarefa.</p>`,
         });
 
@@ -1690,6 +1714,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: ticketResponse.ticketStatus?.key || null,
             toStatus: TicketStatus.Canceled,
             timeSecondsInLastStatus,
+            fromUserId: ticketResponse.currentTargetUser.id,
+            toUserId: ticketResponse.currentTargetUser.id,
             description: `<p><span>user</span> cancelou esta tarefa.</p>`,
         });
 
@@ -1851,6 +1877,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 action: TicketActionType.Update,
                 fromStatus: ticket.ticketStatus?.key || null,
                 toStatus: ticket.ticketStatus?.key || null,
+                fromUserId: ticket.currentTargetUser.id,
+                toUserId: ticket.currentTargetUser.id,
                 description: `<p><span>user</span> adicionou ${files.length} arquivo(s) à tarefa.</p>`,
             }),
         );
@@ -2020,6 +2048,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromStatus: TicketStatus.UnderVerification,
             toStatus: TicketStatus.Returned,
             timeSecondsInLastStatus,
+            fromUserId: ticket.currentTargetUser.id,
+            toUserId: ticket.currentTargetUser.id,
             description: `<p><span>user</span> devolveu esta tarefa para correção.</p>`,
         });
 
@@ -2147,6 +2177,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
+        //Is only possible to update the assignee if the ticket is pending
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticket.id,
@@ -2155,6 +2186,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.AssigneeChange,
+            fromStatus: TicketStatus.Pending,
+            toStatus: TicketStatus.Pending,
+            fromUserId: targetUserToReplace.userId,
+            toUserId: newTargetUserId,
             description: `<p><span>user</span> substituiu ${targetUserToReplace.user.firstName} ${targetUserToReplace.user.lastName} por ${newTargetUser.firstName} ${newTargetUser.lastName}.</p>`,
         });
 
@@ -2278,6 +2313,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.AssigneeChange,
+            fromStatus: ticket.ticketStatus?.key,
+            toStatus: ticket.ticketStatus?.key,
+            fromUserId: null,
+            toUserId: newTargetUserId,
             description: `<p><span>user</span> adicionou ${newTargetUser.firstName} ${newTargetUser.lastName} como responsável.</p>`,
         });
 
@@ -2320,19 +2359,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        // Cannot remove current target user
-        if (ticket.currentTargetUserId === targetUserIdToRemove) {
-            throw new CustomForbiddenException({
-                message: 'Cannot remove the current target user',
-                code: 'cannot-remove-current-target-user',
-            });
-        }
-
         const targetUsers = await this.ticketTargetUserRepository.find({
             where: { ticketId: ticket.id, tenantId: accessProfile.tenantId },
             relations: ['user'],
             order: { order: 'ASC' },
         });
+
+        // Check if there are at least 2 target users
+        if (targetUsers.length < 2) {
+            throw new CustomForbiddenException({
+                message: 'Cannot remove target user. Ticket must have at least 2 target users.',
+                code: 'insufficient-target-users',
+            });
+        }
 
         const targetUserToRemove = targetUsers.find((tu) => tu.userId === targetUserIdToRemove);
         if (!targetUserToRemove) {
@@ -2352,8 +2391,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        // Cannot remove if user has already worked (order < currentTargetUser.order)
-        if (targetUserToRemove.order < currentTargetUser.order) {
+        const isRemovingCurrentTargetUser = ticket.currentTargetUserId === targetUserIdToRemove;
+        const isLastTargetUser =
+            targetUserToRemove.order === targetUsers[targetUsers.length - 1].order;
+
+        // If not removing current target user, check if user has already worked
+        if (!isRemovingCurrentTargetUser && targetUserToRemove.order < currentTargetUser.order) {
             throw new CustomForbiddenException({
                 message: 'Cannot remove target user who has already worked on the task',
                 code: 'cannot-remove-user-who-worked',
@@ -2361,6 +2404,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         const removedUser = targetUserToRemove.user;
+
+        // If removing current target user, find next user BEFORE reordering
+        let nextUserToAssign: (typeof targetUsers)[0] | null = null;
+        if (isRemovingCurrentTargetUser && !isLastTargetUser) {
+            // Find the user that had order = currentTargetUser.order + 1
+            nextUserToAssign = targetUsers.find((tu) => tu.order === currentTargetUser.order + 1);
+        }
 
         // Delete the target user
         await this.ticketTargetUserRepository.delete({
@@ -2376,17 +2426,141 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         await this.ticketTargetUserRepository.save(remainingTargetUsers);
 
-        // Create ticket update
-        await this.ticketUpdateRepository.save({
-            tenantId: accessProfile.tenantId,
-            ticketId: ticket.id,
-            ticketCustomId: ticket.customId,
-            performedById: accessProfile.userId,
-            createdById: accessProfile.userId,
-            updatedById: accessProfile.userId,
-            action: TicketActionType.AssigneeRemove,
-            description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável.</p>`,
-        });
+        // If removing current target user, handle automatic forwarding
+        if (isRemovingCurrentTargetUser) {
+            if (isLastTargetUser) {
+                // Send to verification (reviewer should already be set by frontend)
+                const awaitingVerificationStatus = await this.ticketStatusRepository.findOne({
+                    where: {
+                        key: TicketStatus.AwaitingVerification,
+                        tenantId: accessProfile.tenantId,
+                    },
+                });
+
+                if (!awaitingVerificationStatus) {
+                    throw new CustomNotFoundException({
+                        code: 'status-not-found',
+                        message: `Status '${TicketStatus.AwaitingVerification}' not found.`,
+                    });
+                }
+
+                await this.repository.update(ticket.id, {
+                    currentTargetUserId: null,
+                    statusId: awaitingVerificationStatus.id,
+                });
+
+                // Create ticket update for status change
+                await this.ticketUpdateRepository.save({
+                    tenantId: accessProfile.tenantId,
+                    ticketId: ticket.id,
+                    ticketCustomId: ticket.customId,
+                    performedById: accessProfile.userId,
+                    createdById: accessProfile.userId,
+                    updatedById: accessProfile.userId,
+                    action: TicketActionType.StatusUpdate,
+                    fromStatus: TicketStatus.Pending,
+                    toStatus: TicketStatus.AwaitingVerification,
+                    fromUserId: removedUser.id,
+                    toUserId: null,
+                    description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável e enviou a tarefa para verificação.</p>`,
+                });
+
+                // Notify reviewer if exists
+                if (ticket.reviewer?.id) {
+                    await this.notificationRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.TicketUpdate,
+                        message: `<p>A tarefa <span>resource</span> foi enviada para verificação.</p>`,
+                        createdById: accessProfile.userId,
+                        updatedById: accessProfile.userId,
+                        targetUserId: ticket.reviewer.id,
+                        resourceId: ticket.id,
+                        resourceCustomId: ticket.customId,
+                    });
+                }
+            } else {
+                // Send to next target user
+                // Use the user we found before reordering
+                if (!nextUserToAssign) {
+                    throw new CustomNotFoundException({
+                        message: 'Next target user not found',
+                        code: 'next-target-user-not-found',
+                    });
+                }
+
+                // Find the same user in remainingTargetUsers (after reordering)
+                const userToAssign = remainingTargetUsers.find(
+                    (tu) => tu.userId === nextUserToAssign!.userId,
+                );
+
+                if (!userToAssign) {
+                    throw new CustomNotFoundException({
+                        message: 'Next target user not found in remaining users',
+                        code: 'next-target-user-not-found-after-reorder',
+                    });
+                }
+
+                const pendingStatus = await this.ticketStatusRepository.findOne({
+                    where: { key: TicketStatus.Pending, tenantId: accessProfile.tenantId },
+                });
+
+                if (!pendingStatus) {
+                    throw new CustomNotFoundException({
+                        code: 'status-not-found',
+                        message: `Status '${TicketStatus.Pending}' not found.`,
+                    });
+                }
+
+                await this.repository.update(ticket.id, {
+                    currentTargetUserId: userToAssign.userId,
+                    statusId: pendingStatus.id,
+                });
+
+                // Create ticket update
+                await this.ticketUpdateRepository.save({
+                    tenantId: accessProfile.tenantId,
+                    ticketId: ticket.id,
+                    ticketCustomId: ticket.customId,
+                    performedById: accessProfile.userId,
+                    createdById: accessProfile.userId,
+                    updatedById: accessProfile.userId,
+                    action: TicketActionType.AssigneeChange,
+                    fromStatus: TicketStatus.Pending,
+                    toStatus: TicketStatus.Pending,
+                    fromUserId: removedUser.id,
+                    toUserId: userToAssign.userId,
+                    description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável e enviou a tarefa para ${userToAssign.user.firstName} ${userToAssign.user.lastName}.</p>`,
+                });
+
+                // Notify next user
+                await this.notificationRepository.save({
+                    tenantId: accessProfile.tenantId,
+                    type: NotificationType.TicketUpdate,
+                    message: `<p><span>user</span> enviou a tarefa <span>resource</span> para você.</p>`,
+                    createdById: accessProfile.userId,
+                    updatedById: accessProfile.userId,
+                    targetUserId: userToAssign.userId,
+                    resourceId: ticket.id,
+                    resourceCustomId: ticket.customId,
+                });
+            }
+        } else {
+            // Create ticket update for regular removal
+            await this.ticketUpdateRepository.save({
+                tenantId: accessProfile.tenantId,
+                ticketId: ticket.id,
+                ticketCustomId: ticket.customId,
+                performedById: accessProfile.userId,
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                action: TicketActionType.AssigneeRemove,
+                fromStatus: ticket.ticketStatus?.key || null,
+                toStatus: ticket.ticketStatus?.key || null,
+                fromUserId: removedUser.id,
+                toUserId: null,
+                description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável.</p>`,
+            });
+        }
 
         return this.findById(accessProfile, customId);
     }
@@ -2432,6 +2606,23 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
+        const currentUserEntity = await this.userRepository.findOne({
+            where: { id: ticket.currentTargetUserId, tenantId: accessProfile.tenantId },
+            relations: ['department'],
+        });
+
+        const nextUserEntity = await this.userRepository.findOne({
+            where: { id: nextUser.userId, tenantId: accessProfile.tenantId },
+            relations: ['department'],
+        });
+
+        const isNextUserSameDepartment =
+            currentUserEntity?.departmentId !== null &&
+            nextUserEntity?.departmentId !== null &&
+            currentUserEntity.departmentId === nextUserEntity.departmentId;
+
+        const departmentText = isNextUserSameDepartment ? 'colaborador' : 'setor';
+
         const pendingStatus = await this.ticketStatusRepository.findOne({
             where: { key: TicketStatus.Pending, tenantId: accessProfile.tenantId },
         });
@@ -2441,6 +2632,18 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 code: 'status-not-found',
                 message: `Status '${TicketStatus.Pending}' not found.`,
             });
+        }
+
+        const fromStatus = ticket.ticketStatus?.key || TicketStatus.InProgress;
+        let timeSecondsInLastStatus = null;
+
+        const lastStatusUpdate = await this.findLastStatusUpdate(ticket.id, fromStatus);
+
+        if (lastStatusUpdate) {
+            timeSecondsInLastStatus = this.calculateTimeInSeconds(
+                lastStatusUpdate.createdAt,
+                new Date(),
+            );
         }
 
         await this.repository.update(ticket.id, {
@@ -2456,7 +2659,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.AssigneeChange,
-            description: `<p><span>user</span> enviou esta tarefa para o próximo setor.</p>`,
+            fromStatus,
+            toStatus: TicketStatus.Pending,
+            timeSecondsInLastStatus,
+            fromUserId: ticket.currentTargetUserId,
+            toUserId: nextUser.userId,
+            description: `<p><span>user</span> enviou esta tarefa para o próximo ${departmentText}.</p>`,
         });
 
         await this.notificationRepository.save({
@@ -2475,7 +2683,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 await this.notificationRepository.save({
                     tenantId: accessProfile.tenantId,
                     type: NotificationType.TicketUpdate,
-                    message: `<p><span>user</span> enviou a tarefa <span>resource</span> para o próximo setor.</p>`,
+                    message: `<p><span>user</span> enviou a tarefa <span>resource</span> para o próximo ${departmentText}.</p>`,
                     createdById: accessProfile.userId,
                     updatedById: accessProfile.userId,
                     targetUserId: targetUser.userId,
@@ -2494,7 +2702,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         if (currentUser && nextUserDetails) {
-            const message = `<span style="font-weight: 600;">${currentUser.firstName} ${currentUser.lastName}</span> enviou a tarefa <span style="font-weight: 600;">${ticket.customId}</span> para o próximo setor.`;
+            const message = `<span style="font-weight: 600;">${currentUser.firstName} ${currentUser.lastName}</span> enviou a tarefa <span style="font-weight: 600;">${ticket.customId}</span> para o próximo ${departmentText}.`;
 
             await this.sendEmailWithPermissionCheck(
                 accessProfile.tenantId,
@@ -2508,7 +2716,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 if (targetUser.userId !== nextUser.userId) {
                     await this.sendEmailWithPermissionCheck(
                         accessProfile.tenantId,
-                        `A tarefa ${ticket.customId} foi enviada para o próximo setor.`,
+                        `A tarefa ${ticket.customId} foi enviada para o próximo ${departmentText}.`,
                         message,
                         targetUser.user.email,
                         ticket.customId,
@@ -2561,6 +2769,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.Update,
+            fromStatus: ticket.ticketStatus?.key || null,
+            toStatus: ticket.ticketStatus?.key || null,
+            fromUserId: ticket.currentTargetUser.id,
+            toUserId: ticket.currentTargetUser.id,
             description: `<p><span>user</span> definiu ${newReviewer.firstName} ${newReviewer.lastName} como revisor desta tarefa.</p>`,
         });
 
@@ -2676,6 +2888,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 fromStatus: fromStatus?.key || '',
                 toStatus: action.toStatus?.key || '',
                 timeSecondsInLastStatus,
+                fromUserId: ticket.currentTargetUserId || null,
+                toUserId: ticket.currentTargetUserId || null,
                 description: `<p><span>user</span> executou a ação "${action.title}".</p>`,
             });
 
