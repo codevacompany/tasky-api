@@ -1293,49 +1293,27 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     );
                 }
 
-                const targetUsers = await this.ticketTargetUserRepository.find({
-                    where: { ticketId: ticket.id, tenantId: accessProfile.tenantId },
-                    relations: ['user'],
-                });
-
-                const notifications = targetUsers.map((ticketTargetUser) =>
-                    this.notificationRepository.save({
-                        tenantId: accessProfile.tenantId,
-                        type: NotificationType.StatusUpdate,
-                        message:
-                            '<p><span>user</span> iniciou a verificação da tarefa <span>resource</span>.</p>',
-                        createdById: ticket.reviewer.id,
-                        updatedById: ticket.reviewer.id,
-                        targetUserId: ticketTargetUser.userId,
-                        resourceId: ticket.id,
-                        resourceCustomId: ticket.customId,
-                    }),
-                );
-
                 const fromDepartmentId = await this.getDepartmentIdFromUserId(
                     ticket.currentTargetUser.id,
                     accessProfile.tenantId,
                 );
 
-                await Promise.all([
-                    this.ticketUpdateRepository.save({
-                        tenantId: accessProfile.tenantId,
-                        ticketId: ticket.id,
-                        ticketCustomId: ticket.customId,
-                        performedById: ticket.reviewer.id,
-                        createdById: ticket.reviewer.id,
-                        updatedById: ticket.reviewer.id,
-                        action: TicketActionType.StatusUpdate,
-                        fromStatus: TicketStatus.AwaitingVerification,
-                        toStatus: TicketStatus.UnderVerification,
-                        timeSecondsInLastStatus,
-                        fromUserId: ticket.currentTargetUser.id,
-                        toUserId: ticket.currentTargetUser.id,
-                        fromDepartmentId,
-                        description: '<p><span>user</span> iniciou a verificação da tarefa.</p>',
-                    }),
-                    ...notifications,
-                ]);
+                await this.ticketUpdateRepository.save({
+                    tenantId: accessProfile.tenantId,
+                    ticketId: ticket.id,
+                    ticketCustomId: ticket.customId,
+                    performedById: ticket.reviewer.id,
+                    createdById: ticket.reviewer.id,
+                    updatedById: ticket.reviewer.id,
+                    action: TicketActionType.StatusUpdate,
+                    fromStatus: TicketStatus.AwaitingVerification,
+                    toStatus: TicketStatus.UnderVerification,
+                    timeSecondsInLastStatus,
+                    fromUserId: ticket.currentTargetUser.id,
+                    toUserId: ticket.currentTargetUser.id,
+                    fromDepartmentId,
+                    description: '<p><span>user</span> iniciou a verificação da tarefa.</p>',
+                });
             } else if (
                 ticketUpdate.status === TicketStatus.InProgress &&
                 currentStatus === TicketStatus.Returned
@@ -1375,17 +1353,6 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         toUserId: ticket.currentTargetUser.id,
                         fromDepartmentId,
                         description: '<p><span>user</span> iniciou a correção da tarefa.</p>',
-                    }),
-                    this.notificationRepository.save({
-                        tenantId: accessProfile.tenantId,
-                        type: NotificationType.StatusUpdate,
-                        message:
-                            '<p><span>user</span> iniciou a correção da tarefa <span>resource</span>.</p>',
-                        createdById: ticket.currentTargetUser.id,
-                        updatedById: ticket.currentTargetUser.id,
-                        targetUserId: ticket.reviewer.id,
-                        resourceId: ticket.id,
-                        resourceCustomId: ticket.customId,
                     }),
                 ]);
             }

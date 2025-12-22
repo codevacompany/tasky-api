@@ -93,8 +93,9 @@ export class StatsController {
     async getDepartmentStats(
         @GetAccessProfile() profile: AccessProfile,
         @Query('period') period: StatsPeriod = StatsPeriod.ALL,
+        @Query('sortBy') sortBy: string = 'efficiency',
     ): Promise<DepartmentStatsDto[]> {
-        return this.ticketStatsService.getDepartmentStats(profile, period);
+        return this.ticketStatsService.getDepartmentStats(profile, period, sortBy);
     }
 
     @Get('resolution-time')
@@ -119,6 +120,7 @@ export class StatsController {
         @Query('limit') limit: number = 5,
         @Query('all') all?: string,
         @Query('sort') sort: string = 'top',
+        @Query('sortBy') sortBy: string = 'efficiency',
         @Query('period') period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<UserRankingResponseDto> {
         const returnAll = all === 'true' || all === '1';
@@ -128,6 +130,7 @@ export class StatsController {
             returnAll,
             sort,
             period,
+            sortBy,
         );
     }
 }

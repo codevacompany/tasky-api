@@ -8,6 +8,7 @@ export class DepartmentStatsDto {
     averageTotalTimeSeconds: number;
     resolutionRate: number;
     efficiencyScore: number;
+    overdueRate: number; // Percentage of completed tickets that were overdue (completedAt > dueAt)
     userCount: number;
 }
 

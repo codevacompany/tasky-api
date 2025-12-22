@@ -10,6 +10,7 @@ export class UserRankingItemDto {
     efficiencyScore: number; // Wilson Score for ranking
     averageAcceptanceTimeSeconds: number;
     averageResolutionTimeSeconds: number;
+    overdueRate: number; // Percentage of completed tickets that were overdue (completedAt > dueAt)
     avatarUrl?: string;
     isActive: boolean;
 }
