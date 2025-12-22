@@ -319,6 +319,7 @@ export class TicketStatsService {
     async getDepartmentStats(
         accessProfile: AccessProfile,
         period: StatsPeriod = StatsPeriod.ALL,
+        sortBy: string = 'efficiency',
     ): Promise<DepartmentStatsDto[]> {
         const { dateFilter, startDate } = this.getPeriodFilter(period);
 
@@ -343,12 +344,14 @@ export class TicketStatsService {
         }
 
         // Filter out canceled tickets and only include finished tasks (Completed or Rejected)
+        const completedTicketsMap: Map<number, { completedAt: Date | null; dueAt: Date | null }> =
+            new Map();
         if (filteredItems.length > 0) {
             const ticketIds = filteredItems.map((stat) => stat.ticketId);
             const tickets = await this.ticketRepository.find({
                 where: { id: In(ticketIds) },
                 relations: ['ticketStatus'],
-                select: ['id', 'ticketStatus'],
+                select: ['id', 'ticketStatus', 'completedAt', 'dueAt'],
             });
 
             // Only include tickets that are Completed or Rejected (finished tasks)
@@ -362,6 +365,16 @@ export class TicketStatsService {
                     )
                     .map((ticket) => ticket.id),
             );
+
+            // Store completed tickets with their dates for overdue calculation
+            tickets
+                .filter((ticket) => finishedTicketIds.has(ticket.id))
+                .forEach((ticket) => {
+                    completedTicketsMap.set(ticket.id, {
+                        completedAt: ticket.completedAt,
+                        dueAt: ticket.dueAt,
+                    });
+                });
 
             filteredItems = filteredItems.filter((stat) => finishedTicketIds.has(stat.ticketId));
         }
@@ -379,6 +392,20 @@ export class TicketStatsService {
             supervisorDepartmentId !== null
                 ? departments.items.filter((dept) => dept.id === supervisorDepartmentId)
                 : departments.items;
+
+        // Create a map to track which departments have completed tickets with dueAt
+        const departmentsWithCompletedTicketsWithDueAt = new Set<number>();
+        for (const [ticketId, ticketInfo] of completedTicketsMap.entries()) {
+            if (ticketInfo.completedAt && ticketInfo.dueAt) {
+                // Find which department(s) this ticket belongs to
+                const ticketStat = filteredItems.find((stat) => stat.ticketId === ticketId);
+                if (ticketStat && ticketStat.departmentIds) {
+                    ticketStat.departmentIds.forEach((deptId) => {
+                        departmentsWithCompletedTicketsWithDueAt.add(deptId);
+                    });
+                }
+            }
+        }
 
         return Promise.all(
             departmentsToProcess.map(async (department) => {
@@ -503,6 +530,28 @@ export class TicketStatsService {
                     totalDeptTickets,
                 );
 
+                // Calculate overdue rate for this department
+                let overdueRate = 0;
+                const departmentCompletedTickets = departmentTickets.filter((stat) => {
+                    const ticketInfo = completedTicketsMap.get(stat.ticketId);
+                    return ticketInfo && ticketInfo.completedAt && ticketInfo.dueAt;
+                });
+
+                if (departmentCompletedTickets.length > 0) {
+                    const overdueCount = departmentCompletedTickets.filter((stat) => {
+                        const ticketInfo = completedTicketsMap.get(stat.ticketId);
+                        return (
+                            ticketInfo &&
+                            ticketInfo.completedAt &&
+                            ticketInfo.dueAt &&
+                            ticketInfo.completedAt > ticketInfo.dueAt
+                        );
+                    }).length;
+                    overdueRate = parseFloat(
+                        ((overdueCount / departmentCompletedTickets.length) * 100).toFixed(2),
+                    );
+                }
+
                 return {
                     departmentId: department.id,
                     departmentName: department.name,
@@ -513,10 +562,38 @@ export class TicketStatsService {
                     averageTotalTimeSeconds: avgDeptTotalTimeSeconds,
                     resolutionRate: parseFloat(deptResolutionRate.toFixed(2)),
                     efficiencyScore,
+                    overdueRate,
                     userCount,
                 };
             }),
-        );
+        ).then((departmentStats) => {
+            // Filter departments based on sortBy parameter
+            const filteredStats = departmentStats.filter((dept) => {
+                // When sorting by resolution time, exclude departments with 0 seconds
+                if (sortBy === 'resolution_time') {
+                    return dept.averageResolutionTimeSeconds > 0;
+                }
+                // When sorting by overdue rate, exclude departments with no completed tickets with dueAt
+                if (sortBy === 'overdue_rate') {
+                    return departmentsWithCompletedTicketsWithDueAt.has(dept.departmentId);
+                }
+                return true;
+            });
+
+            // Sort departments based on sortBy parameter
+            return filteredStats.sort((a, b) => {
+                if (sortBy === 'resolution_time') {
+                    // Sort by resolution time (lower is better)
+                    return a.averageResolutionTimeSeconds - b.averageResolutionTimeSeconds;
+                } else if (sortBy === 'overdue_rate') {
+                    // Sort by overdue rate (lower is better - fewer overdue tickets)
+                    return a.overdueRate - b.overdueRate;
+                } else {
+                    // Default: sort by efficiency score (higher is better)
+                    return b.efficiencyScore - a.efficiencyScore;
+                }
+            });
+        });
     }
 
     async getTicketTrends(accessProfile: AccessProfile): Promise<TicketTrendsResponseDto> {
@@ -1640,6 +1717,7 @@ export class TicketStatsService {
         returnAll: boolean = false,
         sort: string = 'top',
         period: StatsPeriod = StatsPeriod.TRIMESTRAL,
+        sortBy: string = 'efficiency',
     ): Promise<UserRankingResponseDto> {
         const { dateFilter } = this.getPeriodFilter(period);
 
@@ -1665,12 +1743,14 @@ export class TicketStatsService {
         }
 
         // Filter out canceled tickets and only include finished tasks (Completed or Rejected)
+        const completedTicketsMap: Map<number, { completedAt: Date | null; dueAt: Date | null }> =
+            new Map();
         if (filteredTicketStats.length > 0) {
             const ticketIds = filteredTicketStats.map((stat) => stat.ticketId);
             const tickets = await this.ticketRepository.find({
                 where: { id: In(ticketIds) },
                 relations: ['ticketStatus'],
-                select: ['id', 'ticketStatus'],
+                select: ['id', 'ticketStatus', 'completedAt', 'dueAt'],
             });
 
             // Only include tickets that are Completed or Rejected (finished tasks)
@@ -1684,6 +1764,16 @@ export class TicketStatsService {
                     )
                     .map((ticket) => ticket.id),
             );
+
+            // Store completed tickets with their dates for overdue calculation
+            tickets
+                .filter((ticket) => finishedTicketIds.has(ticket.id))
+                .forEach((ticket) => {
+                    completedTicketsMap.set(ticket.id, {
+                        completedAt: ticket.completedAt,
+                        dueAt: ticket.dueAt,
+                    });
+                });
 
             filteredTicketStats = filteredTicketStats.filter((stat) =>
                 finishedTicketIds.has(stat.ticketId),
@@ -1725,6 +1815,7 @@ export class TicketStatsService {
                 efficiencyScore: 0,
                 averageAcceptanceTimeSeconds: 0,
                 averageResolutionTimeSeconds: 0,
+                overdueRate: 0,
                 avatarUrl: null,
                 isActive: user.isActive,
             });
@@ -1857,6 +1948,37 @@ export class TicketStatsService {
             }
         }
 
+        // Calculate overdue rate for each user
+        const completedTicketsByUser = new Map<number, number>();
+        const overdueTicketsByUser = new Map<number, number>();
+
+        const ticketsWithDueAt = await this.ticketRepository.find({
+            where: {
+                id: In(filteredTicketStats.map((stat) => stat.ticketId)),
+                completedAt: Not(IsNull()),
+                dueAt: Not(IsNull()),
+            },
+            select: ['id', 'completedAt', 'dueAt', 'currentTargetUserId'],
+            relations: ['targetUsers'],
+        });
+
+        for (const ticket of ticketsWithDueAt) {
+            const involvedUserIds = new Set<number>();
+            if (ticket.currentTargetUserId) {
+                involvedUserIds.add(ticket.currentTargetUserId);
+            }
+            if (ticket.targetUsers) {
+                ticket.targetUsers.forEach((ttu) => involvedUserIds.add(ttu.userId));
+            }
+
+            for (const userId of involvedUserIds) {
+                completedTicketsByUser.set(userId, (completedTicketsByUser.get(userId) || 0) + 1);
+                if (ticket.completedAt && ticket.dueAt && ticket.completedAt > ticket.dueAt) {
+                    overdueTicketsByUser.set(userId, (overdueTicketsByUser.get(userId) || 0) + 1);
+                }
+            }
+        }
+
         // Calculate resolution rate and Wilson Score (efficiency)
         const rankedUsers = Array.from(userStatsMap.values())
             .filter((user) => user.isActive)
@@ -1869,15 +1991,57 @@ export class TicketStatsService {
                     user.resolvedTickets,
                     user.totalTickets,
                 );
+
+                // Calculate overdue rate
+                const totalCompletedWithDueAt = completedTicketsByUser.get(user.userId) || 0;
+                const totalOverdue = overdueTicketsByUser.get(user.userId) || 0;
+                user.overdueRate =
+                    totalCompletedWithDueAt > 0
+                        ? parseFloat(((totalOverdue / totalCompletedWithDueAt) * 100).toFixed(2))
+                        : 0;
+
                 return user;
             })
+            .filter((user) => {
+                // When sorting by resolution time, exclude users with 0 seconds
+                if (sortBy === 'resolution_time') {
+                    return user.averageResolutionTimeSeconds > 0;
+                }
+                // When sorting by overdue rate, exclude users with no completed tickets with dueAt
+                if (sortBy === 'overdue_rate') {
+                    const completedCount = completedTicketsByUser.get(user.userId) || 0;
+                    return completedCount > 0;
+                }
+                return true;
+            })
             .sort((a, b) => {
-                if (sort === 'bottom') {
-                    // Sort by efficiency score (ascending) for worst performers
-                    return a.efficiencyScore - b.efficiencyScore;
+                if (sortBy === 'resolution_time') {
+                    // Sort by resolution time (lower is better)
+                    if (sort === 'bottom') {
+                        // Worst performers: highest resolution time first
+                        return b.averageResolutionTimeSeconds - a.averageResolutionTimeSeconds;
+                    } else {
+                        // Top performers: lowest resolution time first
+                        return a.averageResolutionTimeSeconds - b.averageResolutionTimeSeconds;
+                    }
+                } else if (sortBy === 'overdue_rate') {
+                    // Sort by overdue rate (lower is better - fewer overdue tickets)
+                    if (sort === 'bottom') {
+                        // Worst performers: highest overdue rate first
+                        return b.overdueRate - a.overdueRate;
+                    } else {
+                        // Top performers: lowest overdue rate first
+                        return a.overdueRate - b.overdueRate;
+                    }
                 } else {
-                    // Sort by efficiency score (descending) for top performers
-                    return b.efficiencyScore - a.efficiencyScore;
+                    // Default: sort by efficiency score
+                    if (sort === 'bottom') {
+                        // Sort by efficiency score (ascending) for worst performers
+                        return a.efficiencyScore - b.efficiencyScore;
+                    } else {
+                        // Sort by efficiency score (descending) for top performers
+                        return b.efficiencyScore - a.efficiencyScore;
+                    }
                 }
             })
             .slice(0, returnAll ? undefined : limit);

@@ -92,9 +92,30 @@ export class EncryptionService {
             }
 
             const [ivHex, tagHex, encrypted] = parts;
+
+            // Validate IV format: must be hex and correct length (16 bytes = 32 hex chars)
+            if (!/^[0-9a-f]+$/i.test(ivHex) || ivHex.length !== 32) {
+                return encryptedValue;
+            }
+
+            // Validate tag format: must be hex
+            if (!/^[0-9a-f]+$/i.test(tagHex)) {
+                return encryptedValue;
+            }
+
+            // Validate encrypted data format: must be hex
+            if (!/^[0-9a-f]+$/i.test(encrypted)) {
+                return encryptedValue;
+            }
+
             const key = this.getEncryptionKey();
             const iv = Buffer.from(ivHex, 'hex');
             const tag = Buffer.from(tagHex, 'hex');
+
+            // Validate IV length matches expected size
+            if (iv.length !== this.ivLength) {
+                return encryptedValue;
+            }
 
             const decipher = crypto.createDecipheriv(
                 this.algorithm,
@@ -108,7 +129,7 @@ export class EncryptionService {
 
             return decrypted;
         } catch (error) {
-            console.error(`Decryption error: ${error.message}`);
+            // Silently return original value for backward compatibility with unencrypted data
             return encryptedValue;
         }
     }
