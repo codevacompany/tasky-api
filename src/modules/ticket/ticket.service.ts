@@ -1884,7 +1884,14 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async addFiles(accessProfile: AccessProfile, customId: string, files: string[]) {
         const ticket = await this.findOne(accessProfile, {
             where: { customId },
-            relations: ['files', 'cancellationReason', 'disapprovalReason', 'correctionRequests'],
+            relations: [
+                'files',
+                'cancellationReason',
+                'disapprovalReason',
+                'correctionRequests',
+                'currentTargetUser',
+                'ticketStatus',
+            ],
         });
 
         if (!ticket) {
