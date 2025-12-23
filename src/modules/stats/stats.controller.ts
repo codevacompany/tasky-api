@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
 import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
+import { PaginatedResponse } from '../../shared/types/http';
 import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
 import {
     StatusDurationResponseDto,
@@ -12,7 +13,7 @@ import { TicketPriorityCountResponseDto } from './dtos/ticket-priority-count.dto
 import { DepartmentStatsDto, TicketStatsResponseDto } from './dtos/ticket-stats-response.dto';
 import { TicketStatusCountResponseDto } from './dtos/ticket-status-count.dto';
 import { TicketTrendsResponseDto } from './dtos/ticket-trends.dto';
-import { UserRankingResponseDto } from './dtos/user-ranking.dto';
+import { UserRankingResponseDto, UserRankingItemDto } from './dtos/user-ranking.dto';
 import { PerformanceTrendsResponseDto } from './dtos/performance-trends.dto';
 import { TicketStatsService } from './ticket-stats.service';
 import { TicketStatus } from '../ticket/entities/ticket.entity';
@@ -131,6 +132,46 @@ export class StatsController {
             sort,
             period,
             sortBy,
+        );
+    }
+    @Get('user-stats-list')
+    async getUserStatsList(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+        @Query('search') search: string = '',
+        @Query('sortBy') sortBy: string = 'efficiency',
+        @Query('sortDirection') sortDirection: 'asc' | 'desc' = 'desc',
+        @Query('period') period: StatsPeriod = StatsPeriod.TRIMESTRAL,
+    ): Promise<PaginatedResponse<UserRankingItemDto>> {
+        return this.ticketStatsService.getUserStatsList(
+            accessProfile,
+            page,
+            limit,
+            search,
+            period,
+            sortBy,
+            sortDirection,
+        );
+    }
+    @Get('department-stats-list')
+    async getDepartmentStatsList(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+        @Query('search') search: string = '',
+        @Query('sortBy') sortBy: string = 'efficiencyScore',
+        @Query('sortDirection') sortDirection: 'asc' | 'desc' = 'desc',
+        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
+    ): Promise<PaginatedResponse<DepartmentStatsDto>> {
+        return this.ticketStatsService.getDepartmentStatsList(
+            accessProfile,
+            page,
+            limit,
+            search,
+            period,
+            sortBy,
+            sortDirection,
         );
     }
 }

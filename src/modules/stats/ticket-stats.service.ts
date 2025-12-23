@@ -17,7 +17,7 @@ import {
 } from 'date-fns';
 import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
-import { QueryOptions } from '../../shared/types/http';
+import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { BusinessHoursService } from '../../shared/services/business-hours.service';
 import { DepartmentService } from '../department/department.service';
 import { User } from '../user/entities/user.entity';
@@ -367,13 +367,33 @@ export class TicketStatsService {
             );
 
             // Store completed tickets with their dates for overdue calculation
+            // NEW LOGIC: We need to check the FIRST time the ticket went to 'aguardando_verificação'
+            // If that time > dueAt, then it is overdue.
+            // We still keep completedTicketsMap structure but we will enrich it or fetch updates separately.
+            
+            // Let's fetch the first 'aguardando_verificação' update for these tickets
+            const firstVerificationUpdates = await this.ticketUpdateRepository
+                .createQueryBuilder('update')
+                .select('update.ticketId', 'ticketId')
+                .addSelect('MIN(update.createdAt)', 'firstVerificationAt')
+                .where('update.ticketId IN (:...ticketIds)', { ticketIds: Array.from(finishedTicketIds) })
+                .andWhere('update.toStatus = :status', { status: TicketStatus.AwaitingVerification })
+                .groupBy('update.ticketId')
+                .getRawMany();
+            
+            const verificationMap = new Map<number, Date>();
+            firstVerificationUpdates.forEach((update) => {
+                verificationMap.set(update.ticketId, new Date(update.firstVerificationAt));
+            });
+
             tickets
                 .filter((ticket) => finishedTicketIds.has(ticket.id))
                 .forEach((ticket) => {
                     completedTicketsMap.set(ticket.id, {
                         completedAt: ticket.completedAt,
                         dueAt: ticket.dueAt,
-                    });
+                        firstVerificationAt: verificationMap.get(ticket.id) || null,
+                    } as any);
                 });
 
             filteredItems = filteredItems.filter((stat) => finishedTicketIds.has(stat.ticketId));
@@ -533,18 +553,19 @@ export class TicketStatsService {
                 // Calculate overdue rate for this department
                 let overdueRate = 0;
                 const departmentCompletedTickets = departmentTickets.filter((stat) => {
-                    const ticketInfo = completedTicketsMap.get(stat.ticketId);
-                    return ticketInfo && ticketInfo.completedAt && ticketInfo.dueAt;
+                    const ticketInfo: any = completedTicketsMap.get(stat.ticketId);
+
+                    return ticketInfo && ticketInfo.dueAt && ticketInfo.firstVerificationAt;
                 });
 
                 if (departmentCompletedTickets.length > 0) {
                     const overdueCount = departmentCompletedTickets.filter((stat) => {
-                        const ticketInfo = completedTicketsMap.get(stat.ticketId);
+                        const ticketInfo: any = completedTicketsMap.get(stat.ticketId);
                         return (
                             ticketInfo &&
-                            ticketInfo.completedAt &&
+                            ticketInfo.firstVerificationAt &&
                             ticketInfo.dueAt &&
-                            ticketInfo.completedAt > ticketInfo.dueAt
+                            ticketInfo.firstVerificationAt > ticketInfo.dueAt
                         );
                     }).length;
                     overdueRate = parseFloat(
@@ -1962,6 +1983,25 @@ export class TicketStatsService {
             relations: ['targetUsers'],
         });
 
+        // Get first verification updates for these tickets
+        const ticketIdsWithDueAt = ticketsWithDueAt.map(t => t.id);
+        const verificationMap = new Map<number, Date>();
+        
+        if (ticketIdsWithDueAt.length > 0) {
+            const firstVerificationUpdates = await this.ticketUpdateRepository
+                .createQueryBuilder('update')
+                .select('update.ticketId', 'ticketId')
+                .addSelect('MIN(update.createdAt)', 'firstVerificationAt')
+                .where('update.ticketId IN (:...ticketIds)', { ticketIds: ticketIdsWithDueAt })
+                .andWhere('update.toStatus = :status', { status: TicketStatus.AwaitingVerification })
+                .groupBy('update.ticketId')
+                .getRawMany();
+            
+            firstVerificationUpdates.forEach((update) => {
+                verificationMap.set(update.ticketId, new Date(update.firstVerificationAt));
+            });
+        }
+
         for (const ticket of ticketsWithDueAt) {
             const involvedUserIds = new Set<number>();
             if (ticket.currentTargetUserId) {
@@ -1970,11 +2010,18 @@ export class TicketStatsService {
             if (ticket.targetUsers) {
                 ticket.targetUsers.forEach((ttu) => involvedUserIds.add(ttu.userId));
             }
+            
+            const firstVerificationAt = verificationMap.get(ticket.id);
+            const isOverdue = firstVerificationAt && ticket.dueAt && firstVerificationAt > ticket.dueAt;
+            
+            const hasVerification = !!firstVerificationAt;
 
             for (const userId of involvedUserIds) {
-                completedTicketsByUser.set(userId, (completedTicketsByUser.get(userId) || 0) + 1);
-                if (ticket.completedAt && ticket.dueAt && ticket.completedAt > ticket.dueAt) {
-                    overdueTicketsByUser.set(userId, (overdueTicketsByUser.get(userId) || 0) + 1);
+                if (hasVerification) {
+                   completedTicketsByUser.set(userId, (completedTicketsByUser.get(userId) || 0) + 1);
+                   if (isOverdue) {
+                       overdueTicketsByUser.set(userId, (overdueTicketsByUser.get(userId) || 0) + 1);
+                   }
                 }
             }
         }
@@ -2130,5 +2177,127 @@ export class TicketStatsService {
                 };
             }),
         );
+    }
+
+    async getUserStatsList(
+        accessProfile: AccessProfile,
+        page: number = 1,
+        limit: number = 10,
+        search: string = '',
+        period: StatsPeriod = StatsPeriod.TRIMESTRAL,
+        sortBy: string = 'efficiency',
+        sortDirection: 'asc' | 'desc' = 'desc',
+    ): Promise<PaginatedResponse<UserRankingItemDto>> {
+        const allStatsResponse = await this.getUserRanking(
+            accessProfile,
+            undefined, // No limit
+            true, // Return all
+            'top', // Default sort
+            period,
+            'efficiency', // Default sort
+        );
+
+        let users = allStatsResponse.users;
+
+        // 1. Filter by search
+        if (search) {
+            const searchLower = search.toLowerCase();
+            users = users.filter(
+                (u) =>
+                    u.firstName.toLowerCase().includes(searchLower) ||
+                    u.lastName.toLowerCase().includes(searchLower) ||
+                    u.email.toLowerCase().includes(searchLower) ||
+                    u.departmentName.toLowerCase().includes(searchLower),
+            );
+        }
+
+        // 2. Sort
+        if (sortBy) {
+            users.sort((a, b) => {
+                const aValue = (a as any)[sortBy];
+                const bValue = (b as any)[sortBy];
+
+                if (aValue === bValue) return 0;
+                if (aValue === null || aValue === undefined) return 1;
+                if (bValue === null || bValue === undefined) return -1;
+
+                const comparison = aValue < bValue ? -1 : 1;
+                return sortDirection === 'asc' ? comparison : -comparison;
+            });
+        }
+
+        // 3. Paginate
+        const total = users.length;
+        const totalPages = Math.ceil(total / limit);
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedUsers = users.slice(startIndex, endIndex);
+
+        return {
+            items: paginatedUsers,
+            total,
+            page,
+            limit,
+            totalPages,
+        };
+    }
+    async getDepartmentStatsList(
+        accessProfile: AccessProfile,
+        page: number = 1,
+        limit: number = 10,
+        search: string = '',
+        period: StatsPeriod = StatsPeriod.ALL,
+        sortBy: string = 'efficiencyScore',
+        sortDirection: 'asc' | 'desc' = 'desc',
+    ): Promise<PaginatedResponse<DepartmentStatsDto>> {
+        let departments = await this.getDepartmentStats(
+            accessProfile,
+            period,
+            'efficiency',
+        );
+
+        // 1. Filter by search
+        if (search) {
+            const searchLower = search.toLowerCase();
+            departments = departments.filter((d) =>
+                d.departmentName.toLowerCase().includes(searchLower),
+            );
+        }
+
+        // 2. Sort
+        if (sortBy) {
+            departments.sort((a, b) => {
+                const aValue = (a as any)[sortBy];
+                const bValue = (b as any)[sortBy];
+
+                if (aValue === bValue) return 0;
+                if (aValue === null || aValue === undefined) return 1;
+                if (bValue === null || bValue === undefined) return -1;
+
+                if (typeof aValue === 'string' && typeof bValue === 'string') {
+                    return sortDirection === 'asc'
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
+                }
+
+                const comparison = aValue < bValue ? -1 : 1;
+                return sortDirection === 'asc' ? comparison : -comparison;
+            });
+        }
+
+        // 3. Paginate
+        const total = departments.length;
+        const totalPages = Math.ceil(total / limit);
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedDepartments = departments.slice(startIndex, endIndex);
+
+        return {
+            items: paginatedDepartments,
+            total,
+            page,
+            limit,
+            totalPages,
+        };
     }
 }

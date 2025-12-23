@@ -45,7 +45,7 @@ export class StripeService {
     constructor(private readonly configService: ConfigService) {
         const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
 
-        if (!secretKey) {
+        if (process.env.APP_ENV !== 'dev' && !secretKey) {
             throw new Error('Missing STRIPE_SECRET_KEY env variable');
         }
 
