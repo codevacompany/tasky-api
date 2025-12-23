@@ -17,7 +17,7 @@ import {
 } from 'date-fns';
 import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
-import { QueryOptions } from '../../shared/types/http';
+import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { BusinessHoursService } from '../../shared/services/business-hours.service';
 import { DepartmentService } from '../department/department.service';
 import { User } from '../user/entities/user.entity';
@@ -2177,5 +2177,127 @@ export class TicketStatsService {
                 };
             }),
         );
+    }
+
+    async getUserStatsList(
+        accessProfile: AccessProfile,
+        page: number = 1,
+        limit: number = 10,
+        search: string = '',
+        period: StatsPeriod = StatsPeriod.TRIMESTRAL,
+        sortBy: string = 'efficiency',
+        sortDirection: 'asc' | 'desc' = 'desc',
+    ): Promise<PaginatedResponse<UserRankingItemDto>> {
+        const allStatsResponse = await this.getUserRanking(
+            accessProfile,
+            undefined, // No limit
+            true, // Return all
+            'top', // Default sort
+            period,
+            'efficiency', // Default sort
+        );
+
+        let users = allStatsResponse.users;
+
+        // 1. Filter by search
+        if (search) {
+            const searchLower = search.toLowerCase();
+            users = users.filter(
+                (u) =>
+                    u.firstName.toLowerCase().includes(searchLower) ||
+                    u.lastName.toLowerCase().includes(searchLower) ||
+                    u.email.toLowerCase().includes(searchLower) ||
+                    u.departmentName.toLowerCase().includes(searchLower),
+            );
+        }
+
+        // 2. Sort
+        if (sortBy) {
+            users.sort((a, b) => {
+                const aValue = (a as any)[sortBy];
+                const bValue = (b as any)[sortBy];
+
+                if (aValue === bValue) return 0;
+                if (aValue === null || aValue === undefined) return 1;
+                if (bValue === null || bValue === undefined) return -1;
+
+                const comparison = aValue < bValue ? -1 : 1;
+                return sortDirection === 'asc' ? comparison : -comparison;
+            });
+        }
+
+        // 3. Paginate
+        const total = users.length;
+        const totalPages = Math.ceil(total / limit);
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedUsers = users.slice(startIndex, endIndex);
+
+        return {
+            items: paginatedUsers,
+            total,
+            page,
+            limit,
+            totalPages,
+        };
+    }
+    async getDepartmentStatsList(
+        accessProfile: AccessProfile,
+        page: number = 1,
+        limit: number = 10,
+        search: string = '',
+        period: StatsPeriod = StatsPeriod.ALL,
+        sortBy: string = 'efficiencyScore',
+        sortDirection: 'asc' | 'desc' = 'desc',
+    ): Promise<PaginatedResponse<DepartmentStatsDto>> {
+        let departments = await this.getDepartmentStats(
+            accessProfile,
+            period,
+            'efficiency',
+        );
+
+        // 1. Filter by search
+        if (search) {
+            const searchLower = search.toLowerCase();
+            departments = departments.filter((d) =>
+                d.departmentName.toLowerCase().includes(searchLower),
+            );
+        }
+
+        // 2. Sort
+        if (sortBy) {
+            departments.sort((a, b) => {
+                const aValue = (a as any)[sortBy];
+                const bValue = (b as any)[sortBy];
+
+                if (aValue === bValue) return 0;
+                if (aValue === null || aValue === undefined) return 1;
+                if (bValue === null || bValue === undefined) return -1;
+
+                if (typeof aValue === 'string' && typeof bValue === 'string') {
+                    return sortDirection === 'asc'
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
+                }
+
+                const comparison = aValue < bValue ? -1 : 1;
+                return sortDirection === 'asc' ? comparison : -comparison;
+            });
+        }
+
+        // 3. Paginate
+        const total = departments.length;
+        const totalPages = Math.ceil(total / limit);
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedDepartments = departments.slice(startIndex, endIndex);
+
+        return {
+            items: paginatedDepartments,
+            total,
+            page,
+            limit,
+            totalPages,
+        };
     }
 }
