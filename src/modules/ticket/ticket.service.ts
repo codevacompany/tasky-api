@@ -46,6 +46,7 @@ import { Repository } from 'typeorm';
 import { StatusAction } from '../status-action/entities/status-action.entity';
 import { TicketStatus as TicketStatusEntity } from '../ticket-status/entities/ticket-status.entity';
 import { DepartmentService } from '../department/department.service';
+import { TicketChecklistItem } from '../ticket-checklist/entities/ticket-checklist-item.entity';
 
 @Injectable()
 export class TicketService extends TenantBoundBaseService<Ticket> {
@@ -71,6 +72,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly statusActionRepository: Repository<StatusAction>,
         @InjectRepository(TicketStatusEntity)
         private readonly ticketStatusRepository: Repository<TicketStatusEntity>,
+        @InjectRepository(TicketChecklistItem)
+        private readonly ticketChecklistItemRepository: Repository<TicketChecklistItem>,
     ) {
         super(ticketRepository);
     }
@@ -863,7 +866,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     }
 
     async create(accessProfile: AccessProfile, ticketDto: CreateTicketDto) {
-        const { files, targetUserIds, ...ticketData } = ticketDto;
+        const {
+            files,
+            targetUserIds,
+            checklistItems: checklistItemsDto,
+            ...ticketData
+        } = ticketDto;
 
         const requester = await this.userRepository.findOne({
             where: { id: ticketDto.requesterId, tenantId: accessProfile.tenantId },
@@ -983,12 +991,25 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     url,
                     name: extractFileName(url),
                     mimeType: extractMimeTypeFromUrl(url),
-                    ticketId: ticket.id,
+                    ticketId: createdTicket.id,
                     createdById: requester.id,
                     updatedById: requester.id,
                 }));
 
                 await manager.save(this.ticketFileRepository.create(ticketFiles));
+            }
+
+            if (checklistItemsDto?.length) {
+                const checklistItems = checklistItemsDto.map((item, index) => ({
+                    ...item,
+                    ticketId: createdTicket.id,
+                    tenantId: accessProfile.tenantId,
+                    createdById: requester.id,
+                    updatedById: requester.id,
+                    order: item.order !== undefined ? item.order : index,
+                }));
+
+                await manager.save(this.ticketChecklistItemRepository.create(checklistItems));
             }
 
             await manager.save(
