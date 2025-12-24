@@ -10,7 +10,10 @@ import {
     IsArray,
     ArrayMaxSize,
     ArrayMinSize,
+    IsNumber,
+    ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TicketPriority } from '../entities/ticket.entity';
 
 export class CreateTicketDto {
@@ -51,4 +54,28 @@ export class CreateTicketDto {
     @IsArray()
     @IsOptional()
     files?: string[];
+
+    @IsArray()
+    @IsOptional()
+    @ValidateNested({ each: true })
+    @Type(() => CreateTicketChecklistItemDto)
+    checklistItems?: CreateTicketChecklistItemDto[];
+}
+
+export class CreateTicketChecklistItemDto {
+    @IsNotEmpty()
+    @IsString()
+    title: string;
+
+    @IsOptional()
+    @IsNumber()
+    assignedToId?: number;
+
+    @IsOptional()
+    @IsDateString()
+    dueDate?: string;
+
+    @IsOptional()
+    @IsNumber()
+    order?: number;
 }

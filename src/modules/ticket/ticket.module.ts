@@ -21,13 +21,14 @@ import { StatusActionModule } from '../status-action/status-action.module';
 import { TicketStatusModule } from '../ticket-status/ticket-status.module';
 import { DepartmentModule } from '../department/department.module';
 import { Ticket } from './entities/ticket.entity';
+import { TicketChecklistItem } from '../ticket-checklist/entities/ticket-checklist-item.entity';
 import { TicketController } from './ticket.controller';
 import { TicketRepository } from './ticket.repository';
 import { TicketService } from './ticket.service';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Ticket]),
+        TypeOrmModule.forFeature([Ticket, TicketChecklistItem]),
         EncryptionModule,
         NotificationModule,
         UserModule,
