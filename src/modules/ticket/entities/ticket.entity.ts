@@ -97,6 +97,9 @@ export class Ticket extends TenantBoundBaseEntity {
     @Column('timestamp', { nullable: true })
     canceledAt: Date | null;
 
+    @Column('timestamp', { nullable: true })
+    rejectedAt: Date | null;
+
     @Column({ nullable: true })
     categoryId: number;
 

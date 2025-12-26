@@ -1026,6 +1026,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     fromUserId: null,
                     toUserId: firstTargetUser.id,
                     fromDepartmentId: null,
+                    toDepartmentId: firstTargetUser.departmentId,
                     description: '<p><span>user</span> criou esta tarefa.</p>',
                 }),
             );
@@ -1126,6 +1127,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromUserId: accessProfile.userId || null,
             toUserId: accessProfile.userId || null,
             fromDepartmentId,
+            toDepartmentId: fromDepartmentId,
             description: '<p><span>user</span> atualizou esta tarefa.</p>',
         });
 
@@ -1214,6 +1216,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     fromUserId: ticket.currentTargetUser.id,
                     toUserId: ticket.currentTargetUser.id,
                     fromDepartmentId,
+                    toDepartmentId: fromDepartmentId,
                     description: '<p><span>user</span> enviou este ticket para verificação.</p>',
                 });
 
@@ -1282,6 +1285,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         fromUserId: ticket.currentTargetUser.id,
                         toUserId: ticket.currentTargetUser.id,
                         fromDepartmentId,
+                        toDepartmentId: fromDepartmentId,
                         description: '<p><span>user</span> cancelou o envio para verificação.</p>',
                     }),
                     this.notificationRepository.save({
@@ -1333,6 +1337,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     fromUserId: ticket.currentTargetUser.id,
                     toUserId: ticket.currentTargetUser.id,
                     fromDepartmentId,
+                    toDepartmentId: fromDepartmentId,
                     description: '<p><span>user</span> iniciou a verificação da tarefa.</p>',
                 });
             } else if (
@@ -1373,6 +1378,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         fromUserId: ticket.currentTargetUser.id,
                         toUserId: ticket.currentTargetUser.id,
                         fromDepartmentId,
+                        toDepartmentId: fromDepartmentId,
                         description: '<p><span>user</span> iniciou a correção da tarefa.</p>',
                     }),
                 ]);
@@ -1468,6 +1474,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromUserId: currentTargetUser.id,
             toUserId: currentTargetUser.id,
             fromDepartmentId,
+            toDepartmentId: fromDepartmentId,
             description: `<p><span>user</span> ${
                 ticketResponse.requester.id === currentTargetUser.id
                     ? 'começou a trabalhar nesta tarefa'
@@ -1561,6 +1568,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromUserId: ticketResponse.currentTargetUser.id,
             toUserId: ticketResponse.currentTargetUser.id,
             fromDepartmentId,
+            toDepartmentId: fromDepartmentId,
             description: '<p><span>user</span> aprovou esta tarefa.</p>',
         });
 
@@ -1622,7 +1630,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         await this.repository.update(ticketResponse.id, {
             statusId: rejectedStatus.id,
-            completedAt: new Date().toISOString(),
+            rejectedAt: new Date().toISOString(),
         });
 
         const lastStatusUpdate = await this.findLastStatusUpdate(
@@ -1657,6 +1665,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromUserId: ticketResponse.currentTargetUser.id,
             toUserId: ticketResponse.currentTargetUser.id,
             fromDepartmentId,
+            toDepartmentId: fromDepartmentId,
             description: `<p><span>user</span> reprovou esta tarefa.</p>`,
         });
 
@@ -1777,6 +1786,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromUserId: ticketResponse.currentTargetUser.id,
             toUserId: ticketResponse.currentTargetUser.id,
             fromDepartmentId,
+            toDepartmentId: fromDepartmentId,
             description: `<p><span>user</span> cancelou esta tarefa.</p>`,
         });
 
@@ -1953,6 +1963,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 fromUserId: ticket.currentTargetUser.id,
                 toUserId: ticket.currentTargetUser.id,
                 fromDepartmentId,
+                toDepartmentId: fromDepartmentId,
                 description: `<p><span>user</span> adicionou ${files.length} arquivo(s) à tarefa.</p>`,
             }),
         );
@@ -2116,6 +2127,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             accessProfile.tenantId,
         );
 
+        const toDepartmentId = await this.getDepartmentIdFromUserId(
+            targetUserId,
+            accessProfile.tenantId,
+        );
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticket.id,
@@ -2128,8 +2144,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             toStatus: TicketStatus.Returned,
             timeSecondsInLastStatus,
             fromUserId: ticket.currentTargetUser.id,
-            toUserId: ticket.currentTargetUser.id,
+            toUserId: targetUserId,
             fromDepartmentId,
+            toDepartmentId,
             description: `<p><span>user</span> devolveu esta tarefa para correção.</p>`,
         });
 
@@ -2263,6 +2280,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             accessProfile.tenantId,
         );
 
+        const toDepartmentId = await this.getDepartmentIdFromUserId(
+            newTargetUserId,
+            accessProfile.tenantId,
+        );
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticket.id,
@@ -2276,6 +2297,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromUserId: targetUserToReplace.userId,
             toUserId: newTargetUserId,
             fromDepartmentId,
+            toDepartmentId,
             description: `<p><span>user</span> substituiu ${targetUserToReplace.user.firstName} ${targetUserToReplace.user.lastName} por ${newTargetUser.firstName} ${newTargetUser.lastName}.</p>`,
         });
 
@@ -2391,7 +2413,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         await this.ticketTargetUserRepository.save(newTargetUserEntity);
 
         // Create ticket update
-        const fromDepartmentId = await this.getDepartmentIdFromUserId(
+        const toDepartmentId = await this.getDepartmentIdFromUserId(
             newTargetUserId,
             accessProfile.tenantId,
         );
@@ -2408,7 +2430,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             toStatus: ticket.ticketStatus?.key,
             fromUserId: null,
             toUserId: newTargetUserId,
-            fromDepartmentId,
+            fromDepartmentId: null,
+            toDepartmentId,
             description: `<p><span>user</span> adicionou ${newTargetUser.firstName} ${newTargetUser.lastName} como responsável.</p>`,
         });
 
@@ -2889,6 +2912,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             fromUserId: ticket.currentTargetUser.id,
             toUserId: ticket.currentTargetUser.id,
             fromDepartmentId,
+            toDepartmentId: fromDepartmentId,
             description: `<p><span>user</span> definiu ${newReviewer.firstName} ${newReviewer.lastName} como revisor desta tarefa.</p>`,
         });
 
@@ -3012,6 +3036,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 fromUserId: ticket.currentTargetUserId || null,
                 toUserId: ticket.currentTargetUserId || null,
                 fromDepartmentId,
+                toDepartmentId: fromDepartmentId,
                 description: `<p><span>user</span> executou a ação "${action.title}".</p>`,
             });
 
