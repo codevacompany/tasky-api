@@ -2,6 +2,7 @@ import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { TenantBoundBaseEntity } from '../../../shared/common/tenant-bound.base-entity';
 import { Ticket } from '../../ticket/entities/ticket.entity';
 import { User } from '../../user/entities/user.entity';
+import { Department } from 'src/modules/department/entities/department.entity';
 
 export enum TicketActionType {
     Creation = 'criação',
@@ -73,4 +74,15 @@ export class TicketUpdate extends TenantBoundBaseEntity {
 
     @Column({ nullable: true })
     fromDepartmentId?: number;
+
+    @ManyToOne(() => Department, { nullable: true })
+    @JoinColumn({ name: 'fromDepartmentId' })
+    fromDepartment?: Department;
+
+    @Column({ nullable: true })
+    toDepartmentId?: number;
+
+    @ManyToOne(() => Department, { nullable: true })
+    @JoinColumn({ name: 'toDepartmentId' })
+    toDepartment?: Department;
 }
