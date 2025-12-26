@@ -2789,7 +2789,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         for (const targetUser of targetUsers) {
-            if (targetUser.userId !== nextUser.userId) {
+            if (targetUser.userId !== nextUser.userId && targetUser.userId !== accessProfile.userId) {
                 await this.notificationRepository.save({
                     tenantId: accessProfile.tenantId,
                     type: NotificationType.TicketUpdate,
@@ -2823,7 +2823,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
 
             for (const targetUser of targetUsers) {
-                if (targetUser.userId !== nextUser.userId) {
+                if (targetUser.userId !== nextUser.userId && targetUser.userId !== accessProfile.userId) {
                     await this.sendEmailWithPermissionCheck(
                         accessProfile.tenantId,
                         `A tarefa ${ticket.customId} foi enviada para o próximo ${departmentText}.`,
