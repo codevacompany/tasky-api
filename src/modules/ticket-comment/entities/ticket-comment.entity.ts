@@ -9,7 +9,7 @@ export class TicketComment extends TenantBoundBaseEntity {
     @Column()
     ticketId: number;
 
-    @ManyToOne(() => Ticket, (ticket) => ticket.comments)
+    @ManyToOne(() => Ticket, (ticket) => ticket.comments, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'ticketId' })
     ticket: Ticket;
 

@@ -1,4 +1,19 @@
-import { IsInt, IsNotEmpty, IsString } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class MentionDto {
+    @IsInt()
+    @IsNotEmpty()
+    userId: number;
+
+    @IsInt()
+    @IsNotEmpty()
+    position: number;
+
+    @IsInt()
+    @IsNotEmpty()
+    length: number;
+}
 
 export class CreateTicketCommentDto {
     @IsInt()
@@ -16,4 +31,10 @@ export class CreateTicketCommentDto {
     @IsString()
     @IsNotEmpty()
     content: string;
+
+    @IsArray()
+    @IsOptional()
+    @ValidateNested({ each: true })
+    @Type(() => MentionDto)
+    mentions?: MentionDto[];
 }

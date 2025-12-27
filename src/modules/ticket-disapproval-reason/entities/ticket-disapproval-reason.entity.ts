@@ -24,7 +24,7 @@ export class TicketDisapprovalReason extends TenantBoundBaseEntity {
     @Column()
     ticketId: number;
 
-    @OneToOne(() => Ticket)
+    @OneToOne(() => Ticket, (ticket) => ticket.disapprovalReason, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'ticketId' })
     ticket: Ticket;
 

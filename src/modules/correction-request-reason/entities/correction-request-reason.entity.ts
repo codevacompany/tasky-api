@@ -23,7 +23,7 @@ export class CorrectionRequest extends TenantBoundBaseEntity {
     @Column()
     ticketId: number;
 
-    @ManyToOne(() => Ticket, (ticket) => ticket.correctionRequests)
+    @ManyToOne(() => Ticket, (ticket) => ticket.correctionRequests, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'ticketId' })
     ticket: Ticket;
 
