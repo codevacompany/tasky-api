@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { FindOptionsOrder, FindOptionsWhere, Repository } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
@@ -8,6 +9,8 @@ import { QueryOptions } from '../../shared/types/http';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { NotificationService } from '../notification/notification.service';
+import { RoleName } from '../role/entities/role.entity';
+import { Ticket } from '../ticket/entities/ticket.entity';
 import { UserRepository } from '../user/user.repository';
 import { CreateTicketCommentDto } from './dtos/create-ticket-comment.dto';
 import { UpdateTicketCommentDto } from './dtos/update-ticket-comment.dto';
@@ -21,6 +24,8 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         private readonly userRepository: UserRepository,
         private readonly notificationService: NotificationService,
         private readonly notificationRepository: NotificationRepository,
+        @InjectRepository(Ticket)
+        private readonly ticketRepository: Repository<Ticket>,
     ) {
         super(ticketCommentRepository);
     }
@@ -48,7 +53,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
     ): Promise<TicketComment[]> {
         const defaultRelations = ['user', 'user.department'];
         const relations = options?.relations || defaultRelations;
-        
+
         // Ensure user.department is included even if custom relations are provided
         const finalRelations = Array.isArray(relations)
             ? [...new Set([...relations, ...defaultRelations])]
@@ -142,6 +147,43 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             );
         }
 
+        // Process mentions and create notifications for mentioned users
+        if (ticketCommentDto.mentions && ticketCommentDto.mentions.length > 0) {
+            const mentionedUserIds = new Set(
+                ticketCommentDto.mentions.map((mention) => mention.userId),
+            );
+
+            // Remove duplicates and exclude the comment author
+            const uniqueMentionedUserIds = Array.from(mentionedUserIds).filter(
+                (userId) => userId !== ticketCommentDto.userId,
+            );
+
+            for (const mentionedUserId of uniqueMentionedUserIds) {
+                // Don't create duplicate notifications if user is already notified above
+                if (
+                    mentionedUserId !== commentWithTicket.ticket.requesterId &&
+                    mentionedUserId !== commentWithTicket.ticket.currentTargetUserId
+                ) {
+                    notifications.push(
+                        this.notificationRepository.save({
+                            tenantId: accessProfile.tenantId,
+                            type: NotificationType.Comment,
+                            message:
+                                '<p><span>user</span> mencionou você em um comentário no ticket <span>resource</span>.</p>',
+                            createdById: ticketCommentDto.userId,
+                            targetUserId: mentionedUserId,
+                            resourceId: commentWithTicket.ticketId,
+                            resourceCustomId: commentWithTicket.ticketCustomId,
+                            metadata: {
+                                commentText: ticketCommentDto.content,
+                                isMention: true,
+                            },
+                        }),
+                    );
+                }
+            }
+        }
+
         await Promise.all(notifications);
 
         //Uncomment when we are ready to use SSE
@@ -214,5 +256,92 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
 
     async delete(accessProfile: AccessProfile, id: number) {
         return super.delete(accessProfile, id);
+    }
+
+    /**
+     * Get mentionable users for a ticket
+     * Returns users from the same department as the current target user + tenant admins
+     */
+    async getMentionableUsers(accessProfile: AccessProfile, ticketCustomId: string) {
+        const ticket = await this.ticketRepository.findOne({
+            where: {
+                customId: ticketCustomId,
+                tenantId: accessProfile.tenantId,
+            },
+            relations: [
+                'currentTargetUser',
+                'currentTargetUser.department',
+                'targetUsers',
+                'targetUsers.user',
+                'targetUsers.user.department',
+            ],
+        });
+
+        if (!ticket) {
+            throw new CustomNotFoundException({
+                code: 'ticket-not-found',
+                message: 'Ticket not found.',
+            });
+        }
+
+        const mentionableUsers = [];
+        const addedUserIds = new Set<number>();
+
+        // Get current target user's department
+        const currentTargetUser = ticket.currentTargetUser;
+        if (currentTargetUser && currentTargetUser.departmentId) {
+            // Get all users from the same department
+            const departmentUsers = await this.userRepository.find({
+                where: {
+                    departmentId: currentTargetUser.departmentId,
+                    tenantId: accessProfile.tenantId,
+                    isActive: true,
+                },
+                relations: ['department', 'role'],
+            });
+
+            for (const user of departmentUsers) {
+                if (!addedUserIds.has(user.id)) {
+                    mentionableUsers.push(user);
+                    addedUserIds.add(user.id);
+                }
+            }
+        }
+
+        // Also include all target users from the ticket
+        if (ticket.targetUsers && ticket.targetUsers.length > 0) {
+            for (const targetUser of ticket.targetUsers) {
+                if (targetUser.user && !addedUserIds.has(targetUser.user.id)) {
+                    mentionableUsers.push(targetUser.user);
+                    addedUserIds.add(targetUser.user.id);
+                }
+            }
+        }
+
+        // Get tenant admins
+        const tenantAdmins = await this.userRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                isActive: true,
+                role: { name: RoleName.TenantAdmin },
+            },
+            relations: ['department', 'role'],
+        });
+
+        for (const admin of tenantAdmins) {
+            if (!addedUserIds.has(admin.id)) {
+                mentionableUsers.push(admin);
+                addedUserIds.add(admin.id);
+            }
+        }
+
+        // Sort by name
+        mentionableUsers.sort((a, b) => {
+            const nameA = `${a.firstName} ${a.lastName}`.toLowerCase();
+            const nameB = `${b.firstName} ${b.lastName}`.toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
+        return mentionableUsers;
     }
 }

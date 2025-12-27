@@ -266,7 +266,11 @@ export class TenantService {
         const monthEnd = endOfMonth(now);
 
         const [totalUsers, totalMonthlyTickets] = await Promise.all([
-            this.userRepository.count(),
+            this.userRepository.count({
+                where: {
+                    isActive: true,
+                }
+            }),
             this.ticketRepository.count({
                 where: {
                     createdAt: Between(monthStart, monthEnd),
