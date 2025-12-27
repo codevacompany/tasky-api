@@ -46,7 +46,7 @@ export class StatsController {
     @Get('/by-user')
     async getUserStats(
         @GetAccessProfile() accessProfile: AccessProfile,
-        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
+        @Query('period') period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<TicketStatsResponseDto> {
         return this.ticketStatsService.getUserStats(accessProfile, accessProfile.userId, period);
     }

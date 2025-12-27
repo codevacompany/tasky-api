@@ -1050,10 +1050,11 @@ export class TicketStatsService {
     async getUserStats(
         accessProfile: AccessProfile,
         userId: number,
-        period: StatsPeriod = StatsPeriod.ALL,
+        period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<TicketStatsResponseDto> {
         const { startDate, limit, order } = this.getPeriodFilter(period);
 
+        // Query 1: Fetch tickets where the user is the target (assignee)
         const qb = this.ticketStatsRepository.createQueryBuilder('ticketStats');
         qb.where('ticketStats.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
         qb.andWhere('ticketStats.isCanceled = false');
@@ -1081,20 +1082,6 @@ export class TicketStatsService {
         }
 
         const [statsItems, total] = await qb.getManyAndCount();
-
-        if (total === 0) {
-            return {
-                totalTickets: 0,
-                openTickets: 0,
-                closedTickets: 0,
-                resolvedTickets: 0,
-                averageResolutionTimeSeconds: 0,
-                averageAcceptanceTimeSeconds: 0,
-                resolutionRate: 0,
-                efficiencyScore: 0,
-                deliveryOverdueRate: 0,
-            };
-        }
 
         const statsItemsWithWeekendExclusion = await this.applyWeekendExclusion(statsItems);
         const ticketStats = { items: statsItemsWithWeekendExclusion, total };
@@ -1145,6 +1132,7 @@ export class TicketStatsService {
                 ? acceptanceTimes.reduce((sum, time) => sum + time, 0) / acceptanceTimes.length
                 : 0;
 
+        // Process lifecycle for target user tickets
         const finishedTicketIds = this.getFinishedTicketIds(statsItemsWithWeekendExclusion);
         const updates = await this.getTicketUpdates(accessProfile, finishedTicketIds);
 
@@ -1177,6 +1165,77 @@ export class TicketStatsService {
             totalEntries: 0,
         };
 
+        // Query 2: Fetch tickets where the user is the reviewer (for verification metrics)
+        // This captures verification cycles from tickets where the user is NOT the target
+        const targetTicketIds = statsItems.map((s) => s.ticketId);
+
+        const reviewerQb = this.ticketStatsRepository.createQueryBuilder('ticketStats');
+        reviewerQb.where('ticketStats.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        reviewerQb.andWhere('ticketStats.isCanceled = false');
+        reviewerQb.andWhere('ticketStats.reviewerId = :userId', { userId });
+
+        // Exclude tickets already processed (where user is also target) to avoid double-counting
+        if (targetTicketIds.length > 0) {
+            reviewerQb.andWhere('ticketStats.ticketId NOT IN (:...targetTicketIds)', {
+                targetTicketIds,
+            });
+        }
+
+        if (startDate) {
+            reviewerQb.andWhere('ticketStats.createdAt >= :startDate', { startDate });
+        }
+
+        const reviewerStatsItems = await reviewerQb.getMany();
+
+        // Process lifecycle for reviewer-only tickets and extract verification metrics
+        if (reviewerStatsItems.length > 0) {
+            const reviewerItemsWithWeekendExclusion =
+                await this.applyWeekendExclusion(reviewerStatsItems);
+            const reviewerFinishedTicketIds = this.getFinishedTicketIds(
+                reviewerItemsWithWeekendExclusion,
+            );
+            const reviewerUpdates = await this.getTicketUpdates(
+                accessProfile,
+                reviewerFinishedTicketIds,
+            );
+
+            const reviewerUpdatesByTicket = new Map<number, TicketUpdate[]>();
+            reviewerUpdates.forEach((u) => {
+                if (!reviewerUpdatesByTicket.has(u.ticketId))
+                    reviewerUpdatesByTicket.set(u.ticketId, []);
+                reviewerUpdatesByTicket.get(u.ticketId).push(u);
+            });
+
+            const reviewerLifeCycleMap = new Map<number, TicketLifeCycleInfo>();
+            const reviewerFinishedItems = reviewerItemsWithWeekendExclusion.filter((s) =>
+                reviewerFinishedTicketIds.includes(s.ticketId),
+            );
+
+            reviewerFinishedItems.forEach((stat) => {
+                reviewerLifeCycleMap.set(
+                    stat.ticketId,
+                    this.analyzeTicketLifeCycle(
+                        stat,
+                        reviewerUpdatesByTicket.get(stat.ticketId) || [],
+                    ),
+                );
+            });
+
+            // Aggregate verification metrics from reviewer-only tickets
+            const reviewerMetricsMap = this.aggregateMetricsByUser(
+                reviewerFinishedItems,
+                reviewerLifeCycleMap,
+            );
+            const reviewerMetrics = reviewerMetricsMap.get(userId);
+
+            // Merge only verification metrics (onTimeVerified, totalVerified)
+            if (reviewerMetrics) {
+                userMetrics.onTimeVerified += reviewerMetrics.onTimeVerified;
+                userMetrics.totalVerified += reviewerMetrics.totalVerified;
+            }
+        }
+
+        // Calculate indices after merging all metrics
         const completionIndex = this.calculateWilsonScore(
             userMetrics.onTimeCompleted,
             userMetrics.totalCompleted,
@@ -1724,7 +1783,7 @@ export class TicketStatsService {
         const { dateFilter, startDate } = this.getPeriodFilter(period);
         const supervisorDeptId = await this.getSupervisorDepartmentId(accessProfile);
 
-        // 1. Fetch and filter base statistics
+        // 1. Fetch and filter base statistics (tickets with target users)
         const ticketStats = await this.ticketStatsRepository.find({
             where: {
                 tenantId: accessProfile.tenantId,
@@ -1738,11 +1797,7 @@ export class TicketStatsService {
                 ? ticketStats.filter((s) => s.departmentIds?.includes(supervisorDeptId))
                 : ticketStats;
 
-        if (filteredStats.length === 0) {
-            return { users: [], total: 0, topContributor: null };
-        }
-
-        // 2. Fetch Core Data and Analyze Lifecycle
+        // 2. Fetch Core Data and Analyze Lifecycle for target user tickets
         const finishedTicketIds = this.getFinishedTicketIds(filteredStats);
         const updates = await this.getTicketUpdates(accessProfile, finishedTicketIds);
 
@@ -1763,6 +1818,92 @@ export class TicketStatsService {
         });
 
         const userDetailedMetrics = this.aggregateMetricsByUser(finishedItems, lifeCycleMap);
+
+        // 2b. Fetch reviewer-only tickets (where reviewer is not a target user)
+        // This ensures verification metrics are counted for users who only verify
+        const targetTicketIds = filteredStats.map((s) => s.ticketId);
+
+        const reviewerOnlyStats = await this.ticketStatsRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                reviewerId: Not(IsNull()),
+                isCanceled: false,
+                ...dateFilter,
+            },
+        });
+
+        // Filter to only tickets not already processed AND apply supervisor filter if needed
+        let filteredReviewerStats = reviewerOnlyStats.filter(
+            (s) => !targetTicketIds.includes(s.ticketId),
+        );
+
+        if (supervisorDeptId !== null) {
+            // For supervisor, include tickets where the reviewer's department matches
+            filteredReviewerStats = filteredReviewerStats.filter(
+                (s) => s.reviewerDepartmentId === supervisorDeptId,
+            );
+        }
+
+        if (filteredReviewerStats.length > 0) {
+            const reviewerFinishedTicketIds = this.getFinishedTicketIds(filteredReviewerStats);
+            const reviewerUpdates = await this.getTicketUpdates(
+                accessProfile,
+                reviewerFinishedTicketIds,
+            );
+
+            const reviewerUpdatesByTicket = new Map<number, TicketUpdate[]>();
+            reviewerUpdates.forEach((u) => {
+                if (!reviewerUpdatesByTicket.has(u.ticketId))
+                    reviewerUpdatesByTicket.set(u.ticketId, []);
+                reviewerUpdatesByTicket.get(u.ticketId).push(u);
+            });
+
+            const reviewerLifeCycleMap = new Map<number, TicketLifeCycleInfo>();
+            const reviewerFinishedItems = filteredReviewerStats.filter((s) =>
+                reviewerFinishedTicketIds.includes(s.ticketId),
+            );
+
+            reviewerFinishedItems.forEach((stat) => {
+                reviewerLifeCycleMap.set(
+                    stat.ticketId,
+                    this.analyzeTicketLifeCycle(
+                        stat,
+                        reviewerUpdatesByTicket.get(stat.ticketId) || [],
+                    ),
+                );
+            });
+
+            const reviewerMetrics = this.aggregateMetricsByUser(
+                reviewerFinishedItems,
+                reviewerLifeCycleMap,
+            );
+
+            // Merge only verification metrics from reviewer-only tickets
+            reviewerMetrics.forEach((metrics, userId) => {
+                const existing = userDetailedMetrics.get(userId);
+                if (existing) {
+                    existing.onTimeVerified += metrics.onTimeVerified;
+                    existing.totalVerified += metrics.totalVerified;
+                } else {
+                    // User only has verification activity, no target activity
+                    userDetailedMetrics.set(userId, {
+                        onTimeCompleted: 0,
+                        totalCompleted: 0,
+                        onTimeVerified: metrics.onTimeVerified,
+                        totalVerified: metrics.totalVerified,
+                        totalClosed: 0,
+                        rejectedCount: 0,
+                        returnedCount: 0,
+                        totalEntries: 0,
+                    });
+                }
+            });
+        }
+
+        // Handle case where filteredStats is empty but we may have reviewer-only activity
+        if (filteredStats.length === 0 && filteredReviewerStats.length === 0) {
+            return { users: [], total: 0, topContributor: null };
+        }
 
         // 3. Initialize User Map and Stats
         const allUsersQuery = this.userRepository
@@ -2304,7 +2445,10 @@ export class TicketStatsService {
                     m.totalCompleted++;
                     if (lifeCycle.isOnTime) m.onTimeCompleted++;
                     if (lifeCycle.wasReturned) {
-                        if (stat.targetUserIds.length > 1 && lifeCycle.returnedToUserIds.includes(userId)) {
+                        if (
+                            stat.targetUserIds.length > 1 &&
+                            lifeCycle.returnedToUserIds.includes(userId)
+                        ) {
                             m.returnedCount++;
                         }
 
@@ -2367,7 +2511,10 @@ export class TicketStatsService {
                 if (lifeCycle.isResolved) {
                     m.totalCompleted++;
                     if (lifeCycle.wasReturned) {
-                        if (stat.departmentIds.length > 1 && lifeCycle.returnedToDepartmentIds.includes(deptId)) {
+                        if (
+                            stat.departmentIds.length > 1 &&
+                            lifeCycle.returnedToDepartmentIds.includes(deptId)
+                        ) {
                             m.returnedCount++;
                         }
 
