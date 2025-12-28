@@ -4,7 +4,11 @@ import { FindOptionsOrder, FindOptionsWhere, Repository } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
-import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
+import {
+    CustomBadRequestException,
+    CustomForbiddenException,
+    CustomNotFoundException,
+} from '../../shared/exceptions/http-exception';
 import { QueryOptions } from '../../shared/types/http';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
@@ -243,6 +247,28 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         uuid: string,
         dto: UpdateTicketCommentDto,
     ): Promise<TicketComment> {
+        const comment = await this.findByUuidOrFail(accessProfile, uuid);
+
+        // Security check: only the owner can update
+        if (comment.userId !== accessProfile.userId) {
+            throw new CustomForbiddenException({
+                code: 'forbidden',
+                message: 'You can only edit your own comments.',
+            });
+        }
+
+        // Time limit check: 5 minutes (300,000 ms)
+        const fiveMinutesInMs = 5 * 60 * 1000;
+        const now = new Date();
+        const commentAgeThreshold = new Date(comment.createdAt.getTime() + fiveMinutesInMs);
+
+        if (now > commentAgeThreshold) {
+            throw new CustomBadRequestException({
+                code: 'time-limit-exceeded',
+                message: 'O tempo para executar essa ação esgotou (limite de 5 minutos).',
+            });
+        }
+
         await super.updateByUuid(accessProfile, uuid, dto as QueryDeepPartialEntity<TicketComment>);
         return this.findByUuid(accessProfile, uuid);
     }
@@ -251,6 +277,28 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
      * Delete ticket comment by UUID (public-facing identifier)
      */
     async deleteByUuid(accessProfile: AccessProfile, uuid: string): Promise<void> {
+        const comment = await this.findByUuidOrFail(accessProfile, uuid);
+
+        // Security check: only the owner can delete
+        if (comment.userId !== accessProfile.userId) {
+            throw new CustomForbiddenException({
+                code: 'forbidden',
+                message: 'You can only delete your own comments.',
+            });
+        }
+
+        // Time limit check: 5 minutes (300,000 ms)
+        const fiveMinutesInMs = 5 * 60 * 1000;
+        const now = new Date();
+        const commentAgeThreshold = new Date(comment.createdAt.getTime() + fiveMinutesInMs);
+
+        if (now > commentAgeThreshold) {
+            throw new CustomBadRequestException({
+                code: 'time-limit-exceeded',
+                message: 'O tempo para executar essa ação esgotou (limite de 5 minutos).',
+            });
+        }
+
         await super.deleteByUuid(accessProfile, uuid);
     }
 
@@ -274,6 +322,9 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
                 'targetUsers',
                 'targetUsers.user',
                 'targetUsers.user.department',
+                'reviewer',
+                'reviewer.department',
+                'reviewer.role',
             ],
         });
 
@@ -287,38 +338,45 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         const mentionableUsers = [];
         const addedUserIds = new Set<number>();
 
-        // Get current target user's department
-        const currentTargetUser = ticket.currentTargetUser;
-        if (currentTargetUser && currentTargetUser.departmentId) {
-            // Get all users from the same department
-            const departmentUsers = await this.userRepository.find({
-                where: {
-                    departmentId: currentTargetUser.departmentId,
-                    tenantId: accessProfile.tenantId,
-                    isActive: true,
-                },
-                relations: ['department', 'role'],
-            });
+        const addUser = (user: any) => {
+            if (user && user.id && !addedUserIds.has(user.id)) {
+                mentionableUsers.push(user);
+                addedUserIds.add(user.id);
+            }
+        };
 
-            for (const user of departmentUsers) {
-                if (!addedUserIds.has(user.id)) {
-                    mentionableUsers.push(user);
-                    addedUserIds.add(user.id);
+        // 1. Current Target User's Department (only if NOT private)
+        if (!ticket.isPrivate) {
+            const currentTargetUser = ticket.currentTargetUser;
+            if (currentTargetUser && currentTargetUser.departmentId) {
+                const departmentUsers = await this.userRepository.find({
+                    where: {
+                        departmentId: currentTargetUser.departmentId,
+                        tenantId: accessProfile.tenantId,
+                        isActive: true,
+                    },
+                    relations: ['department', 'role'],
+                });
+
+                for (const user of departmentUsers) {
+                    addUser(user);
                 }
             }
         }
 
-        // Also include all target users from the ticket
+        // 2. All target users from the ticket (always included)
         if (ticket.targetUsers && ticket.targetUsers.length > 0) {
             for (const targetUser of ticket.targetUsers) {
-                if (targetUser.user && !addedUserIds.has(targetUser.user.id)) {
-                    mentionableUsers.push(targetUser.user);
-                    addedUserIds.add(targetUser.user.id);
-                }
+                addUser(targetUser.user);
             }
         }
 
-        // Get tenant admins
+        // 3. The reviewer (always included)
+        if (ticket.reviewer) {
+            addUser(ticket.reviewer);
+        }
+
+        // 4. Get tenant admins (always included)
         const tenantAdmins = await this.userRepository.find({
             where: {
                 tenantId: accessProfile.tenantId,
@@ -329,10 +387,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         });
 
         for (const admin of tenantAdmins) {
-            if (!addedUserIds.has(admin.id)) {
-                mentionableUsers.push(admin);
-                addedUserIds.add(admin.id);
-            }
+            addUser(admin);
         }
 
         // Sort by name
