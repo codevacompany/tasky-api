@@ -216,13 +216,13 @@ describe('TicketStatsService', () => {
                 {
                     id: 1,
                     isResolved: true,
-                    resolutionTimeSeconds: 3600,
+                    totalTimeSeconds: 3600,
                     acceptanceTimeSeconds: 1800,
                 },
                 {
                     id: 2,
                     isResolved: false,
-                    resolutionTimeSeconds: null,
+                    totalTimeSeconds: null,
                     acceptanceTimeSeconds: 900,
                 },
             ];
@@ -248,7 +248,7 @@ describe('TicketStatsService', () => {
                 {
                     id: 1,
                     isResolved: true,
-                    resolutionTimeSeconds: 7200,
+                    totalTimeSeconds: 7200,
                     acceptanceTimeSeconds: 3600,
                 },
             ];
@@ -278,14 +278,14 @@ describe('TicketStatsService', () => {
                 {
                     id: 1,
                     isResolved: true,
-                    resolutionTimeSeconds: 3600,
+                    totalTimeSeconds: 3600,
                     acceptanceTimeSeconds: 1800,
                     departmentIds: [5],
                 },
                 {
                     id: 2,
                     isResolved: false,
-                    resolutionTimeSeconds: null,
+                    totalTimeSeconds: null,
                     acceptanceTimeSeconds: 900,
                     departmentIds: [3],
                 },
@@ -307,7 +307,7 @@ describe('TicketStatsService', () => {
                 {
                     id: 1,
                     isResolved: false,
-                    resolutionTimeSeconds: null,
+                    totalTimeSeconds: null,
                     acceptanceTimeSeconds: 1800,
                 },
             ];

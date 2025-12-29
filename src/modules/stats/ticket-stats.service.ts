@@ -6,6 +6,8 @@ import {
     endOfQuarter,
     endOfWeek,
     getQuarter,
+    isBefore,
+    isEqual,
     startOfDay,
     startOfMonth,
     startOfQuarter,
@@ -15,7 +17,7 @@ import {
     subQuarters,
     subWeeks,
 } from 'date-fns';
-import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { ArrayContains, In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { BusinessHoursService } from '../../shared/services/business-hours.service';
@@ -43,6 +45,36 @@ import { TicketStats } from './entities/ticket-stats.entity';
 import { StatsPeriod } from './stats.controller';
 import { RoleService } from '../role/role.service';
 import { RoleName } from '../role/entities/role.entity';
+
+interface TicketLifeCycleInfo {
+    ticketId: number;
+    isClosed: boolean;
+    isResolved: boolean;
+    isOnTime: boolean;
+    firstAwaitingVerificationAt: Date | null;
+    verificationCycles: Array<{
+        startTime: Date;
+        endTime: Date;
+        reviewerId: number | null;
+        reviewerDeptId: number | null;
+        onTime: boolean;
+    }>;
+    isRejected: boolean;
+    wasReturned: boolean;
+    returnedToUserIds: number[];
+    returnedToDepartmentIds: number[];
+}
+
+interface DetailedMetrics {
+    onTimeCompleted: number;
+    totalCompleted: number;
+    onTimeVerified: number;
+    totalVerified: number;
+    totalClosed: number;
+    rejectedCount: number;
+    returnedCount: number;
+    totalEntries: number;
+}
 
 @Injectable()
 export class TicketStatsService {
@@ -165,7 +197,7 @@ export class TicketStatsService {
         const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
 
         // Get ticket stats for the tenant with date filter
-        const filters = {
+        const filters: any = {
             where: {
                 tenantId: accessProfile.tenantId,
                 ...dateFilter,
@@ -174,36 +206,20 @@ export class TicketStatsService {
             ...(order ? { order } : {}),
         };
 
-        const [items] = await this.ticketStatsRepository.findAndCount(filters);
-
         // Filter by department if Supervisor
-        let filteredItems = items;
         if (supervisorDepartmentId !== null) {
-            filteredItems = items.filter(
-                (stat) => stat.departmentIds && stat.departmentIds.includes(supervisorDepartmentId),
-            );
+            filters.where.departmentIds = ArrayContains([supervisorDepartmentId]);
         }
 
-        // Optionally filter out canceled tickets
-        if (excludeCanceled && filteredItems.length > 0) {
-            const ticketIds = filteredItems.map((stat) => stat.ticketId);
-            const tickets = await this.ticketRepository.find({
-                where: { id: In(ticketIds) },
-                relations: ['ticketStatus'],
-                select: ['id', 'ticketStatus'],
-            });
-
-            const canceledTicketIds = new Set(
-                tickets
-                    .filter((ticket) => ticket.ticketStatus?.key === TicketStatus.Canceled)
-                    .map((ticket) => ticket.id),
-            );
-
-            filteredItems = filteredItems.filter((stat) => !canceledTicketIds.has(stat.ticketId));
+        // Filter out canceled tickets if requested
+        if (excludeCanceled) {
+            filters.where.isCanceled = false;
         }
 
-        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(filteredItems);
-        const ticketStats = { items: itemsWithWeekendExclusion, total: filteredItems.length };
+        const [filteredStatsItems] = await this.ticketStatsRepository.findAndCount(filters);
+
+        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(filteredStatsItems);
+        const ticketStats = { items: itemsWithWeekendExclusion, total: filteredStatsItems.length };
 
         const filteredTicketIds = ticketStats.items.map((stat) => stat.ticketId);
 
@@ -211,11 +227,11 @@ export class TicketStatsService {
         const totalTickets = ticketStats.items.length;
         const resolvedTickets = ticketStats.items.filter((stat) => stat.isResolved).length;
         const closedTickets = ticketStats.items.filter(
-            (stat) => stat.resolutionTimeSeconds !== null,
+            (stat) => stat.isResolved || stat.isRejected,
         ).length;
         const openTickets = totalTickets - closedTickets;
 
-        // Calculate resolution and acceptance rates
+        // Calculate resolution rate
         const resolutionRate = closedTickets > 0 ? resolvedTickets / closedTickets : 0;
 
         let avgResolutionTimeSeconds = 0;
@@ -223,7 +239,7 @@ export class TicketStatsService {
 
         // Only calculate time-based metrics when there are tickets in the selected period
         if (filteredTicketIds.length > 0) {
-            // Calculate average resolution time using timeSecondsInLastStatus from ticket_update
+            // Calculate average resolution time using business hours
             const resolutionQuery = this.ticketUpdateRepository
                 .createQueryBuilder('update')
                 .leftJoin('update.ticket', 'ticket')
@@ -240,7 +256,7 @@ export class TicketStatsService {
                 });
             }
 
-            // Filter by department if Supervisor - check fromDepartmentId first, then fromUser, then currentTargetUser
+            // Filter by department if Supervisor
             if (supervisorDepartmentId !== null) {
                 resolutionQuery.andWhere(
                     `CASE
@@ -253,16 +269,39 @@ export class TicketStatsService {
             }
 
             const resolutionUpdates = await resolutionQuery.getMany();
-            const resolutionTimeSum = resolutionUpdates.reduce(
-                (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
-                0,
-            );
 
-            const resolutionTicketIds = new Set(resolutionUpdates.map((update) => update.ticketId));
+            // Calculate resolution time with weekend exclusion
+            let totalResolutionBusinessHours = 0;
+            const resolutionTicketIds = new Set<number>();
+
+            for (const update of resolutionUpdates) {
+                const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
+                    where: {
+                        ticketId: update.ticketId,
+                        toStatus: TicketStatus.InProgress,
+                        createdAt: LessThan(update.createdAt),
+                    },
+                    order: {
+                        createdAt: 'DESC',
+                    },
+                });
+
+                if (previousStatusUpdate && !resolutionTicketIds.has(update.ticketId)) {
+                    const businessHours = this.businessHoursService.calculateBusinessHours(
+                        previousStatusUpdate.createdAt,
+                        update.createdAt,
+                    );
+                    totalResolutionBusinessHours += businessHours;
+                    resolutionTicketIds.add(update.ticketId);
+                }
+            }
+
             avgResolutionTimeSeconds =
-                resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionUpdates.length : 0;
+                resolutionTicketIds.size > 0
+                    ? (totalResolutionBusinessHours * 3600) / resolutionTicketIds.size
+                    : 0;
 
-            // Calculate average acceptance time using timeSecondsInLastStatus from ticket_update
+            // Calculate average acceptance time from ticket updates with weekend exclusion
             const acceptanceQuery = this.ticketUpdateRepository
                 .createQueryBuilder('update')
                 .leftJoin('update.ticket', 'ticket')
@@ -279,7 +318,7 @@ export class TicketStatsService {
                 });
             }
 
-            // Filter by department if Supervisor - check fromDepartmentId first, then fromUser, then currentTargetUser
+            // Filter by department if Supervisor
             if (supervisorDepartmentId !== null) {
                 acceptanceQuery.andWhere(
                     `CASE
@@ -292,17 +331,95 @@ export class TicketStatsService {
             }
 
             const acceptanceUpdates = await acceptanceQuery.getMany();
-            const acceptanceTimeSum = acceptanceUpdates.reduce(
-                (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
-                0,
-            );
 
-            const acceptanceTicketIds = new Set(acceptanceUpdates.map((update) => update.ticketId));
+            // Calculate acceptance time with weekend exclusion
+            let totalAcceptanceBusinessHours = 0;
+            let acceptanceCount = 0;
+
+            for (const update of acceptanceUpdates) {
+                const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
+                    where: {
+                        ticketId: update.ticketId,
+                        toStatus: TicketStatus.Pending,
+                        createdAt: LessThan(update.createdAt),
+                    },
+                    order: {
+                        createdAt: 'DESC',
+                    },
+                });
+
+                if (previousStatusUpdate) {
+                    const businessHours = this.businessHoursService.calculateBusinessHours(
+                        previousStatusUpdate.createdAt,
+                        update.createdAt,
+                    );
+                    totalAcceptanceBusinessHours += businessHours;
+                    acceptanceCount++;
+                }
+            }
+
             avgAcceptanceTimeSeconds =
-                acceptanceTicketIds.size > 0 ? acceptanceTimeSum / acceptanceUpdates.length : 0;
+                acceptanceCount > 0 ? (totalAcceptanceBusinessHours * 3600) / acceptanceCount : 0;
         }
 
-        const avgTotalTimeSeconds = avgResolutionTimeSeconds + avgAcceptanceTimeSeconds;
+        // Calculate tenant-wide metrics for the score
+        const finishedTicketIds = this.getFinishedTicketIds(itemsWithWeekendExclusion);
+        const updates = await this.getTicketUpdates(accessProfile, finishedTicketIds);
+
+        const updatesByTicket = new Map<number, TicketUpdate[]>();
+        updates.forEach((u) => {
+            if (!updatesByTicket.has(u.ticketId)) updatesByTicket.set(u.ticketId, []);
+            updatesByTicket.get(u.ticketId).push(u);
+        });
+
+        const lifeCycleMap = new Map<number, TicketLifeCycleInfo>();
+        const finishedItems = itemsWithWeekendExclusion.filter((s) =>
+            finishedTicketIds.includes(s.ticketId),
+        );
+
+        finishedItems.forEach((stat) => {
+            lifeCycleMap.set(
+                stat.ticketId,
+                this.analyzeTicketLifeCycle(stat, updatesByTicket.get(stat.ticketId) || []),
+            );
+        });
+
+        // Sum up metrics for the whole tenant/selection
+        let onTimeCompleted = 0;
+        let totalCompleted = 0;
+        let onTimeVerified = 0;
+        let totalVerified = 0;
+        let rejectedCount = 0;
+        let returnedCount = 0;
+        const totalEntries = finishedItems.length;
+
+        lifeCycleMap.forEach((lc) => {
+            if (lc.isResolved) {
+                totalCompleted++;
+                if (lc.isOnTime) onTimeCompleted++;
+                if (lc.wasReturned) returnedCount++;
+            }
+
+            if (lc.isRejected) rejectedCount++;
+
+            lc.verificationCycles.forEach((vc) => {
+                totalVerified++;
+                if (vc.onTime) onTimeVerified++;
+            });
+        });
+
+        const efficiencyScore = this.calculateComprehensiveScore(
+            onTimeCompleted,
+            totalCompleted,
+            onTimeVerified,
+            totalVerified,
+            rejectedCount,
+            returnedCount,
+            totalEntries,
+        );
+
+        const deliveryOverdueRate =
+            totalCompleted > 0 ? ((totalCompleted - onTimeCompleted) / totalCompleted) * 100 : 0;
 
         return {
             totalTickets,
@@ -311,8 +428,9 @@ export class TicketStatsService {
             resolvedTickets,
             averageResolutionTimeSeconds: avgResolutionTimeSeconds,
             averageAcceptanceTimeSeconds: avgAcceptanceTimeSeconds,
-            averageTotalTimeSeconds: avgTotalTimeSeconds,
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
+            efficiencyScore: parseFloat(efficiencyScore.toFixed(2)),
+            deliveryOverdueRate: parseFloat(deliveryOverdueRate.toFixed(2)),
         };
     }
 
@@ -322,299 +440,234 @@ export class TicketStatsService {
         sortBy: string = 'efficiency',
     ): Promise<DepartmentStatsDto[]> {
         const { dateFilter, startDate } = this.getPeriodFilter(period);
+        const supervisorDeptId = await this.getSupervisorDepartmentId(accessProfile);
 
-        const filters = {
-            where: {
-                tenantId: accessProfile.tenantId,
-                ...dateFilter,
-            },
-        };
-
-        // Check if user is Supervisor and get their departmentId
-        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
-
-        const [items] = await this.ticketStatsRepository.findAndCount(filters);
-
-        // Filter by department if Supervisor
-        let filteredItems = items;
-        if (supervisorDepartmentId !== null) {
-            filteredItems = items.filter(
-                (stat) => stat.departmentIds && stat.departmentIds.includes(supervisorDepartmentId),
-            );
-        }
-
-        // Filter out canceled tickets and only include finished tasks (Completed or Rejected)
-        const completedTicketsMap: Map<number, { completedAt: Date | null; dueAt: Date | null }> =
-            new Map();
-        if (filteredItems.length > 0) {
-            const ticketIds = filteredItems.map((stat) => stat.ticketId);
-            const tickets = await this.ticketRepository.find({
-                where: { id: In(ticketIds) },
-                relations: ['ticketStatus'],
-                select: ['id', 'ticketStatus', 'completedAt', 'dueAt'],
-            });
-
-            // Only include tickets that are Completed or Rejected (finished tasks)
-            // Exclude Cancelled ones
-            const finishedTicketIds = new Set(
-                tickets
-                    .filter(
-                        (ticket) =>
-                            ticket.ticketStatus?.key === TicketStatus.Completed ||
-                            ticket.ticketStatus?.key === TicketStatus.Rejected,
-                    )
-                    .map((ticket) => ticket.id),
-            );
-
-            // Store completed tickets with their dates for overdue calculation
-            // NEW LOGIC: We need to check the FIRST time the ticket went to 'aguardando_verificação'
-            // If that time > dueAt, then it is overdue.
-            // We still keep completedTicketsMap structure but we will enrich it or fetch updates separately.
-            
-            // Let's fetch the first 'aguardando_verificação' update for these tickets
-            const firstVerificationUpdates = await this.ticketUpdateRepository
-                .createQueryBuilder('update')
-                .select('update.ticketId', 'ticketId')
-                .addSelect('MIN(update.createdAt)', 'firstVerificationAt')
-                .where('update.ticketId IN (:...ticketIds)', { ticketIds: Array.from(finishedTicketIds) })
-                .andWhere('update.toStatus = :status', { status: TicketStatus.AwaitingVerification })
-                .groupBy('update.ticketId')
-                .getRawMany();
-            
-            const verificationMap = new Map<number, Date>();
-            firstVerificationUpdates.forEach((update) => {
-                verificationMap.set(update.ticketId, new Date(update.firstVerificationAt));
-            });
-
-            tickets
-                .filter((ticket) => finishedTicketIds.has(ticket.id))
-                .forEach((ticket) => {
-                    completedTicketsMap.set(ticket.id, {
-                        completedAt: ticket.completedAt,
-                        dueAt: ticket.dueAt,
-                        firstVerificationAt: verificationMap.get(ticket.id) || null,
-                    } as any);
-                });
-
-            filteredItems = filteredItems.filter((stat) => finishedTicketIds.has(stat.ticketId));
-        }
-
-        // Apply weekend exclusion to time calculations
-        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(filteredItems);
-        const ticketStats = { items: itemsWithWeekendExclusion, total: filteredItems.length };
-
-        // If Supervisor, only return stats for their department
-        const departments = await this.departmentService.findMany(accessProfile, {
-            paginated: false,
+        // 1. Fetch and filter base statistics
+        const [statsItems] = await this.ticketStatsRepository.findAndCount({
+            where: { tenantId: accessProfile.tenantId, isCanceled: false, ...dateFilter },
         });
 
-        const departmentsToProcess =
-            supervisorDepartmentId !== null
-                ? departments.items.filter((dept) => dept.id === supervisorDepartmentId)
-                : departments.items;
+        const filteredStatsItems =
+            supervisorDeptId !== null
+                ? statsItems.filter((s) => s.departmentIds?.includes(supervisorDeptId))
+                : statsItems;
 
-        // Create a map to track which departments have completed tickets with dueAt
-        const departmentsWithCompletedTicketsWithDueAt = new Set<number>();
-        for (const [ticketId, ticketInfo] of completedTicketsMap.entries()) {
-            if (ticketInfo.completedAt && ticketInfo.dueAt) {
-                // Find which department(s) this ticket belongs to
-                const ticketStat = filteredItems.find((stat) => stat.ticketId === ticketId);
-                if (ticketStat && ticketStat.departmentIds) {
-                    ticketStat.departmentIds.forEach((deptId) => {
-                        departmentsWithCompletedTicketsWithDueAt.add(deptId);
-                    });
+        if (filteredStatsItems.length === 0) return [];
+
+        // 2. Fetch Core Data and Analyze Lifecycle
+        const finishedTicketIds = this.getFinishedTicketIds(filteredStatsItems);
+        const updates = await this.getTicketUpdates(accessProfile, finishedTicketIds);
+
+        const updatesByTicket = new Map<number, TicketUpdate[]>();
+        updates.forEach((u) => {
+            if (!updatesByTicket.has(u.ticketId)) updatesByTicket.set(u.ticketId, []);
+            updatesByTicket.get(u.ticketId).push(u);
+        });
+
+        const lifeCycleMap = new Map<number, TicketLifeCycleInfo>();
+        const finishedStatsItems = filteredStatsItems.filter((s) =>
+            finishedTicketIds.includes(s.ticketId),
+        );
+
+        finishedStatsItems.forEach((stat) => {
+            lifeCycleMap.set(
+                stat.ticketId,
+                this.analyzeTicketLifeCycle(stat, updatesByTicket.get(stat.ticketId) || []),
+            );
+        });
+
+        const deptDetailedMetrics = this.aggregateMetricsByDepartment(
+            finishedStatsItems,
+            lifeCycleMap,
+        );
+
+        // 3. Apply Legacy Adjustments (Weekend Exclusion)
+        const statsItemsWithExclusion = await this.applyWeekendExclusion(filteredStatsItems);
+
+        // 4. Fetch and Process Departments
+        const departmentsRes = await this.departmentService.findMany(accessProfile, {
+            paginated: false,
+        });
+        const deptsToProcess =
+            supervisorDeptId !== null
+                ? departmentsRes.items.filter((d) => d.id === supervisorDeptId)
+                : departmentsRes.items;
+
+        const results = await Promise.all(
+            deptsToProcess.map(async (dept) => {
+                const deptTicketStats = statsItemsWithExclusion.filter((s) =>
+                    s.departmentIds?.includes(dept.id),
+                );
+                const metrics = deptDetailedMetrics.get(dept.id);
+
+                const { avgResolutionTime, avgAcceptanceTime } =
+                    await this.calculateDepartmentAverages(accessProfile, dept.id, startDate);
+
+                let resolutionRate = 0;
+                let deliveryOverdueRate = 0;
+                const totalTickets = deptTicketStats.length;
+
+                // Build the department stats object
+                const deptStats: DepartmentStatsDto = {
+                    departmentId: dept.id,
+                    departmentName: dept.name,
+                    totalTickets,
+                    resolvedTickets: deptTicketStats.filter((s) => s.isResolved).length,
+                    resolutionRate: 0,
+                    deliveryOverdueRate: 0,
+                    averageResolutionTimeSeconds: avgResolutionTime,
+                    averageAcceptanceTimeSeconds: avgAcceptanceTime,
+                    userCount: await this.userRepository.count({
+                        where: {
+                            tenantId: accessProfile.tenantId,
+                            departmentId: dept.id,
+                            isActive: true,
+                        },
+                    }),
+                };
+
+                if (metrics) {
+                    resolutionRate =
+                        metrics.totalEntries > 0
+                            ? metrics.totalCompleted / metrics.totalEntries
+                            : 0;
+
+                    // Only calculate efficiency score if department has at least 10 tickets
+                    if (totalTickets >= 10) {
+                        deptStats.efficiencyScore = this.calculateComprehensiveScore(
+                            metrics.onTimeCompleted,
+                            metrics.totalCompleted,
+                            metrics.onTimeVerified,
+                            metrics.totalVerified,
+                            metrics.rejectedCount,
+                            metrics.returnedCount,
+                            metrics.totalEntries,
+                        );
+                    }
+
+                    deliveryOverdueRate =
+                        metrics.totalCompleted > 0
+                            ? ((metrics.totalCompleted - metrics.onTimeCompleted) /
+                                  metrics.totalCompleted) *
+                              100
+                            : 0;
+
+                    deptStats.resolutionRate = parseFloat(resolutionRate.toFixed(2));
+                    deptStats.deliveryOverdueRate = parseFloat(deliveryOverdueRate.toFixed(2));
                 }
+
+                return deptStats;
+            }),
+        );
+
+        // 5. Sorting
+        return results.sort((a, b) => {
+            const direction = sortBy.startsWith('-') ? -1 : 1;
+            const key = sortBy.replace('-', '');
+
+            const aValue = (a as any)[key] || 0;
+            const bValue = (b as any)[key] || 0;
+
+            if (key === 'efficiencyScore' || key === 'resolutionRate') {
+                return (bValue - aValue) * direction;
             }
+            return (aValue - bValue) * direction;
+        });
+    }
+
+    private async calculateDepartmentAverages(
+        accessProfile: AccessProfile,
+        deptId: number,
+        startDate: Date | null,
+    ): Promise<{ avgResolutionTime: number; avgAcceptanceTime: number }> {
+        const getQuery = (status: TicketStatus) => {
+            const qb = this.ticketUpdateRepository
+                .createQueryBuilder('update')
+                .leftJoin('update.fromUser', 'fromUser')
+                .leftJoin('update.ticket', 'ticket')
+                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
+                .where('update.fromStatus = :status', { status })
+                .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+                .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+                .andWhere(
+                    `CASE
+                        WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :deptId
+                        WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :deptId
+                        ELSE currentTargetUser.departmentId = :deptId
+                    END`,
+                    { deptId },
+                );
+
+            if (startDate) qb.andWhere('update.createdAt >= :startDate', { startDate });
+            return qb;
+        };
+
+        // Query ticket_stats for acceptance time with weekend exclusion
+        const acceptanceQuery = this.ticketStatsRepository
+            .createQueryBuilder('stats')
+            .where('stats.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('stats.departmentIds @> ARRAY[:deptId]::integer[]', { deptId })
+            .andWhere('stats.acceptanceTimeSeconds IS NOT NULL');
+
+        if (startDate) {
+            acceptanceQuery.andWhere('stats.createdAt >= :startDate', { startDate });
         }
 
-        return Promise.all(
-            departmentsToProcess.map(async (department) => {
-                const departmentTickets = ticketStats.items.filter(
-                    (stat) => stat.departmentIds && stat.departmentIds.includes(department.id),
-                );
-                const totalDeptTickets = departmentTickets.length;
-                const resolvedDeptTickets = departmentTickets.filter(
-                    (stat) => stat.isResolved,
-                ).length;
+        const statsWithAcceptanceTime = await acceptanceQuery.getMany();
+        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(statsWithAcceptanceTime);
 
-                // Count active users in this department
-                const userCount = await this.userRepository.count({
+        const avgAcceptanceTime =
+            itemsWithWeekendExclusion.length > 0
+                ? itemsWithWeekendExclusion.reduce(
+                      (s, st) => s + Number(st.acceptanceTimeSeconds || 0),
+                      0,
+                  ) / itemsWithWeekendExclusion.length
+                : 0;
+
+        const resUpdates = await getQuery(TicketStatus.InProgress).getMany();
+
+        // Calculate resolution time with weekend exclusion
+        const calcWithWeekendExclusion = async (updates: TicketUpdate[]) => {
+            if (updates.length === 0) return 0;
+
+            let totalBusinessHours = 0;
+            const processedTickets = new Set<number>();
+
+            for (const update of updates) {
+                // Find when the ticket entered the InProgress status
+                const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
                     where: {
-                        tenantId: accessProfile.tenantId,
-                        departmentId: department.id,
-                        isActive: true,
+                        ticketId: update.ticketId,
+                        toStatus: TicketStatus.InProgress,
+                        createdAt: LessThan(update.createdAt),
+                    },
+                    order: {
+                        createdAt: 'DESC',
                     },
                 });
 
-                // Calculate average resolution time using timeSecondsInLastStatus from ticket_update
-                // Filter directly by fromUserId's department instead of getting all department tickets first
-                let avgDeptResolutionTimeSeconds = 0;
-                const resolutionQuery = this.ticketUpdateRepository
-                    .createQueryBuilder('update')
-                    .leftJoin('update.fromUser', 'fromUser')
-                    .leftJoin('update.ticket', 'ticket')
-                    .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
-                    .where('update.fromStatus = :fromStatus', {
-                        fromStatus: TicketStatus.InProgress,
-                    })
-                    .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
-                    .andWhere('update.tenantId = :tenantId', {
-                        tenantId: accessProfile.tenantId,
-                    })
-                    .andWhere(
-                        `CASE
-                            WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
-                            WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
-                            ELSE currentTargetUser.departmentId = :departmentId
-                        END`,
-                        { departmentId: department.id },
+                if (previousStatusUpdate && !processedTickets.has(update.ticketId)) {
+                    // Calculate business hours between entering InProgress and leaving it
+                    const businessHours = this.businessHoursService.calculateBusinessHours(
+                        previousStatusUpdate.createdAt,
+                        update.createdAt,
                     );
-
-                if (startDate) {
-                    resolutionQuery.andWhere('update.createdAt >= :startDate', {
-                        startDate,
-                    });
+                    totalBusinessHours += businessHours;
+                    processedTickets.add(update.ticketId);
                 }
+            }
 
-                const resolutionUpdates = await resolutionQuery.getMany();
+            return processedTickets.size > 0
+                ? (totalBusinessHours * 3600) / processedTickets.size
+                : 0;
+        };
 
-                if (resolutionUpdates.length > 0) {
-                    const resolutionTimeSum = resolutionUpdates.reduce(
-                        (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
-                        0,
-                    );
+        const avgResolutionTime = await calcWithWeekendExclusion(resUpdates);
 
-                    const resolutionTicketIds = new Set(
-                        resolutionUpdates.map((update) => update.ticketId),
-                    );
-                    avgDeptResolutionTimeSeconds =
-                        resolutionTicketIds.size > 0
-                            ? resolutionTimeSum / resolutionTicketIds.size
-                            : 0;
-                }
-
-                // Calculate average acceptance time using timeSecondsInLastStatus from ticket_update
-                // Filter directly by fromUserId's department instead of getting all department tickets first
-                let avgDeptAcceptanceTimeSeconds = 0;
-                const acceptanceQuery = this.ticketUpdateRepository
-                    .createQueryBuilder('update')
-                    .leftJoin('update.fromUser', 'fromUser')
-                    .leftJoin('update.ticket', 'ticket')
-                    .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
-                    .where('update.fromStatus = :fromStatus', {
-                        fromStatus: TicketStatus.Pending,
-                    })
-                    .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
-                    .andWhere('update.tenantId = :tenantId', {
-                        tenantId: accessProfile.tenantId,
-                    })
-                    .andWhere(
-                        `CASE
-                            WHEN update.fromDepartmentId IS NOT NULL THEN update.fromDepartmentId = :departmentId
-                            WHEN update.fromUserId IS NOT NULL THEN fromUser.departmentId = :departmentId
-                            ELSE currentTargetUser.departmentId = :departmentId
-                        END`,
-                        { departmentId: department.id },
-                    );
-
-                if (startDate) {
-                    acceptanceQuery.andWhere('update.createdAt >= :startDate', {
-                        startDate,
-                    });
-                }
-
-                const acceptanceUpdates = await acceptanceQuery.getMany();
-                if (acceptanceUpdates.length > 0) {
-                    const acceptanceTimeSum = acceptanceUpdates.reduce(
-                        (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
-                        0,
-                    );
-
-                    const acceptanceTicketIds = new Set(
-                        acceptanceUpdates.map((update) => update.ticketId),
-                    );
-                    avgDeptAcceptanceTimeSeconds =
-                        acceptanceTicketIds.size > 0
-                            ? acceptanceTimeSum / acceptanceTicketIds.size
-                            : 0;
-                }
-
-                const avgDeptTotalTimeSeconds =
-                    avgDeptAcceptanceTimeSeconds + avgDeptResolutionTimeSeconds;
-
-                const deptResolutionRate =
-                    totalDeptTickets > 0 ? resolvedDeptTickets / totalDeptTickets : 0;
-
-                const efficiencyScore = this.calculateWilsonScore(
-                    resolvedDeptTickets,
-                    totalDeptTickets,
-                );
-
-                // Calculate overdue rate for this department
-                let overdueRate = 0;
-                const departmentCompletedTickets = departmentTickets.filter((stat) => {
-                    const ticketInfo: any = completedTicketsMap.get(stat.ticketId);
-
-                    return ticketInfo && ticketInfo.dueAt && ticketInfo.firstVerificationAt;
-                });
-
-                if (departmentCompletedTickets.length > 0) {
-                    const overdueCount = departmentCompletedTickets.filter((stat) => {
-                        const ticketInfo: any = completedTicketsMap.get(stat.ticketId);
-                        return (
-                            ticketInfo &&
-                            ticketInfo.firstVerificationAt &&
-                            ticketInfo.dueAt &&
-                            ticketInfo.firstVerificationAt > ticketInfo.dueAt
-                        );
-                    }).length;
-                    overdueRate = parseFloat(
-                        ((overdueCount / departmentCompletedTickets.length) * 100).toFixed(2),
-                    );
-                }
-
-                return {
-                    departmentId: department.id,
-                    departmentName: department.name,
-                    totalTickets: totalDeptTickets,
-                    resolvedTickets: resolvedDeptTickets,
-                    averageResolutionTimeSeconds: avgDeptResolutionTimeSeconds,
-                    averageAcceptanceTimeSeconds: avgDeptAcceptanceTimeSeconds,
-                    averageTotalTimeSeconds: avgDeptTotalTimeSeconds,
-                    resolutionRate: parseFloat(deptResolutionRate.toFixed(2)),
-                    efficiencyScore,
-                    overdueRate,
-                    userCount,
-                };
-            }),
-        ).then((departmentStats) => {
-            // Filter departments based on sortBy parameter
-            const filteredStats = departmentStats.filter((dept) => {
-                // When sorting by resolution time, exclude departments with 0 seconds
-                if (sortBy === 'resolution_time') {
-                    return dept.averageResolutionTimeSeconds > 0;
-                }
-                // When sorting by overdue rate, exclude departments with no completed tickets with dueAt
-                if (sortBy === 'overdue_rate') {
-                    return departmentsWithCompletedTicketsWithDueAt.has(dept.departmentId);
-                }
-                return true;
-            });
-
-            // Sort departments based on sortBy parameter
-            return filteredStats.sort((a, b) => {
-                if (sortBy === 'resolution_time') {
-                    // Sort by resolution time (lower is better)
-                    return a.averageResolutionTimeSeconds - b.averageResolutionTimeSeconds;
-                } else if (sortBy === 'overdue_rate') {
-                    // Sort by overdue rate (lower is better - fewer overdue tickets)
-                    return a.overdueRate - b.overdueRate;
-                } else {
-                    // Default: sort by efficiency score (higher is better)
-                    return b.efficiencyScore - a.efficiencyScore;
-                }
-            });
-        });
+        return {
+            avgResolutionTime,
+            avgAcceptanceTime,
+        };
     }
 
     async getTicketTrends(accessProfile: AccessProfile): Promise<TicketTrendsResponseDto> {
@@ -986,7 +1039,7 @@ export class TicketStatsService {
 
         if (validValues.length === 0) return 0;
 
-        const sum = validValues.reduce((acc, val) => acc + (val as number), 0);
+        const sum = validValues.reduce((acc, val) => acc + Number(val), 0);
         return sum / validValues.length;
     }
 
@@ -1114,54 +1167,23 @@ export class TicketStatsService {
     async getUserStats(
         accessProfile: AccessProfile,
         userId: number,
-        period: StatsPeriod = StatsPeriod.ALL,
+        period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<TicketStatsResponseDto> {
         const { startDate, limit, order } = this.getPeriodFilter(period);
 
-        // Find all ticket IDs where the user is involved (either as currentTargetUserId or in targetUsers)
-        const ticketIdsQuery = this.ticketRepository
-            .createQueryBuilder('ticket')
-            .select('ticket.id', 'id')
-            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-            .andWhere(
-                `(
-                    ticket.currentTargetUserId = :userId
-                    OR EXISTS (
-                        SELECT 1
-                        FROM ticket_target_user ttu
-                        WHERE ttu."ticketId" = ticket.id
-                        AND ttu."userId" = :userId
-                        AND ttu."tenantId" = :tenantId
-                    )
-                )`,
-                { userId, tenantId: accessProfile.tenantId },
-            );
-
-        if (startDate) {
-            ticketIdsQuery.andWhere('ticket.createdAt >= :startDate', { startDate });
-        }
-
-        const ticketIdsResult = await ticketIdsQuery.getRawMany();
-        const ticketIds = ticketIdsResult.map((row) => row.id).filter(Boolean);
-
-        if (ticketIds.length === 0) {
-            // No tickets found, return empty stats
-            return {
-                totalTickets: 0,
-                openTickets: 0,
-                closedTickets: 0,
-                resolvedTickets: 0,
-                averageResolutionTimeSeconds: 0,
-                averageAcceptanceTimeSeconds: 0,
-                averageTotalTimeSeconds: 0,
-                resolutionRate: 0,
-            };
-        }
-
-        // Query the TicketStats view for these ticket IDs
+        // Query 1: Fetch tickets where the user is the target (assignee)
         const qb = this.ticketStatsRepository.createQueryBuilder('ticketStats');
         qb.where('ticketStats.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
-        qb.andWhere('ticketStats.ticketId IN (:...ticketIds)', { ticketIds });
+        qb.andWhere('ticketStats.isCanceled = false');
+
+        qb.andWhere(
+            '(ticketStats.currentTargetUserId = :userId OR ticketStats.targetUserIds @> ARRAY[:userId]::integer[])',
+            { userId },
+        );
+
+        if (startDate) {
+            qb.andWhere('ticketStats.createdAt >= :startDate', { startDate });
+        }
 
         // Apply order if provided
         if (order) {
@@ -1172,20 +1194,19 @@ export class TicketStatsService {
             qb.addOrderBy('ticketStats.createdAt', 'DESC');
         }
 
-        // Apply limit if provided
         if (limit) {
             qb.take(limit);
         }
 
-        const [items, total] = await qb.getManyAndCount();
+        const [statsItems, total] = await qb.getManyAndCount();
 
-        const itemsWithWeekendExclusion = await this.applyWeekendExclusion(items);
-        const ticketStats = { items: itemsWithWeekendExclusion, total };
+        const statsItemsWithWeekendExclusion = await this.applyWeekendExclusion(statsItems);
+        const ticketStats = { items: statsItemsWithWeekendExclusion, total };
 
         const totalTickets = ticketStats.items.length;
         const resolvedTickets = ticketStats.items.filter((stat) => stat.isResolved).length;
         const closedTickets = ticketStats.items.filter(
-            (stat) => stat.resolutionTimeSeconds !== null,
+            (stat) => stat.isResolved || stat.isRejected,
         ).length;
         const openTickets = totalTickets - closedTickets;
 
@@ -1209,15 +1230,40 @@ export class TicketStatsService {
         }
 
         const resolutionUpdates = await resolutionQuery.getMany();
-        const resolutionTimeSum = resolutionUpdates.reduce(
-            (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
-            0,
-        );
 
-        const resolutionTicketIds = new Set(resolutionUpdates.map((update) => update.ticketId));
+        // Calculate resolution time with weekend exclusion
+        let totalResolutionBusinessHours = 0;
+        const resolutionTicketIds = new Set<number>();
+
+        for (const update of resolutionUpdates) {
+            // Find when the ticket entered the InProgress status
+            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
+                where: {
+                    ticketId: update.ticketId,
+                    toStatus: TicketStatus.InProgress,
+                    createdAt: LessThan(update.createdAt),
+                },
+                order: {
+                    createdAt: 'DESC',
+                },
+            });
+
+            if (previousStatusUpdate && !resolutionTicketIds.has(update.ticketId)) {
+                const businessHours = this.businessHoursService.calculateBusinessHours(
+                    previousStatusUpdate.createdAt,
+                    update.createdAt,
+                );
+                totalResolutionBusinessHours += businessHours;
+                resolutionTicketIds.add(update.ticketId);
+            }
+        }
+
         const avgResolutionTimeSeconds =
-            resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionTicketIds.size : 0;
+            resolutionTicketIds.size > 0
+                ? (totalResolutionBusinessHours * 3600) / resolutionTicketIds.size
+                : 0;
 
+        // Calculate average acceptance time from ticket updates with weekend exclusion
         const acceptanceQuery = this.ticketUpdateRepository
             .createQueryBuilder('update')
             .leftJoin('update.ticket', 'ticket')
@@ -1236,25 +1282,206 @@ export class TicketStatsService {
         }
 
         const acceptanceUpdates = await acceptanceQuery.getMany();
-        const acceptanceTimeSum = acceptanceUpdates.reduce(
-            (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
-            0,
-        );
+
+        // Calculate acceptance time with weekend exclusion
+        let totalAcceptanceBusinessHours = 0;
+        let acceptanceCount = 0;
+
+        for (const update of acceptanceUpdates) {
+            // Find when the ticket entered the Pending status (ticket creation)
+            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
+                where: {
+                    ticketId: update.ticketId,
+                    toStatus: TicketStatus.Pending,
+                    createdAt: LessThan(update.createdAt),
+                },
+                order: {
+                    createdAt: 'DESC',
+                },
+            });
+
+            if (previousStatusUpdate) {
+                const businessHours = this.businessHoursService.calculateBusinessHours(
+                    previousStatusUpdate.createdAt,
+                    update.createdAt,
+                );
+                totalAcceptanceBusinessHours += businessHours;
+                acceptanceCount++;
+            }
+        }
+
         const avgAcceptanceTimeSeconds =
-            acceptanceUpdates.length > 0 ? acceptanceTimeSum / acceptanceUpdates.length : 0;
+            acceptanceCount > 0 ? (totalAcceptanceBusinessHours * 3600) / acceptanceCount : 0;
 
-        const avgTotalTimeSeconds = avgResolutionTimeSeconds + avgAcceptanceTimeSeconds;
+        // Process lifecycle for target user tickets
+        const finishedTicketIds = this.getFinishedTicketIds(statsItemsWithWeekendExclusion);
+        const updates = await this.getTicketUpdates(accessProfile, finishedTicketIds);
 
-        return {
+        const updatesByTicket = new Map<number, TicketUpdate[]>();
+        updates.forEach((u) => {
+            if (!updatesByTicket.has(u.ticketId)) updatesByTicket.set(u.ticketId, []);
+            updatesByTicket.get(u.ticketId).push(u);
+        });
+
+        const lifeCycleMap = new Map<number, TicketLifeCycleInfo>();
+        const finishedItems = statsItemsWithWeekendExclusion.filter((s) =>
+            finishedTicketIds.includes(s.ticketId),
+        );
+
+        finishedItems.forEach((stat) => {
+            lifeCycleMap.set(
+                stat.ticketId,
+                this.analyzeTicketLifeCycle(stat, updatesByTicket.get(stat.ticketId) || []),
+            );
+        });
+
+        const userDetailedMetricsMap = this.aggregateMetricsByUser(finishedItems, lifeCycleMap);
+        const userMetrics = userDetailedMetricsMap.get(userId) || {
+            onTimeCompleted: 0,
+            totalCompleted: 0,
+            onTimeVerified: 0,
+            totalVerified: 0,
+            rejectedCount: 0,
+            returnedCount: 0,
+            totalEntries: 0,
+        };
+
+        // Query 2: Fetch tickets where the user is the reviewer (for verification metrics)
+        // This captures verification cycles from tickets where the user is NOT the target
+        const targetTicketIds = statsItems.map((s) => s.ticketId);
+
+        const reviewerQb = this.ticketStatsRepository.createQueryBuilder('ticketStats');
+        reviewerQb.where('ticketStats.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        reviewerQb.andWhere('ticketStats.isCanceled = false');
+        reviewerQb.andWhere('ticketStats.reviewerId = :userId', { userId });
+
+        // Exclude tickets already processed (where user is also target) to avoid double-counting
+        if (targetTicketIds.length > 0) {
+            reviewerQb.andWhere('ticketStats.ticketId NOT IN (:...targetTicketIds)', {
+                targetTicketIds,
+            });
+        }
+
+        if (startDate) {
+            reviewerQb.andWhere('ticketStats.createdAt >= :startDate', { startDate });
+        }
+
+        const reviewerStatsItems = await reviewerQb.getMany();
+
+        // Process lifecycle for reviewer-only tickets and extract verification metrics
+        if (reviewerStatsItems.length > 0) {
+            const reviewerItemsWithWeekendExclusion =
+                await this.applyWeekendExclusion(reviewerStatsItems);
+            const reviewerFinishedTicketIds = this.getFinishedTicketIds(
+                reviewerItemsWithWeekendExclusion,
+            );
+            const reviewerUpdates = await this.getTicketUpdates(
+                accessProfile,
+                reviewerFinishedTicketIds,
+            );
+
+            const reviewerUpdatesByTicket = new Map<number, TicketUpdate[]>();
+            reviewerUpdates.forEach((u) => {
+                if (!reviewerUpdatesByTicket.has(u.ticketId))
+                    reviewerUpdatesByTicket.set(u.ticketId, []);
+                reviewerUpdatesByTicket.get(u.ticketId).push(u);
+            });
+
+            const reviewerLifeCycleMap = new Map<number, TicketLifeCycleInfo>();
+            const reviewerFinishedItems = reviewerItemsWithWeekendExclusion.filter((s) =>
+                reviewerFinishedTicketIds.includes(s.ticketId),
+            );
+
+            reviewerFinishedItems.forEach((stat) => {
+                reviewerLifeCycleMap.set(
+                    stat.ticketId,
+                    this.analyzeTicketLifeCycle(
+                        stat,
+                        reviewerUpdatesByTicket.get(stat.ticketId) || [],
+                    ),
+                );
+            });
+
+            // Aggregate verification metrics from reviewer-only tickets
+            const reviewerMetricsMap = this.aggregateMetricsByUser(
+                reviewerFinishedItems,
+                reviewerLifeCycleMap,
+            );
+            const reviewerMetrics = reviewerMetricsMap.get(userId);
+
+            // Merge only verification metrics (onTimeVerified, totalVerified)
+            if (reviewerMetrics) {
+                userMetrics.onTimeVerified += reviewerMetrics.onTimeVerified;
+                userMetrics.totalVerified += reviewerMetrics.totalVerified;
+            }
+        }
+
+        // Calculate indices after merging all metrics
+        const completionIndex = this.calculateWilsonScore(
+            userMetrics.onTimeCompleted,
+            userMetrics.totalCompleted,
+        );
+        const verificationIndex =
+            userMetrics.totalVerified > 0
+                ? Math.max(0, userMetrics.onTimeVerified / userMetrics.totalVerified)
+                : 1;
+        const rejectionIndex =
+            userMetrics.totalEntries > 0
+                ? Math.max(0, 1 - userMetrics.rejectedCount / userMetrics.totalEntries)
+                : 1;
+        const returnIndex =
+            userMetrics.totalEntries > 0
+                ? Math.max(0, 1 - userMetrics.returnedCount / userMetrics.totalEntries)
+                : 1;
+
+        const efficiencyScore = this.calculateComprehensiveScore(
+            userMetrics.onTimeCompleted,
+            userMetrics.totalCompleted,
+            userMetrics.onTimeVerified,
+            userMetrics.totalVerified,
+            userMetrics.rejectedCount,
+            userMetrics.returnedCount,
+            userMetrics.totalEntries,
+        );
+
+        const deliveryOverdueRate =
+            userMetrics.totalCompleted > 0
+                ? ((userMetrics.totalCompleted - userMetrics.onTimeCompleted) /
+                      userMetrics.totalCompleted) *
+                  100
+                : 0;
+
+        // Only include efficiency score if user has at least 10 tickets
+        const response: TicketStatsResponseDto = {
             totalTickets,
             openTickets,
             closedTickets,
             resolvedTickets,
             averageResolutionTimeSeconds: avgResolutionTimeSeconds,
             averageAcceptanceTimeSeconds: avgAcceptanceTimeSeconds,
-            averageTotalTimeSeconds: avgTotalTimeSeconds,
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
+            deliveryOverdueRate: parseFloat(deliveryOverdueRate.toFixed(2)),
+            detailedMetrics: {
+                onTimeCompleted: userMetrics.onTimeCompleted,
+                totalCompleted: userMetrics.totalCompleted,
+                onTimeVerified: userMetrics.onTimeVerified,
+                totalVerified: userMetrics.totalVerified,
+                rejectedCount: userMetrics.rejectedCount,
+                returnedCount: userMetrics.returnedCount,
+                totalEntries: userMetrics.totalEntries,
+                completionIndex: parseFloat(completionIndex.toFixed(2)),
+                verificationIndex: parseFloat(verificationIndex.toFixed(2)),
+                rejectionIndex: parseFloat(rejectionIndex.toFixed(2)),
+                returnIndex: parseFloat(returnIndex.toFixed(2)),
+            },
         };
+
+        // Only add efficiency score if user has at least 10 tickets
+        if (totalTickets >= 10) {
+            response.efficiencyScore = parseFloat(efficiencyScore.toFixed(2));
+        }
+
+        return response;
     }
 
     async getStatusDurations(
@@ -1527,12 +1754,13 @@ export class TicketStatsService {
         }
 
         const resolutionTimeSum = resolutionUpdates.reduce(
-            (sum, update) => sum + (update.timeSecondsInLastStatus || 0),
+            (sum, update) => sum + Number(update.timeSecondsInLastStatus || 0),
             0,
         );
 
+        const resolutionTicketIds = new Set(resolutionUpdates.map((update) => update.ticketId));
         const avgResolutionTimeSeconds =
-            resolutionUpdates.length > 0 ? resolutionTimeSum / resolutionUpdates.length : 0;
+            resolutionTicketIds.size > 0 ? resolutionTimeSum / resolutionTicketIds.size : 0;
 
         // Convert seconds to hours
         const avgResolutionTimeHours = avgResolutionTimeSeconds / 3600;
@@ -1558,7 +1786,7 @@ export class TicketStatsService {
 
         // Calculate the overall average in seconds
         const totalDurationSecondsOverall = timeSeriesData.reduce(
-            (sum, item) => sum + item.value * item.count,
+            (sum, item) => sum + Number(item.value) * item.count,
             0,
         );
         const totalCount = timeSeriesData.reduce((sum, item) => sum + item.count, 0);
@@ -1739,89 +1967,146 @@ export class TicketStatsService {
         sort: string = 'top',
         period: StatsPeriod = StatsPeriod.TRIMESTRAL,
         sortBy: string = 'efficiency',
+        excludeUnscored: boolean = false,
     ): Promise<UserRankingResponseDto> {
-        const { dateFilter } = this.getPeriodFilter(period);
+        const { dateFilter, startDate } = this.getPeriodFilter(period);
+        const supervisorDeptId = await this.getSupervisorDepartmentId(accessProfile);
 
-        // Check if user is Supervisor and get their departmentId
-        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
-
-        const filters: any = {
-            tenantId: accessProfile.tenantId,
-            currentTargetUserId: Not(IsNull()),
-            ...dateFilter,
-        };
-
+        // 1. Fetch and filter base statistics (tickets with target users)
         const ticketStats = await this.ticketStatsRepository.find({
-            where: filters,
+            where: {
+                tenantId: accessProfile.tenantId,
+                currentTargetUserId: Not(IsNull()),
+                ...dateFilter,
+            },
         });
 
-        // Filter by department if Supervisor
-        let filteredTicketStats = ticketStats;
-        if (supervisorDepartmentId !== null) {
-            filteredTicketStats = ticketStats.filter(
-                (stat) => stat.departmentIds && stat.departmentIds.includes(supervisorDepartmentId),
+        const filteredStats =
+            supervisorDeptId !== null
+                ? ticketStats.filter((s) => s.departmentIds?.includes(supervisorDeptId))
+                : ticketStats;
+
+        // 2. Fetch Core Data and Analyze Lifecycle for target user tickets
+        const finishedTicketIds = this.getFinishedTicketIds(filteredStats);
+        const updates = await this.getTicketUpdates(accessProfile, finishedTicketIds);
+
+        const updatesByTicket = new Map<number, TicketUpdate[]>();
+        updates.forEach((u) => {
+            if (!updatesByTicket.has(u.ticketId)) updatesByTicket.set(u.ticketId, []);
+            updatesByTicket.get(u.ticketId).push(u);
+        });
+
+        const lifeCycleMap = new Map<number, TicketLifeCycleInfo>();
+        const finishedItems = filteredStats.filter((s) => finishedTicketIds.includes(s.ticketId));
+
+        finishedItems.forEach((stat) => {
+            lifeCycleMap.set(
+                stat.ticketId,
+                this.analyzeTicketLifeCycle(stat, updatesByTicket.get(stat.ticketId) || []),
+            );
+        });
+
+        const userDetailedMetrics = this.aggregateMetricsByUser(finishedItems, lifeCycleMap);
+
+        // 2b. Fetch reviewer-only tickets (where reviewer is not a target user)
+        // This ensures verification metrics are counted for users who only verify
+        const targetTicketIds = filteredStats.map((s) => s.ticketId);
+
+        const reviewerOnlyStats = await this.ticketStatsRepository.find({
+            where: {
+                tenantId: accessProfile.tenantId,
+                reviewerId: Not(IsNull()),
+                isCanceled: false,
+                ...dateFilter,
+            },
+        });
+
+        // Filter to only tickets not already processed AND apply supervisor filter if needed
+        let filteredReviewerStats = reviewerOnlyStats.filter(
+            (s) => !targetTicketIds.includes(s.ticketId),
+        );
+
+        if (supervisorDeptId !== null) {
+            // For supervisor, include tickets where the reviewer's department matches
+            filteredReviewerStats = filteredReviewerStats.filter(
+                (s) => s.reviewerDepartmentId === supervisorDeptId,
             );
         }
 
-        // Filter out canceled tickets and only include finished tasks (Completed or Rejected)
-        const completedTicketsMap: Map<number, { completedAt: Date | null; dueAt: Date | null }> =
-            new Map();
-        if (filteredTicketStats.length > 0) {
-            const ticketIds = filteredTicketStats.map((stat) => stat.ticketId);
-            const tickets = await this.ticketRepository.find({
-                where: { id: In(ticketIds) },
-                relations: ['ticketStatus'],
-                select: ['id', 'ticketStatus', 'completedAt', 'dueAt'],
-            });
-
-            // Only include tickets that are Completed or Rejected (finished tasks)
-            // Exclude Cancelled ones
-            const finishedTicketIds = new Set(
-                tickets
-                    .filter(
-                        (ticket) =>
-                            ticket.ticketStatus?.key === TicketStatus.Completed ||
-                            ticket.ticketStatus?.key === TicketStatus.Rejected,
-                    )
-                    .map((ticket) => ticket.id),
+        if (filteredReviewerStats.length > 0) {
+            const reviewerFinishedTicketIds = this.getFinishedTicketIds(filteredReviewerStats);
+            const reviewerUpdates = await this.getTicketUpdates(
+                accessProfile,
+                reviewerFinishedTicketIds,
             );
 
-            // Store completed tickets with their dates for overdue calculation
-            tickets
-                .filter((ticket) => finishedTicketIds.has(ticket.id))
-                .forEach((ticket) => {
-                    completedTicketsMap.set(ticket.id, {
-                        completedAt: ticket.completedAt,
-                        dueAt: ticket.dueAt,
+            const reviewerUpdatesByTicket = new Map<number, TicketUpdate[]>();
+            reviewerUpdates.forEach((u) => {
+                if (!reviewerUpdatesByTicket.has(u.ticketId))
+                    reviewerUpdatesByTicket.set(u.ticketId, []);
+                reviewerUpdatesByTicket.get(u.ticketId).push(u);
+            });
+
+            const reviewerLifeCycleMap = new Map<number, TicketLifeCycleInfo>();
+            const reviewerFinishedItems = filteredReviewerStats.filter((s) =>
+                reviewerFinishedTicketIds.includes(s.ticketId),
+            );
+
+            reviewerFinishedItems.forEach((stat) => {
+                reviewerLifeCycleMap.set(
+                    stat.ticketId,
+                    this.analyzeTicketLifeCycle(
+                        stat,
+                        reviewerUpdatesByTicket.get(stat.ticketId) || [],
+                    ),
+                );
+            });
+
+            const reviewerMetrics = this.aggregateMetricsByUser(
+                reviewerFinishedItems,
+                reviewerLifeCycleMap,
+            );
+
+            // Merge only verification metrics from reviewer-only tickets
+            reviewerMetrics.forEach((metrics, userId) => {
+                const existing = userDetailedMetrics.get(userId);
+                if (existing) {
+                    existing.onTimeVerified += metrics.onTimeVerified;
+                    existing.totalVerified += metrics.totalVerified;
+                } else {
+                    // User only has verification activity, no target activity
+                    userDetailedMetrics.set(userId, {
+                        onTimeCompleted: 0,
+                        totalCompleted: 0,
+                        onTimeVerified: metrics.onTimeVerified,
+                        totalVerified: metrics.totalVerified,
+                        totalClosed: 0,
+                        rejectedCount: 0,
+                        returnedCount: 0,
+                        totalEntries: 0,
                     });
-                });
-
-            filteredTicketStats = filteredTicketStats.filter((stat) =>
-                finishedTicketIds.has(stat.ticketId),
-            );
+                }
+            });
         }
 
-        const allUsersQuery = this.userRepository.createQueryBuilder('user');
-        allUsersQuery.where('user.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
-        allUsersQuery.leftJoinAndSelect('user.department', 'department');
+        // Handle case where filteredStats is empty but we may have reviewer-only activity
+        if (filteredStats.length === 0 && filteredReviewerStats.length === 0) {
+            return { users: [], total: 0, topContributor: null };
+        }
 
-        // If Supervisor, only get users from their department
-        if (supervisorDepartmentId !== null) {
-            allUsersQuery.andWhere('user.departmentId = :departmentId', {
-                departmentId: supervisorDepartmentId,
-            });
+        // 3. Initialize User Map and Stats
+        const allUsersQuery = this.userRepository
+            .createQueryBuilder('user')
+            .where('user.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .leftJoinAndSelect('user.department', 'department');
+
+        if (supervisorDeptId !== null) {
+            allUsersQuery.andWhere('user.departmentId = :deptId', { deptId: supervisorDeptId });
         }
 
         const allUsers = await allUsersQuery.getMany();
-
-        // Create a map of users for quick lookup
-        const userMap = new Map<number, User>();
-        allUsers.forEach((user) => userMap.set(user.id, user));
-
-        // Initialize stats for all users
         const userStatsMap = new Map<number, UserRankingItemDto>();
 
-        // First, initialize entries for all active users (even those without tickets)
         for (const user of allUsers) {
             if (!user.isActive) continue;
             userStatsMap.set(user.id, {
@@ -1833,267 +2118,207 @@ export class TicketStatsService {
                 totalTickets: 0,
                 resolvedTickets: 0,
                 resolutionRate: 0,
-                efficiencyScore: 0,
                 averageAcceptanceTimeSeconds: 0,
                 averageResolutionTimeSeconds: 0,
-                overdueRate: 0,
+                deliveryOverdueRate: 0,
                 avatarUrl: null,
                 isActive: user.isActive,
             });
         }
 
-        // Then count tickets for users who have them
-        // Count tickets where user is currentTargetUserId OR in targetUserIds array
-        for (const stat of filteredTicketStats) {
-            // Get all users involved in this ticket (currentTargetUserId + all targetUserIds)
-            const involvedUserIds = new Set<number>();
-
-            if (stat.currentTargetUserId) {
-                involvedUserIds.add(stat.currentTargetUserId);
-            }
-
-            if (stat.targetUserIds && Array.isArray(stat.targetUserIds)) {
-                stat.targetUserIds.forEach((userId: number) => {
-                    if (userId) {
-                        involvedUserIds.add(userId);
-                    }
-                });
-            }
-
-            // Count this ticket for all involved users
-            for (const userId of involvedUserIds) {
-                if (!userStatsMap.has(userId)) continue;
-
-                const userStats = userStatsMap.get(userId);
-                userStats.totalTickets++;
-
-                if (stat.isResolved) {
-                    userStats.resolvedTickets++;
+        // 4. Count Involvements
+        for (const stat of filteredStats) {
+            const involved = new Set([
+                stat.currentTargetUserId,
+                ...(Array.isArray(stat.targetUserIds) ? stat.targetUserIds : []),
+            ]);
+            involved.forEach((userId) => {
+                const s = userStatsMap.get(userId);
+                if (s) {
+                    s.totalTickets++;
+                    if (stat.isResolved) s.resolvedTickets++;
                 }
-            }
-        }
-
-        // Calculate average acceptance and resolution times for each user
-        const { startDate } = this.getPeriodFilter(period);
-        const userIds = Array.from(userStatsMap.keys());
-
-        // Calculate average acceptance time for each user
-        if (userIds.length > 0) {
-            const acceptanceQuery = this.ticketUpdateRepository
-                .createQueryBuilder('update')
-                .leftJoinAndSelect('update.ticket', 'ticket')
-                .where('update.fromStatus = :fromStatus', { fromStatus: TicketStatus.Pending })
-                .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
-                .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-                .andWhere(
-                    '(update.fromUserId IN (:...userIds) OR (update.fromUserId IS NULL AND ticket.currentTargetUserId IN (:...userIds)))',
-                    { userIds },
-                );
-
-            if (startDate) {
-                acceptanceQuery.andWhere('update.createdAt >= :startDate', { startDate });
-            }
-
-            const acceptanceUpdates = await acceptanceQuery.getMany();
-
-            // Group by userId and calculate averages
-            const acceptanceByUser = new Map<number, { sum: number; count: number }>();
-            for (const update of acceptanceUpdates) {
-                // Use fromUserId if available, otherwise fall back to currentTargetUserId for backward compatibility
-                const userId = update.fromUserId || update.ticket?.currentTargetUserId;
-                if (userId) {
-                    const timeSeconds = update.timeSecondsInLastStatus || 0;
-                    if (!acceptanceByUser.has(userId)) {
-                        acceptanceByUser.set(userId, { sum: 0, count: 0 });
-                    }
-                    const stats = acceptanceByUser.get(userId)!;
-                    stats.sum += timeSeconds;
-                    stats.count += 1;
-                }
-            }
-
-            // Calculate averages
-            for (const [userId, stats] of acceptanceByUser.entries()) {
-                if (userStatsMap.has(userId)) {
-                    const userStats = userStatsMap.get(userId);
-                    userStats.averageAcceptanceTimeSeconds =
-                        stats.count > 0 ? stats.sum / stats.count : 0;
-                }
-            }
-        }
-
-        // Calculate average resolution time for each user
-        if (userIds.length > 0) {
-            const resolutionQuery = this.ticketUpdateRepository
-                .createQueryBuilder('update')
-                .leftJoinAndSelect('update.ticket', 'ticket')
-                .where('update.fromStatus = :fromStatus', {
-                    fromStatus: TicketStatus.InProgress,
-                })
-                .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
-                .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-                .andWhere(
-                    '(update.fromUserId IN (:...userIds) OR (update.fromUserId IS NULL AND ticket.currentTargetUserId IN (:...userIds)))',
-                    { userIds },
-                );
-
-            if (startDate) {
-                resolutionQuery.andWhere('update.createdAt >= :startDate', { startDate });
-            }
-
-            const resolutionUpdates = await resolutionQuery.getMany();
-
-            // Group by userId and calculate averages
-            const resolutionByUser = new Map<number, { sum: number; count: number }>();
-            for (const update of resolutionUpdates) {
-                // Use fromUserId if available, otherwise fall back to currentTargetUserId for backward compatibility
-                const userId = update.fromUserId || update.ticket?.currentTargetUserId;
-                if (userId) {
-                    const timeSeconds = update.timeSecondsInLastStatus || 0;
-                    if (!resolutionByUser.has(userId)) {
-                        resolutionByUser.set(userId, { sum: 0, count: 0 });
-                    }
-                    const stats = resolutionByUser.get(userId)!;
-                    stats.sum += timeSeconds;
-                    stats.count += 1;
-                }
-            }
-
-            // Calculate averages
-            for (const [userId, stats] of resolutionByUser.entries()) {
-                if (userStatsMap.has(userId)) {
-                    const userStats = userStatsMap.get(userId);
-                    userStats.averageResolutionTimeSeconds =
-                        stats.count > 0 ? stats.sum / stats.count : 0;
-                }
-            }
-        }
-
-        // Calculate overdue rate for each user
-        const completedTicketsByUser = new Map<number, number>();
-        const overdueTicketsByUser = new Map<number, number>();
-
-        const ticketsWithDueAt = await this.ticketRepository.find({
-            where: {
-                id: In(filteredTicketStats.map((stat) => stat.ticketId)),
-                completedAt: Not(IsNull()),
-                dueAt: Not(IsNull()),
-            },
-            select: ['id', 'completedAt', 'dueAt', 'currentTargetUserId'],
-            relations: ['targetUsers'],
-        });
-
-        // Get first verification updates for these tickets
-        const ticketIdsWithDueAt = ticketsWithDueAt.map(t => t.id);
-        const verificationMap = new Map<number, Date>();
-        
-        if (ticketIdsWithDueAt.length > 0) {
-            const firstVerificationUpdates = await this.ticketUpdateRepository
-                .createQueryBuilder('update')
-                .select('update.ticketId', 'ticketId')
-                .addSelect('MIN(update.createdAt)', 'firstVerificationAt')
-                .where('update.ticketId IN (:...ticketIds)', { ticketIds: ticketIdsWithDueAt })
-                .andWhere('update.toStatus = :status', { status: TicketStatus.AwaitingVerification })
-                .groupBy('update.ticketId')
-                .getRawMany();
-            
-            firstVerificationUpdates.forEach((update) => {
-                verificationMap.set(update.ticketId, new Date(update.firstVerificationAt));
             });
         }
 
-        for (const ticket of ticketsWithDueAt) {
-            const involvedUserIds = new Set<number>();
-            if (ticket.currentTargetUserId) {
-                involvedUserIds.add(ticket.currentTargetUserId);
-            }
-            if (ticket.targetUsers) {
-                ticket.targetUsers.forEach((ttu) => involvedUserIds.add(ttu.userId));
-            }
-            
-            const firstVerificationAt = verificationMap.get(ticket.id);
-            const isOverdue = firstVerificationAt && ticket.dueAt && firstVerificationAt > ticket.dueAt;
-            
-            const hasVerification = !!firstVerificationAt;
-
-            for (const userId of involvedUserIds) {
-                if (hasVerification) {
-                   completedTicketsByUser.set(userId, (completedTicketsByUser.get(userId) || 0) + 1);
-                   if (isOverdue) {
-                       overdueTicketsByUser.set(userId, (overdueTicketsByUser.get(userId) || 0) + 1);
-                   }
-                }
-            }
+        // 5. Calculate Average Times
+        const userIds = Array.from(userStatsMap.keys());
+        if (userIds.length > 0) {
+            await this.populateUserAverageTimes(accessProfile, userIds, startDate, userStatsMap);
         }
 
-        // Calculate resolution rate and Wilson Score (efficiency)
+        // 6. Final Mapping and Score Calculation
         const rankedUsers = Array.from(userStatsMap.values())
-            .filter((user) => user.isActive)
+            .filter((u) => u.isActive)
             .map((user) => {
-                user.resolutionRate =
-                    user.totalTickets > 0
-                        ? parseFloat((user.resolvedTickets / user.totalTickets).toFixed(2))
-                        : 0;
-                user.efficiencyScore = this.calculateWilsonScore(
-                    user.resolvedTickets,
-                    user.totalTickets,
-                );
+                const m = userDetailedMetrics.get(user.userId);
+                if (m) {
+                    user.resolutionRate =
+                        m.totalEntries > 0
+                            ? parseFloat((m.totalCompleted / m.totalEntries).toFixed(2))
+                            : 0;
 
-                // Calculate overdue rate
-                const totalCompletedWithDueAt = completedTicketsByUser.get(user.userId) || 0;
-                const totalOverdue = overdueTicketsByUser.get(user.userId) || 0;
-                user.overdueRate =
-                    totalCompletedWithDueAt > 0
-                        ? parseFloat(((totalOverdue / totalCompletedWithDueAt) * 100).toFixed(2))
-                        : 0;
+                    // Only calculate efficiency score if user has at least 10 tickets
+                    if (user.totalTickets >= 10) {
+                        user.efficiencyScore = this.calculateComprehensiveScore(
+                            m.onTimeCompleted,
+                            m.totalCompleted,
+                            m.onTimeVerified,
+                            m.totalVerified,
+                            m.rejectedCount,
+                            m.returnedCount,
+                            m.totalEntries,
+                        );
+                    }
 
+                    user.deliveryOverdueRate =
+                        m.totalCompleted > 0
+                            ? parseFloat(
+                                  (
+                                      ((m.totalCompleted - m.onTimeCompleted) / m.totalCompleted) *
+                                      100
+                                  ).toFixed(2),
+                              )
+                            : 0;
+                }
                 return user;
             })
             .filter((user) => {
-                // When sorting by resolution time, exclude users with 0 seconds
-                if (sortBy === 'resolution_time') {
-                    return user.averageResolutionTimeSeconds > 0;
-                }
-                // When sorting by overdue rate, exclude users with no completed tickets with dueAt
-                if (sortBy === 'overdue_rate') {
-                    const completedCount = completedTicketsByUser.get(user.userId) || 0;
-                    return completedCount > 0;
-                }
+                if (sortBy === 'resolution_time') return user.averageResolutionTimeSeconds > 0;
+                if (sortBy === 'overdue_rate')
+                    return (userDetailedMetrics.get(user.userId)?.totalCompleted || 0) > 0;
+                // When excludeUnscored is true and sorting by efficiency, only show users with at least 10 tickets
+                if (excludeUnscored && sortBy === 'efficiency') return user.totalTickets >= 10;
                 return true;
             })
             .sort((a, b) => {
                 if (sortBy === 'resolution_time') {
-                    // Sort by resolution time (lower is better)
-                    if (sort === 'bottom') {
-                        // Worst performers: highest resolution time first
-                        return b.averageResolutionTimeSeconds - a.averageResolutionTimeSeconds;
-                    } else {
-                        // Top performers: lowest resolution time first
-                        return a.averageResolutionTimeSeconds - b.averageResolutionTimeSeconds;
-                    }
+                    return sort === 'bottom'
+                        ? b.averageResolutionTimeSeconds - a.averageResolutionTimeSeconds
+                        : a.averageResolutionTimeSeconds - b.averageResolutionTimeSeconds;
                 } else if (sortBy === 'overdue_rate') {
-                    // Sort by overdue rate (lower is better - fewer overdue tickets)
-                    if (sort === 'bottom') {
-                        // Worst performers: highest overdue rate first
-                        return b.overdueRate - a.overdueRate;
-                    } else {
-                        // Top performers: lowest overdue rate first
-                        return a.overdueRate - b.overdueRate;
-                    }
+                    return sort === 'bottom'
+                        ? b.deliveryOverdueRate - a.deliveryOverdueRate
+                        : a.deliveryOverdueRate - b.deliveryOverdueRate;
                 } else {
-                    // Default: sort by efficiency score
-                    if (sort === 'bottom') {
-                        // Sort by efficiency score (ascending) for worst performers
-                        return a.efficiencyScore - b.efficiencyScore;
-                    } else {
-                        // Sort by efficiency score (descending) for top performers
-                        return b.efficiencyScore - a.efficiencyScore;
-                    }
+                    // Sort by efficiency - users without scores (0) go to the bottom
+                    return sort === 'bottom'
+                        ? a.efficiencyScore - b.efficiencyScore
+                        : b.efficiencyScore - a.efficiencyScore;
                 }
-            })
-            .slice(0, returnAll ? undefined : limit);
+            });
 
-        return { users: rankedUsers };
+        const total = rankedUsers.length;
+        const topContributor = total > 0 ? rankedUsers[0] : null;
+
+        return {
+            users: returnAll ? rankedUsers : rankedUsers.slice(0, limit),
+            total,
+            topContributor,
+        };
+    }
+
+    private async populateUserAverageTimes(
+        accessProfile: AccessProfile,
+        userIds: number[],
+        startDate: Date | null,
+        userStatsMap: Map<number, UserRankingItemDto>,
+    ): Promise<void> {
+        const fetchAverages = async (status: TicketStatus) => {
+            const qb = this.ticketUpdateRepository
+                .createQueryBuilder('update')
+                .leftJoinAndSelect('update.ticket', 'ticket')
+                .where('update.fromStatus = :status', { status })
+                .andWhere('update.timeSecondsInLastStatus IS NOT NULL')
+                .andWhere('update.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+                .andWhere(
+                    '(update.fromUserId IN (:...userIds) OR (update.fromUserId IS NULL AND ticket.currentTargetUserId IN (:...userIds)))',
+                    { userIds },
+                );
+
+            if (startDate) qb.andWhere('update.createdAt >= :startDate', { startDate });
+            return qb.getMany();
+        };
+
+        const [acceptanceUpdates, resolutionUpdates] = await Promise.all([
+            fetchAverages(TicketStatus.Pending),
+            fetchAverages(TicketStatus.InProgress),
+        ]);
+
+        // Calculate acceptance times with weekend exclusion
+        const accMap = new Map<number, { sum: number; count: number }>();
+
+        for (const update of acceptanceUpdates) {
+            const userId = update.fromUserId || update.ticket?.currentTargetUserId;
+            if (!userId || !userStatsMap.has(userId)) continue;
+
+            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
+                where: {
+                    ticketId: update.ticketId,
+                    toStatus: TicketStatus.Pending,
+                    createdAt: LessThan(update.createdAt),
+                },
+                order: {
+                    createdAt: 'DESC',
+                },
+            });
+
+            if (previousStatusUpdate) {
+                const businessHours = this.businessHoursService.calculateBusinessHours(
+                    previousStatusUpdate.createdAt,
+                    update.createdAt,
+                );
+
+                if (!accMap.has(userId)) accMap.set(userId, { sum: 0, count: 0 });
+                const s = accMap.get(userId)!;
+                s.sum += businessHours * 3600; // Convert hours to seconds
+                s.count++;
+            }
+        }
+
+        // Calculate resolution times with weekend exclusion
+        const resMap = new Map<number, { sum: number; count: number }>();
+        const processedTickets = new Set<string>(); // Track userId-ticketId pairs
+
+        for (const update of resolutionUpdates) {
+            const userId = update.fromUserId || update.ticket?.currentTargetUserId;
+            if (!userId || !userStatsMap.has(userId)) continue;
+
+            const ticketKey = `${userId}-${update.ticketId}`;
+            if (processedTickets.has(ticketKey)) continue;
+
+            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
+                where: {
+                    ticketId: update.ticketId,
+                    toStatus: TicketStatus.InProgress,
+                    createdAt: LessThan(update.createdAt),
+                },
+                order: {
+                    createdAt: 'DESC',
+                },
+            });
+
+            if (previousStatusUpdate) {
+                const businessHours = this.businessHoursService.calculateBusinessHours(
+                    previousStatusUpdate.createdAt,
+                    update.createdAt,
+                );
+
+                if (!resMap.has(userId)) resMap.set(userId, { sum: 0, count: 0 });
+                const s = resMap.get(userId)!;
+                s.sum += businessHours * 3600; // Convert hours to seconds
+                s.count++;
+                processedTickets.add(ticketKey);
+            }
+        }
+
+        userStatsMap.forEach((user, userId) => {
+            const acc = accMap.get(userId);
+            if (acc) user.averageAcceptanceTimeSeconds = acc.sum / acc.count;
+
+            const res = resMap.get(userId);
+            if (res) user.averageResolutionTimeSeconds = res.sum / res.count;
+        });
     }
 
     /**
@@ -2132,51 +2357,69 @@ export class TicketStatsService {
         return Math.max(0, Math.min(1, score));
     }
 
+    /**
+     * Calculates a comprehensive performance score based on weighted indices:
+     * 1. On-time completion (35%) - Wilson corrected
+     * 2. On-time verification (30%) - Wilson corrected
+     * 3. Quality / Rejection rate (25%)
+     * 4. Quality / Return rate (10%)
+     */
+    private calculateComprehensiveScore(
+        onTimeCompleted: number,
+        totalCompleted: number,
+        onTimeVerified: number,
+        totalVerified: number,
+        rejectedCount: number,
+        returnedTickets: number,
+        totalEntries: number,
+    ): number {
+        const completionIndex = this.calculateWilsonScore(onTimeCompleted, totalCompleted);
+        const verificationIndex =
+            totalVerified > 0 ? Math.max(0, onTimeVerified / totalVerified) : 1;
+        const rejectionIndex =
+            totalEntries > 0 ? Math.max(0, 1 - rejectedCount / totalCompleted) : 1;
+        const returnIndex =
+            totalEntries > 0 ? Math.max(0, 1 - returnedTickets / totalCompleted) : 1;
+
+        const score =
+            completionIndex * 0.4 +
+            returnIndex * 0.3 +
+            verificationIndex * 0.15 +
+            rejectionIndex * 0.15;
+
+        return Math.max(0, Math.min(1, score));
+    }
+
     private async applyWeekendExclusion(items: TicketStats[]): Promise<TicketStats[]> {
-        return Promise.all(
-            items.map(async (stat) => {
-                let adjustedResolutionTimeSeconds = stat.resolutionTimeSeconds;
-                let adjustedAcceptanceTimeSeconds = stat.acceptanceTimeSeconds;
+        return items.map((stat) => {
+            let adjustedTotalTimeSeconds = stat.totalTimeSeconds;
+            let adjustedAcceptanceTimeSeconds = stat.acceptanceTimeSeconds;
 
-                // Apply weekend exclusion to resolution time
-                if (stat.resolutionTimeSeconds !== null) {
-                    const ticket = await this.ticketRepository.findOne({
-                        where: { id: stat.ticketId },
-                        select: ['acceptedAt', 'completedAt'],
-                    });
+            // Apply weekend exclusion to total time (creation to completion or rejection)
+            const closedAt = stat.completedAt || stat.rejectedAt;
+            if (stat.totalTimeSeconds !== null && stat.createdAt && closedAt) {
+                const businessHours = this.businessHoursService.calculateBusinessHours(
+                    stat.createdAt,
+                    closedAt,
+                );
+                adjustedTotalTimeSeconds = businessHours * 3600;
+            }
 
-                    if (ticket?.acceptedAt && ticket?.completedAt) {
-                        const businessHours = this.businessHoursService.calculateBusinessHours(
-                            ticket.acceptedAt,
-                            ticket.completedAt,
-                        );
-                        adjustedResolutionTimeSeconds = businessHours * 3600;
-                    }
-                }
+            // Apply weekend exclusion to acceptance time
+            if (stat.acceptanceTimeSeconds !== null && stat.createdAt && stat.acceptedAt) {
+                const businessHours = this.businessHoursService.calculateBusinessHours(
+                    stat.createdAt,
+                    stat.acceptedAt,
+                );
+                adjustedAcceptanceTimeSeconds = businessHours * 3600;
+            }
 
-                // Apply weekend exclusion to acceptance time
-                if (stat.acceptanceTimeSeconds !== null) {
-                    const ticket = await this.ticketRepository.findOne({
-                        where: { id: stat.ticketId },
-                        select: ['createdAt', 'acceptedAt'],
-                    });
-
-                    if (ticket?.createdAt && ticket?.acceptedAt) {
-                        const businessHours = this.businessHoursService.calculateBusinessHours(
-                            ticket.createdAt,
-                            ticket.acceptedAt,
-                        );
-                        adjustedAcceptanceTimeSeconds = businessHours * 3600;
-                    }
-                }
-
-                return {
-                    ...stat,
-                    resolutionTimeSeconds: adjustedResolutionTimeSeconds,
-                    acceptanceTimeSeconds: adjustedAcceptanceTimeSeconds,
-                };
-            }),
-        );
+            return {
+                ...stat,
+                totalTimeSeconds: adjustedTotalTimeSeconds,
+                acceptanceTimeSeconds: adjustedAcceptanceTimeSeconds,
+            };
+        });
     }
 
     async getUserStatsList(
@@ -2250,11 +2493,7 @@ export class TicketStatsService {
         sortBy: string = 'efficiencyScore',
         sortDirection: 'asc' | 'desc' = 'desc',
     ): Promise<PaginatedResponse<DepartmentStatsDto>> {
-        let departments = await this.getDepartmentStats(
-            accessProfile,
-            period,
-            'efficiency',
-        );
+        let departments = await this.getDepartmentStats(accessProfile, period, 'efficiency');
 
         // 1. Filter by search
         if (search) {
@@ -2299,5 +2538,252 @@ export class TicketStatsService {
             limit,
             totalPages,
         };
+    }
+    private getFinishedTicketIds(items: TicketStats[]): number[] {
+        return items.filter((s) => s.isResolved || s.isRejected).map((s) => s.ticketId);
+    }
+
+    private async getTicketUpdates(
+        accessProfile: AccessProfile,
+        ticketIds: number[],
+    ): Promise<TicketUpdate[]> {
+        if (ticketIds.length === 0) return [];
+        return this.ticketUpdateRepository.find({
+            where: { ticketId: In(ticketIds), tenantId: accessProfile.tenantId },
+            order: { createdAt: 'ASC' },
+            relations: ['fromUser'],
+        });
+    }
+
+    private analyzeTicketLifeCycle(
+        stat: TicketStats,
+        updates: TicketUpdate[],
+    ): TicketLifeCycleInfo {
+        let firstAwaitingVerificationAt: Date | null = null;
+        let lastAwaitingVerificationAt: Date | null = null;
+        let currentVerificationStart: Date | null = null;
+        let currentReviewerId: number | null = null;
+        let currentReviewerDeptId: number | null = null;
+        let isRejected = false;
+        let wasReturned = false;
+        const returnedToUserIds: number[] = [];
+        const returnedToDepartmentIds: number[] = [];
+        const verificationCycles: TicketLifeCycleInfo['verificationCycles'] = [];
+
+        for (const update of updates) {
+            // Reset submission timestamps if ticket is retracted from verification back to in progress
+            if (
+                update.fromStatus === TicketStatus.AwaitingVerification &&
+                update.toStatus === TicketStatus.InProgress
+            ) {
+                firstAwaitingVerificationAt = null;
+                lastAwaitingVerificationAt = null;
+            }
+
+            // Track submission for completionIndex and track last entry for verification SLA
+            if (update.toStatus === TicketStatus.AwaitingVerification) {
+                if (!firstAwaitingVerificationAt) firstAwaitingVerificationAt = update.createdAt;
+                lastAwaitingVerificationAt = update.createdAt;
+            }
+
+            // Track verification cycles for verificationIndex
+            if (update.toStatus === TicketStatus.UnderVerification) {
+                currentVerificationStart = update.createdAt;
+                currentReviewerId = stat.reviewerId;
+                currentReviewerDeptId = stat.reviewerDepartmentId;
+            }
+
+            if (
+                currentVerificationStart &&
+                [TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Returned].includes(
+                    update.toStatus as TicketStatus,
+                )
+            ) {
+                // End of verification must be within 24h of being sent to AwaitingVerification
+                const slaStart = lastAwaitingVerificationAt || currentVerificationStart;
+                const durationHrs = this.businessHoursService.calculateBusinessHours(
+                    slaStart,
+                    update.createdAt,
+                );
+                verificationCycles.push({
+                    startTime: currentVerificationStart,
+                    endTime: update.createdAt,
+                    reviewerId: currentReviewerId,
+                    reviewerDeptId: currentReviewerDeptId,
+                    onTime: durationHrs <= 24,
+                });
+                currentVerificationStart = null;
+                currentReviewerId = null;
+                currentReviewerDeptId = null;
+                // We keep lastAwaitingVerificationAt until a new one arrives or it's reset to InProgress
+            }
+
+            if (update.toStatus === TicketStatus.Rejected) isRejected = true;
+            if (update.toStatus === TicketStatus.Returned) {
+                wasReturned = true;
+                returnedToUserIds.push(update.toUserId);
+                returnedToDepartmentIds.push(update.toDepartmentId);
+            }
+        }
+
+        const isClosed = stat.isResolved || stat.isRejected;
+        const isResolved = stat.isResolved;
+        const isOnTime =
+            isClosed &&
+            firstAwaitingVerificationAt &&
+            stat.dueAt &&
+            (isBefore(firstAwaitingVerificationAt, stat.dueAt) ||
+                isEqual(firstAwaitingVerificationAt, stat.dueAt));
+
+        return {
+            ticketId: stat.ticketId,
+            isClosed,
+            isResolved,
+            isOnTime: !!isOnTime,
+            firstAwaitingVerificationAt,
+            verificationCycles,
+            isRejected,
+            wasReturned,
+            returnedToUserIds,
+            returnedToDepartmentIds,
+        };
+    }
+
+    private aggregateMetricsByUser(
+        stats: TicketStats[],
+        lifeCycleMap: Map<number, TicketLifeCycleInfo>,
+    ): Map<number, DetailedMetrics> {
+        const userMetrics = new Map<number, DetailedMetrics>();
+
+        const getM = (userId: number) => {
+            if (!userMetrics.has(userId)) {
+                userMetrics.set(userId, {
+                    onTimeCompleted: 0,
+                    totalCompleted: 0,
+                    onTimeVerified: 0,
+                    totalVerified: 0,
+                    totalClosed: 0,
+                    rejectedCount: 0,
+                    returnedCount: 0,
+                    totalEntries: 0,
+                });
+            }
+            return userMetrics.get(userId);
+        };
+
+        for (const stat of stats) {
+            const lifeCycle = lifeCycleMap.get(stat.ticketId);
+            if (!lifeCycle) continue;
+
+            // Assignees metrics
+            const assignees = new Set<number>();
+            if (stat.currentTargetUserId) assignees.add(stat.currentTargetUserId);
+            stat.targetUserIds?.forEach((userId) => assignees.add(userId));
+
+            assignees.forEach((userId) => {
+                const m = getM(userId);
+                m.totalEntries++;
+                if (lifeCycle.isClosed) {
+                    m.totalClosed++;
+                }
+
+                if (lifeCycle.isResolved) {
+                    m.totalCompleted++;
+                    if (lifeCycle.isOnTime) m.onTimeCompleted++;
+                    if (lifeCycle.wasReturned) {
+                        if (
+                            stat.targetUserIds.length > 1 &&
+                            lifeCycle.returnedToUserIds.includes(userId)
+                        ) {
+                            m.returnedCount++;
+                        }
+
+                        if (stat.targetUserIds.length === 1) {
+                            m.returnedCount++;
+                        }
+                    }
+                }
+
+                if (lifeCycle.isRejected) m.rejectedCount++;
+            });
+
+            // Reviewer metrics
+            lifeCycle.verificationCycles.forEach((cycle) => {
+                if (cycle.reviewerId) {
+                    const m = getM(cycle.reviewerId);
+                    m.totalVerified++;
+                    if (cycle.onTime) m.onTimeVerified++;
+                }
+            });
+        }
+
+        return userMetrics;
+    }
+
+    private aggregateMetricsByDepartment(
+        stats: TicketStats[],
+        lifeCycleMap: Map<number, TicketLifeCycleInfo>,
+    ): Map<number, DetailedMetrics> {
+        const deptMetrics = new Map<number, DetailedMetrics>();
+
+        const getM = (deptId: number) => {
+            if (!deptMetrics.has(deptId)) {
+                deptMetrics.set(deptId, {
+                    onTimeCompleted: 0,
+                    totalCompleted: 0,
+                    onTimeVerified: 0,
+                    totalVerified: 0,
+                    totalClosed: 0,
+                    rejectedCount: 0,
+                    returnedCount: 0,
+                    totalEntries: 0,
+                });
+            }
+            return deptMetrics.get(deptId);
+        };
+
+        for (const stat of stats) {
+            const lifeCycle = lifeCycleMap.get(stat.ticketId);
+            if (!lifeCycle || !stat.departmentIds) continue;
+
+            // Assignee departments metrics
+            stat.departmentIds.forEach((deptId) => {
+                const m = getM(deptId);
+                m.totalEntries++;
+                if (lifeCycle.isClosed) {
+                    m.totalClosed++;
+                }
+
+                if (lifeCycle.isResolved) {
+                    m.totalCompleted++;
+                    if (lifeCycle.wasReturned) {
+                        if (
+                            stat.departmentIds.length > 1 &&
+                            lifeCycle.returnedToDepartmentIds.includes(deptId)
+                        ) {
+                            m.returnedCount++;
+                        }
+
+                        if (stat.departmentIds.length === 1) {
+                            m.returnedCount++;
+                        }
+                    }
+                    if (lifeCycle.isOnTime) m.onTimeCompleted++;
+                }
+
+                if (lifeCycle.isRejected) m.rejectedCount++;
+            });
+
+            // Reviewer department metrics
+            lifeCycle.verificationCycles.forEach((cycle) => {
+                if (cycle.reviewerDeptId) {
+                    const m = getM(cycle.reviewerDeptId);
+                    m.totalVerified++;
+                    if (cycle.onTime) m.onTimeVerified++;
+                }
+            });
+        }
+
+        return deptMetrics;
     }
 }

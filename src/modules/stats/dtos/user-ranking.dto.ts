@@ -7,14 +7,16 @@ export class UserRankingItemDto {
     totalTickets: number;
     resolvedTickets: number;
     resolutionRate: number;
-    efficiencyScore: number; // Wilson Score for ranking
+    efficiencyScore?: number; // Wilson Score for ranking
     averageAcceptanceTimeSeconds: number;
     averageResolutionTimeSeconds: number;
-    overdueRate: number; // Percentage of completed tickets that were overdue (completedAt > dueAt)
+    deliveryOverdueRate: number; // Percentage of completed tickets that were sent to verification after dueAt
     avatarUrl?: string;
     isActive: boolean;
 }
 
 export class UserRankingResponseDto {
     users: UserRankingItemDto[];
+    total: number;
+    topContributor: UserRankingItemDto | null;
 }

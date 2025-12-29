@@ -29,6 +29,17 @@ export class TicketCommentController {
     }
 
     /**
+     * Get mentionable users for a ticket (users from same department as target user + admins)
+     */
+    @Get('ticket/:ticketId/mentionable-users')
+    async getMentionableUsers(
+        @Param('ticketId') ticketCustomId: string,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketCommentService.getMentionableUsers(accessProfile, ticketCustomId);
+    }
+
+    /**
      * Get ticket comment by UUID (public-facing endpoint)
      */
     @Get(':uuid')

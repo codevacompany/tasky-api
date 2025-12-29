@@ -46,7 +46,7 @@ export class StatsController {
     @Get('/by-user')
     async getUserStats(
         @GetAccessProfile() accessProfile: AccessProfile,
-        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
+        @Query('period') period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<TicketStatsResponseDto> {
         return this.ticketStatsService.getUserStats(accessProfile, accessProfile.userId, period);
     }
@@ -123,8 +123,10 @@ export class StatsController {
         @Query('sort') sort: string = 'top',
         @Query('sortBy') sortBy: string = 'efficiency',
         @Query('period') period: StatsPeriod = StatsPeriod.TRIMESTRAL,
+        @Query('excludeUnscored') excludeUnscoredParam?: string,
     ): Promise<UserRankingResponseDto> {
         const returnAll = all === 'true' || all === '1';
+        const excludeUnscored = excludeUnscoredParam === 'true' || excludeUnscoredParam === '1';
         return this.ticketStatsService.getUserRanking(
             accessProfile,
             limit,
@@ -132,6 +134,7 @@ export class StatsController {
             sort,
             period,
             sortBy,
+            excludeUnscored,
         );
     }
     @Get('user-stats-list')

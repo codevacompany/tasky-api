@@ -2,7 +2,6 @@ import { DataSource, ViewColumn, ViewEntity } from 'typeorm';
 import { Ticket } from '../../ticket/entities/ticket.entity';
 import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-target-user.entity';
 import { User } from '../../user/entities/user.entity';
-import { TicketStatus as TicketStatusEntity } from '../../ticket-status/entities/ticket-status.entity';
 
 @ViewEntity({
     expression: (dataSource: DataSource) =>
@@ -18,13 +17,27 @@ import { TicketStatus as TicketStatusEntity } from '../../ticket-status/entities
             )
             .addSelect('ticket.currentTargetUserId', 'currentTargetUserId')
             .addSelect('ticket.tenantId', 'tenantId')
+            .addSelect('ticket.acceptedAt', 'acceptedAt')
+            .addSelect('ticket.completedAt', 'completedAt')
+            .addSelect('ticket.rejectedAt', 'rejectedAt')
+            .addSelect('ticket.dueAt', 'dueAt')
+            .addSelect('ticket.reviewerId', 'reviewerId')
+            .addSelect('reviewer.departmentId', 'reviewerDepartmentId')
             .addSelect(
-                "CASE WHEN ticketStatus.key = 'finalizado' THEN true ELSE false END",
+                'CASE WHEN ticket.completedAt IS NOT NULL THEN true ELSE false END',
                 'isResolved',
             )
             .addSelect(
-                'CASE WHEN ticket.completedAt IS NOT NULL AND ticket.acceptedAt IS NOT NULL THEN EXTRACT(EPOCH FROM (ticket.completedAt - ticket.acceptedAt)) ELSE NULL END',
-                'resolutionTimeSeconds',
+                'CASE WHEN ticket.rejectedAt IS NOT NULL THEN true ELSE false END',
+                'isRejected',
+            )
+            .addSelect(
+                'CASE WHEN ticket.canceledAt IS NOT NULL THEN true ELSE false END',
+                'isCanceled',
+            )
+            .addSelect(
+                'CASE WHEN ticket.completedAt IS NOT NULL OR ticket.rejectedAt IS NOT NULL THEN EXTRACT(EPOCH FROM (COALESCE(ticket.completedAt, ticket.rejectedAt) - ticket.createdAt)) ELSE NULL END',
+                'totalTimeSeconds',
             )
             .addSelect(
                 'CASE WHEN ticket.acceptedAt IS NOT NULL THEN EXTRACT(EPOCH FROM (ticket.acceptedAt - ticket.createdAt)) ELSE NULL END',
@@ -33,7 +46,7 @@ import { TicketStatus as TicketStatusEntity } from '../../ticket-status/entities
             .addSelect('ARRAY_AGG(tu.userId ORDER BY tu.order)', 'targetUserIds')
             .leftJoin(TicketTargetUser, 'tu', 'tu.ticketId = ticket.id')
             .leftJoin(User, 'targetUser', 'targetUser.id = tu.userId')
-            .leftJoin(TicketStatusEntity, 'ticketStatus', 'ticketStatus.id = ticket.statusId')
+            .leftJoin(User, 'reviewer', 'reviewer.id = ticket.reviewerId')
             .groupBy('ticket.id')
             .groupBy('ticket.createdAt')
             .groupBy('ticket.updatedAt')
@@ -41,7 +54,11 @@ import { TicketStatus as TicketStatusEntity } from '../../ticket-status/entities
             .groupBy('ticket.currentTargetUserId')
             .groupBy('ticket.completedAt')
             .groupBy('ticket.acceptedAt')
-            .groupBy('ticketStatus.key')
+            .groupBy('ticket.canceledAt')
+            .groupBy('ticket.rejectedAt')
+            .groupBy('ticket.dueAt')
+            .groupBy('ticket.reviewerId')
+            .groupBy('reviewer.departmentId')
             .from(Ticket, 'ticket'),
 })
 export class TicketStats {
@@ -73,7 +90,31 @@ export class TicketStats {
     isResolved: boolean;
 
     @ViewColumn()
-    resolutionTimeSeconds: number;
+    isRejected: boolean;
+
+    @ViewColumn()
+    isCanceled: boolean;
+
+    @ViewColumn()
+    acceptedAt: Date | null;
+
+    @ViewColumn()
+    completedAt: Date | null;
+
+    @ViewColumn()
+    rejectedAt: Date | null;
+
+    @ViewColumn()
+    dueAt: Date | null;
+
+    @ViewColumn()
+    reviewerId: number | null;
+
+    @ViewColumn()
+    reviewerDepartmentId: number | null;
+
+    @ViewColumn()
+    totalTimeSeconds: number;
 
     @ViewColumn()
     acceptanceTimeSeconds: number;
