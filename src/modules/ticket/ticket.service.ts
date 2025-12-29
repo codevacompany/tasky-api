@@ -2544,6 +2544,16 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         // If removing current target user, handle automatic forwarding
         if (isRemovingCurrentTargetUser) {
             if (isLastTargetUser) {
+                // Assign to the last remaining target user and send to verification
+                const lastRemainingUser = remainingTargetUsers[remainingTargetUsers.length - 1];
+
+                if (!lastRemainingUser) {
+                    throw new CustomNotFoundException({
+                        message: 'No remaining target users found',
+                        code: 'no-remaining-users',
+                    });
+                }
+
                 // Send to verification (reviewer should already be set by frontend)
                 const awaitingVerificationStatus = await this.ticketStatusRepository.findOne({
                     where: {
@@ -2560,13 +2570,18 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 }
 
                 await this.repository.update(ticket.id, {
-                    currentTargetUserId: null,
+                    currentTargetUserId: lastRemainingUser.userId,
                     statusId: awaitingVerificationStatus.id,
                 });
 
                 // Create ticket update for status change
                 const fromDepartmentId = await this.getDepartmentIdFromUserId(
                     removedUser.id,
+                    accessProfile.tenantId,
+                );
+
+                const toDepartmentId = await this.getDepartmentIdFromUserId(
+                    lastRemainingUser.userId,
                     accessProfile.tenantId,
                 );
 
@@ -2581,8 +2596,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     fromStatus: TicketStatus.Pending,
                     toStatus: TicketStatus.AwaitingVerification,
                     fromUserId: removedUser.id,
-                    toUserId: null,
+                    toUserId: lastRemainingUser.userId,
                     fromDepartmentId,
+                    toDepartmentId,
                     description: `<p><span>user</span> removeu ${removedUser.firstName} ${removedUser.lastName} como responsável e enviou a tarefa para verificação.</p>`,
                 });
 
@@ -2812,7 +2828,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
 
         for (const targetUser of targetUsers) {
-            if (targetUser.userId !== nextUser.userId && targetUser.userId !== accessProfile.userId) {
+            if (
+                targetUser.userId !== nextUser.userId &&
+                targetUser.userId !== accessProfile.userId
+            ) {
                 await this.notificationRepository.save({
                     tenantId: accessProfile.tenantId,
                     type: NotificationType.TicketUpdate,
@@ -2846,7 +2865,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
 
             for (const targetUser of targetUsers) {
-                if (targetUser.userId !== nextUser.userId && targetUser.userId !== accessProfile.userId) {
+                if (
+                    targetUser.userId !== nextUser.userId &&
+                    targetUser.userId !== accessProfile.userId
+                ) {
                     await this.sendEmailWithPermissionCheck(
                         accessProfile.tenantId,
                         `A tarefa ${ticket.customId} foi enviada para o próximo ${departmentText}.`,

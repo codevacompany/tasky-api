@@ -7,7 +7,7 @@ export class UserRankingItemDto {
     totalTickets: number;
     resolvedTickets: number;
     resolutionRate: number;
-    efficiencyScore: number; // Wilson Score for ranking
+    efficiencyScore?: number; // Wilson Score for ranking
     averageAcceptanceTimeSeconds: number;
     averageResolutionTimeSeconds: number;
     deliveryOverdueRate: number; // Percentage of completed tickets that were sent to verification after dueAt

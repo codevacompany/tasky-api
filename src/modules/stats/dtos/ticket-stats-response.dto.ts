@@ -6,7 +6,7 @@ export class DepartmentStatsDto {
     averageResolutionTimeSeconds: number;
     averageAcceptanceTimeSeconds: number;
     resolutionRate: number;
-    efficiencyScore: number;
+    efficiencyScore?: number;
     deliveryOverdueRate: number; // Percentage of completed tickets that were sent to verification after dueAt
     userCount: number;
 }
@@ -33,7 +33,7 @@ export class TicketStatsResponseDto {
     averageResolutionTimeSeconds: number;
     averageAcceptanceTimeSeconds: number;
     resolutionRate: number;
-    efficiencyScore: number;
+    efficiencyScore?: number;
     deliveryOverdueRate: number; // Percentage of completed tickets that were sent to verification after dueAt
     detailedMetrics?: DetailedMetricsDto; // Optional detailed metrics for user stats explanation
 }
