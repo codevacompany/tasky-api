@@ -257,15 +257,15 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             });
         }
 
-        // Time limit check: 5 minutes (300,000 ms)
-        const fiveMinutesInMs = 5 * 60 * 1000;
+        // Time limit check: 10 minutes (600,000 ms)
+        const tenMinutesInMs = 10 * 60 * 1000;
         const now = new Date();
-        const commentAgeThreshold = new Date(comment.createdAt.getTime() + fiveMinutesInMs);
+        const commentAgeThreshold = new Date(comment.createdAt.getTime() + tenMinutesInMs);
 
         if (now > commentAgeThreshold) {
             throw new CustomBadRequestException({
                 code: 'time-limit-exceeded',
-                message: 'O tempo para executar essa ação esgotou (limite de 5 minutos).',
+                message: 'O tempo para executar essa ação esgotou (limite de 10 minutos).',
             });
         }
 
@@ -287,15 +287,15 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             });
         }
 
-        // Time limit check: 5 minutes (300,000 ms)
-        const fiveMinutesInMs = 5 * 60 * 1000;
+        // Time limit check: 10 minutes (600,000 ms)
+        const tenMinutesInMs = 10 * 60 * 1000;
         const now = new Date();
-        const commentAgeThreshold = new Date(comment.createdAt.getTime() + fiveMinutesInMs);
+        const commentAgeThreshold = new Date(comment.createdAt.getTime() + tenMinutesInMs);
 
         if (now > commentAgeThreshold) {
             throw new CustomBadRequestException({
                 code: 'time-limit-exceeded',
-                message: 'O tempo para executar essa ação esgotou (limite de 5 minutos).',
+                message: 'O tempo para executar essa ação esgotou (limite de 10 minutos).',
             });
         }
 
