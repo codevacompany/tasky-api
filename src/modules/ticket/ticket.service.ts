@@ -903,7 +903,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         if (isRequesterInTargetUsers) {
             const supervisorRole = await this.roleService.findByName(RoleName.Supervisor);
-            if (supervisorRole) {
+
+            if (supervisorRole && requester.roleId !== supervisorRole.id) {
                 const departmentSupervisor = await this.userRepository.findOne({
                     where: {
                         tenantId: accessProfile.tenantId,
@@ -913,6 +914,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     } as any,
                 });
                 reviewerId = departmentSupervisor ? departmentSupervisor.id : null;
+            } else {
+                reviewerId = null;
             }
         } else {
             reviewerId = ticketDto.requesterId;
