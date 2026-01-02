@@ -20,6 +20,12 @@ export class SubscriptionPlan extends IdTimestampBaseEntity {
     @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
     priceYearly: number;
 
+    @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+    pricePerUserMonthly: number;
+
+    @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+    pricePerUserYearly: number;
+
     @Column({ length: 255, nullable: true })
     stripePriceIdMonthly: string;
 
@@ -27,7 +33,10 @@ export class SubscriptionPlan extends IdTimestampBaseEntity {
     stripePriceIdYearly: string;
 
     @Column({ length: 255, nullable: true })
-    stripePriceIdPerUser: string;
+    stripePriceIdPerUserMonthly: string;
+
+    @Column({ length: 255, nullable: true })
+    stripePriceIdPerUserYearly: string;
 
     @Column({ type: 'text', nullable: true })
     description: string;

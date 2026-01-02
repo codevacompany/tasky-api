@@ -160,10 +160,15 @@ export class TenantSubscriptionService {
             await this.tenantService.updateStripeCustomerId(tenantId, customer.id);
         }
 
+        const perUserPriceId =
+            billingInterval === 'yearly'
+                ? plan.stripePriceIdPerUserYearly
+                : plan.stripePriceIdPerUserMonthly;
+
         const session = await this.stripeService.createCheckoutSession({
             tenantId,
             priceId,
-            perUserPriceId: plan.stripePriceIdPerUser || undefined,
+            perUserPriceId: perUserPriceId || undefined,
             billingInterval,
             planSlug,
             successUrl,
@@ -286,8 +291,13 @@ export class TenantSubscriptionService {
 
         const items: Stripe.SubscriptionCreateParams.Item[] = [{ price: priceId }];
 
-        if (plan.stripePriceIdPerUser) {
-            items.push({ price: plan.stripePriceIdPerUser });
+        const perUserPriceId =
+            billingInterval === 'yearly'
+                ? plan.stripePriceIdPerUserYearly
+                : plan.stripePriceIdPerUserMonthly;
+
+        if (perUserPriceId) {
+            items.push({ price: perUserPriceId });
         }
 
         const stripeSubscription = await this.stripeService.createSubscription({
@@ -302,10 +312,8 @@ export class TenantSubscriptionService {
         });
 
         const baseItem = stripeSubscription.items.data.find((item) => item.price.id === priceId);
-        const perUserItem = plan.stripePriceIdPerUser
-            ? stripeSubscription.items.data.find(
-                  (item) => item.price.id === plan.stripePriceIdPerUser,
-              )
+        const perUserItem = perUserPriceId
+            ? stripeSubscription.items.data.find((item) => item.price.id === perUserPriceId)
             : undefined;
 
         const subscription = this.tenantSubscriptionRepository.create({
@@ -462,11 +470,11 @@ export class TenantSubscriptionService {
         });
 
         const baseItem = stripeSubscription.items.data[0];
-        const perUserItem = plan.stripePriceIdPerUser
-            ? stripeSubscription.items.data.find(
-                  (item) => item.price.id === plan.stripePriceIdPerUser,
-              )
-            : undefined;
+        const perUserItem = stripeSubscription.items.data.find(
+            (item) =>
+                item.price.id === plan.stripePriceIdPerUserMonthly ||
+                item.price.id === plan.stripePriceIdPerUserYearly,
+        );
 
         // Determine endDate: use cancel_at if scheduled, otherwise current_period_end
         const endDate = stripeSubscription.cancel_at
