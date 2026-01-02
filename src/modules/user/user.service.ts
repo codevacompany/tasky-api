@@ -12,7 +12,6 @@ import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
 import { FindOneQueryOptions, PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { generateRandomPassword } from '../../shared/utils/password-generator.util';
-import { AuthService } from '../auth/auth.service';
 import { RoleName } from '../role/entities/role.entity';
 import { RoleRepository } from '../role/role.repository';
 import { CreateUserDto } from './dtos/create-user.dto';
@@ -21,16 +20,17 @@ import { UpdateUserDto } from './dtos/update-user.dto';
 import { AcceptTermsDto } from './dtos/accept-terms.dto';
 import { User } from './entities/user.entity';
 import { UserRepository } from './user.repository';
+import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 
 @Injectable()
 export class UserService extends TenantBoundBaseService<User> {
     constructor(
-        @Inject(forwardRef(() => AuthService))
-        private authService: AuthService,
         private userRepository: UserRepository,
         private encryptionService: EncryptionService,
         private emailService: EmailService,
         private roleRepository: RoleRepository,
+        @Inject(forwardRef(() => TenantSubscriptionService))
+        private tenantSubscriptionService: TenantSubscriptionService,
     ) {
         super(userRepository);
     }
@@ -276,6 +276,9 @@ export class UserService extends TenantBoundBaseService<User> {
             }
         }
 
+        // Sync metered usage to Stripe after user creation
+        this.syncUsageToStripe(accessProfile.tenantId);
+
         return createdUser;
     }
 
@@ -324,7 +327,14 @@ export class UserService extends TenantBoundBaseService<User> {
             delete updateData.isAdmin;
         }
 
-        return super.update(accessProfile, id, updateData);
+        const result = await super.update(accessProfile, id, updateData);
+
+        // Sync metered usage to Stripe if isActive status changed
+        if (data.isActive !== undefined) {
+            this.syncUsageToStripe(accessProfile.tenantId);
+        }
+
+        return result;
     }
 
     async superAdminUpdate(accessProfile: AccessProfile, id: number, data: UpdateUserDto) {
@@ -432,5 +442,19 @@ export class UserService extends TenantBoundBaseService<User> {
         });
 
         return this.userRepository.findOne({ where: { id: userId } }) as Promise<User>;
+    }
+
+    /**
+     * Sync metered usage to Stripe (fire and forget)
+     * This runs asynchronously to avoid blocking user operations
+     */
+    private syncUsageToStripe(tenantId: number): void {
+        // Fire and forget - don't await this
+        this.tenantSubscriptionService.syncMeteredUsage(tenantId).catch((error) => {
+            console.error(
+                `Failed to sync metered usage for tenant ${tenantId}:`,
+                error instanceof Error ? error.message : error,
+            );
+        });
     }
 }
