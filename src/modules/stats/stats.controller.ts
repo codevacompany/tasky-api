@@ -17,6 +17,7 @@ import { UserRankingResponseDto, UserRankingItemDto } from './dtos/user-ranking.
 import { PerformanceTrendsResponseDto } from './dtos/performance-trends.dto';
 import { TicketStatsService } from './ticket-stats.service';
 import { TicketStatus } from '../ticket/entities/ticket.entity';
+import { CategoryCountResponseDto } from './dtos/category-count.dto';
 
 export enum StatsPeriod {
     WEEKLY = 'weekly',
@@ -88,6 +89,14 @@ export class StatsController {
         @Query('period') period: StatsPeriod = StatsPeriod.ALL,
     ): Promise<TicketPriorityCountResponseDto> {
         return this.ticketStatsService.getTicketsByPriority(accessProfile, period);
+    }
+
+    @Get('by-category')
+    async getTopCategoriesByTicketCount(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @Query('period') period: StatsPeriod = StatsPeriod.ALL,
+    ): Promise<CategoryCountResponseDto> {
+        return this.ticketStatsService.getTopCategoriesByTicketCount(accessProfile, period);
     }
 
     @Get('department-stats')

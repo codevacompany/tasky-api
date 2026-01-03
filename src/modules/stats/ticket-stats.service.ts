@@ -45,6 +45,7 @@ import { TicketStats } from './entities/ticket-stats.entity';
 import { StatsPeriod } from './stats.controller';
 import { RoleService } from '../role/role.service';
 import { RoleName } from '../role/entities/role.entity';
+import { CategoryCountResponseDto } from './dtos/category-count.dto';
 
 interface TicketLifeCycleInfo {
     ticketId: number;
@@ -236,6 +237,8 @@ export class TicketStatsService {
 
         let avgResolutionTimeSeconds = 0;
         let avgAcceptanceTimeSeconds = 0;
+
+        
 
         // Only calculate time-based metrics when there are tickets in the selected period
         if (filteredTicketIds.length > 0) {
@@ -1161,6 +1164,61 @@ export class TicketStatsService {
         return {
             priorityCounts,
             total,
+        };
+    }
+
+    async getTopCategoriesByTicketCount(
+        accessProfile: AccessProfile,
+        period: StatsPeriod = StatsPeriod.ALL,
+    ): Promise<CategoryCountResponseDto> {
+        const { dateFilter } = this.getPeriodFilter(period);
+
+        // Check if user is Supervisor and get their departmentId
+        const supervisorDepartmentId = await this.getSupervisorDepartmentId(accessProfile);
+
+        // Build base query
+        const qb = this.ticketRepository
+            .createQueryBuilder('ticket')
+            .leftJoin('ticket.category', 'category')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.categoryId IS NOT NULL')
+            .select('ticket.categoryId', 'categoryid')
+            .addSelect('category.name', 'categoryname')
+            .addSelect('COUNT(ticket.id)', 'ticketcount')
+            .groupBy('ticket.categoryId')
+            .addGroupBy('category.name')
+            .orderBy('ticketcount', 'DESC')
+            .limit(5);
+
+        // Apply date filter if provided
+        if (dateFilter.createdAt) {
+            qb.andWhere('ticket.createdAt >= :startDate', {
+                startDate: dateFilter.createdAt._value,
+            });
+        }
+
+        // Filter by department if Supervisor
+        if (supervisorDepartmentId !== null) {
+            qb.andWhere(
+                `EXISTS (
+                    SELECT 1
+                    FROM ticket_target_user ttu
+                    INNER JOIN "user" u ON u.id = ttu."userId"
+                    WHERE ttu."ticketId" = ticket.id
+                    AND u."departmentId" = :departmentId
+                )`,
+                { departmentId: supervisorDepartmentId },
+            );
+        }
+
+        const results = await qb.getRawMany();
+
+        return {
+            categories: results.map((r) => ({
+                categoryId: parseInt(r.categoryid),
+                categoryName: r.categoryname,
+                ticketCount: parseInt(r.ticketcount),
+            })),
         };
     }
 

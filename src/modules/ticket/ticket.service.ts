@@ -97,31 +97,40 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     }
 
     async findAll(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
-        const filters = {
-            ...options,
-            relations: [
-                'requester',
-                'requester.department',
-                'currentTargetUser',
-                'currentTargetUser.department',
-                'targetUsers',
-                'targetUsers.user',
-                'targetUsers.user.department',
-                'reviewer',
-                'reviewer.department',
-                'category',
-                'files',
-                'cancellationReason',
-                'disapprovalReason',
-                'correctionRequests',
-                'checklistItems',
-                'checklistItems.assignedTo',
-                'checklistItems.assignedTo.department',
-            ],
-            order: options?.order || ({ createdAt: 'DESC' } as any),
-            tenantAware: false,
+        const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId);
+
+        // Apply where filters
+        if (options?.where) {
+            await this.applyWhereFilters(qb, accessProfile, options.where);
+        }
+
+        // Apply status filter
+        const whereWithStatus = options?.where as any;
+        if (whereWithStatus?.status !== undefined) {
+            this.applyStatusFilter(qb, whereWithStatus.status);
+        } else {
+            this.applyDefaultStatusFilter(qb);
+        }
+
+        this.applySorting(qb, options?.order);
+
+        // Apply pagination
+        const page = options?.page || 1;
+        const limit = options?.limit || 10;
+
+        if (options?.paginated !== false) {
+            qb.skip((page - 1) * limit).take(limit);
+        }
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: options?.paginated === false ? 1 : Math.ceil(total / limit),
         };
-        return super.findMany(accessProfile, filters);
     }
 
     async findByDepartment(
@@ -133,7 +142,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         const isSupervisor = requesterRole?.name === RoleName.Supervisor;
 
-        const qb = this.buildBaseQueryBuilder(accessProfile.tenantId);
+        const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId);
 
         // Filter by department via targetUsers using EXISTS to avoid duplicates
         qb.andWhere(
@@ -183,7 +192,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     }
 
     async findMany(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
-        const qb = this.buildBaseQueryBuilder(accessProfile.tenantId);
+        const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId);
 
         // Check if user is Supervisor and filter by their department
         const user = await this.userRepository.findOne({
@@ -365,7 +374,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         accessProfile: AccessProfile,
         options?: QueryOptions<Ticket>,
     ): Promise<PaginatedResponse<Ticket>> {
-        const qb = this.buildBaseQueryBuilder(accessProfile.tenantId);
+        const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId);
 
         // Check if user is Supervisor and filter by their department
         const user = await this.userRepository.findOne({
@@ -482,6 +491,67 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         };
     }
 
+    /**
+     * Lightweight query builder for list views (Kanban, Table)
+     * Only includes essential relations needed for displaying ticket cards/rows.
+     * This significantly reduces database transfer by excluding:
+     * - Full files data (only id needed for count)
+     * - Full comments data (only id needed for count)
+     * - cancellationReason, disapprovalReason, correctionRequests (only needed in detail view)
+     * - Deep nested relations like comment user departments
+     * - checklistItems.assignedTo relations (only isCompleted needed for progress)
+     */
+    private buildLightweightQueryBuilder(tenantId: number) {
+        return (
+            this.repository
+                .createQueryBuilder('ticket')
+                // Requester - only basic info needed
+                .leftJoin('ticket.requester', 'requester')
+                .addSelect([
+                    'requester.id',
+                    'requester.firstName',
+                    'requester.lastName',
+                    'requester.isActive',
+                ])
+                .leftJoin('requester.department', 'requesterDepartment')
+                .addSelect(['requesterDepartment.id', 'requesterDepartment.name'])
+                // Target users - needed for displaying assignees
+                .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
+                .leftJoin('targetUsers.user', 'targetUser')
+                .addSelect([
+                    'targetUser.id',
+                    'targetUser.firstName',
+                    'targetUser.lastName',
+                    'targetUser.isActive',
+                    'targetUser.departmentId',
+                ])
+                .leftJoin('targetUser.department', 'targetUserDepartment')
+                .addSelect(['targetUserDepartment.id', 'targetUserDepartment.name'])
+                // Reviewer - only id needed for verification flow checks
+                .leftJoin('ticket.reviewer', 'reviewer')
+                .addSelect(['reviewer.id'])
+                // Status - essential for status display
+                .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
+                // Category - for category display
+                .leftJoin('ticket.category', 'category')
+                .addSelect(['category.id', 'category.name'])
+                // Checklist items - only basic fields for progress calculation
+                .leftJoin('ticket.checklistItems', 'checklistItems')
+                .addSelect(['checklistItems.id', 'checklistItems.isCompleted'])
+                // Files - only id for count (frontend uses .length)
+                .leftJoin('ticket.files', 'files')
+                .addSelect(['files.id'])
+                // Comments - only id for count (frontend uses .length)
+                .leftJoin('ticket.comments', 'comments')
+                .addSelect(['comments.id'])
+                .where('ticket.tenantId = :tenantId', { tenantId })
+        );
+    }
+
+    /**
+     * Full query builder for detail views
+     * Includes all relations needed for the ticket detail modal
+     */
     private buildBaseQueryBuilder(tenantId: number) {
         return this.repository
             .createQueryBuilder('ticket')
@@ -712,31 +782,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         userId: number,
         options?: QueryOptions<Ticket>,
     ): Promise<PaginatedResponse<Ticket>> {
-        const qb = this.repository
-            .createQueryBuilder('ticket')
-            .leftJoinAndSelect('ticket.requester', 'requester')
-            .leftJoinAndSelect('requester.department', 'requesterDepartment')
-            .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
-            .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
-            .leftJoinAndSelect('targetUsers.user', 'targetUser')
-            .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
-            .leftJoinAndSelect('ticket.reviewer', 'reviewer')
-            .leftJoinAndSelect('ticket.category', 'category')
-            .leftJoinAndSelect('ticket.files', 'files')
-            .leftJoinAndSelect('ticket.comments', 'comments')
-            .leftJoinAndSelect('comments.user', 'commentUser')
-            .leftJoinAndSelect('commentUser.department', 'commentUserDepartment')
-            .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
-            .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
-            .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
-            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
-            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-            .andWhere(
-                '(ticket.currentTargetUserId = :userId OR EXISTS (SELECT 1 FROM "ticket_target_user" ttu WHERE ttu."ticketId" = ticket.id AND ttu."userId" = :userId) OR (ticket.reviewerId = :userId AND ticket.requesterId != :userId))',
-                {
-                    userId,
-                },
-            );
+        const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId).andWhere(
+            '(ticket.currentTargetUserId = :userId OR EXISTS (SELECT 1 FROM "ticket_target_user" ttu WHERE ttu."ticketId" = ticket.id AND ttu."userId" = :userId) OR (ticket.reviewerId = :userId AND ticket.requesterId != :userId))',
+            {
+                userId,
+            },
+        );
 
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
         if (whereWithStatus?.status) {
@@ -791,30 +842,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         userId: number,
         options?: QueryOptions<Ticket>,
     ): Promise<PaginatedResponse<Ticket>> {
-        const qb = this.repository
-            .createQueryBuilder('ticket')
-            .leftJoinAndSelect('ticket.requester', 'requester')
-            .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
-            .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
-            .leftJoinAndSelect('targetUsers.user', 'targetUser')
-            .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
-            .leftJoinAndSelect('ticket.reviewer', 'reviewer')
-            .leftJoinAndSelect('ticket.category', 'category')
-            .leftJoinAndSelect('ticket.files', 'files')
-            .leftJoinAndSelect('ticket.comments', 'comments')
-            .leftJoinAndSelect('comments.user', 'commentUser')
-            .leftJoinAndSelect('commentUser.department', 'commentUserDepartment')
-            .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
-            .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
-            .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
-            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
-            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-            .andWhere(
-                '(ticket.currentTargetUserId = :userId OR EXISTS (SELECT 1 FROM "ticket_target_user" ttu WHERE ttu."ticketId" = ticket.id AND ttu."userId" = :userId))',
-                {
-                    userId,
-                },
-            );
+        const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId).andWhere(
+            '(ticket.currentTargetUserId = :userId OR EXISTS (SELECT 1 FROM "ticket_target_user" ttu WHERE ttu."ticketId" = ticket.id AND ttu."userId" = :userId))',
+            {
+                userId,
+            },
+        );
 
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
         if (whereWithStatus?.status) {
@@ -1982,32 +2015,18 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: ['department', 'role'],
         });
 
-        const qb = this.repository
-            .createQueryBuilder('ticket')
-            .leftJoinAndSelect('ticket.requester', 'requester')
-            .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
-            .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
-            .leftJoinAndSelect('targetUsers.user', 'targetUser')
-            .leftJoinAndSelect('targetUser.department', 'targetUserDepartmentArchived')
-            .leftJoinAndSelect('ticket.files', 'files')
-            .leftJoinAndSelect('ticket.updates', 'updates')
-            .leftJoinAndSelect('ticket.cancellationReason', 'cancellationReason')
-            .leftJoinAndSelect('ticket.disapprovalReason', 'disapprovalReason')
-            .leftJoinAndSelect('ticket.correctionRequests', 'correctionRequests')
-            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
-            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
-            .andWhere(
-                '(ticketStatus.key IN (:...terminalStatuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt < :sevenDaysAgo))',
-                {
-                    terminalStatuses: [TicketStatus.Rejected, TicketStatus.Canceled],
-                    completedStatus: TicketStatus.Completed,
-                    sevenDaysAgo: (() => {
-                        const date = new Date();
-                        date.setDate(date.getDate() - 7);
-                        return date;
-                    })(),
-                },
-            );
+        const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId).andWhere(
+            '(ticketStatus.key IN (:...terminalStatuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt < :sevenDaysAgo))',
+            {
+                terminalStatuses: [TicketStatus.Rejected, TicketStatus.Canceled],
+                completedStatus: TicketStatus.Completed,
+                sevenDaysAgo: (() => {
+                    const date = new Date();
+                    date.setDate(date.getDate() - 7);
+                    return date;
+                })(),
+            },
+        );
 
         const roleName = user?.role?.name || '';
         const isTenantAdmin = roleName === RoleName.TenantAdmin;

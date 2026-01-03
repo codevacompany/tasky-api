@@ -28,6 +28,27 @@ export class TicketUpdateService {
         });
     }
 
+    /**
+     * Get a lightweight change checksum for efficient polling.
+     * Returns the count of ticket updates and the latest update timestamp.
+     * Frontend can compare this to detect if any tickets have changed since last poll.
+     */
+    async getChangeChecksum(
+        accessProfile: AccessProfile,
+    ): Promise<{ count: number; latestUpdate: Date | null }> {
+        const result = await this.ticketUpdateRepository
+            .createQueryBuilder('tu')
+            .select('COUNT(*)', 'count')
+            .addSelect('MAX(tu.createdAt)', 'latestUpdate')
+            .where('tu.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .getRawOne();
+
+        return {
+            count: parseInt(result.count, 10) || 0,
+            latestUpdate: result.latestUpdate ? new Date(result.latestUpdate) : null,
+        };
+    }
+
     async create(ticketUpdate: CreateTicketUpdateDto) {
         console.log(ticketUpdate);
     }
