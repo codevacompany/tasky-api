@@ -8,6 +8,16 @@ import { TicketUpdateService } from './ticket-update.service';
 export class TicketUpdateController {
     constructor(private readonly ticketUpdateService: TicketUpdateService) {}
 
+    /**
+     * Get a lightweight change checksum for efficient polling.
+     * Returns count and latest update timestamp.
+     * Frontend uses this to detect if any tickets have changed before fetching full data.
+     */
+    @Get('change-checksum')
+    async getChangeChecksum(@GetAccessProfile() accessProfile: AccessProfile) {
+        return this.ticketUpdateService.getChangeChecksum(accessProfile);
+    }
+
     @Get('ticket/:ticketId')
     async findByTicketId(
         @Param('ticketId') ticketCustomId: string,
