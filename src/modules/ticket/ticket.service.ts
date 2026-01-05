@@ -6,6 +6,7 @@ import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-se
 import {
     CustomForbiddenException,
     CustomNotFoundException,
+    CustomBadRequestException,
 } from '../../shared/exceptions/http-exception';
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
@@ -925,6 +926,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             throw new CustomNotFoundException({
                 message: 'One or more target users not found',
                 code: 'target-users-not-found',
+            });
+        }
+
+        if (ticketDto.isPrivate && targetUserIds.includes(ticketDto.requesterId)) {
+            throw new CustomBadRequestException({
+                message: 'Cannot create a private ticket with yourself as a target user',
+                code: 'private-ticket-to-self',
             });
         }
 
