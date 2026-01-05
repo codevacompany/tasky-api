@@ -10,7 +10,7 @@ export class UserRankingItemDto {
     efficiencyScore?: number; // Wilson Score for ranking
     averageAcceptanceTimeSeconds: number;
     averageResolutionTimeSeconds: number;
-    deliveryOverdueRate: number; // Percentage of completed tickets that were sent to verification after dueAt
+    sentToVerificationOverdueRate: number; // Percentage of completed tickets that were sent to verification after dueAt
     avatarUrl?: string;
     isActive: boolean;
 }

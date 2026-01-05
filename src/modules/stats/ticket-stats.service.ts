@@ -51,7 +51,8 @@ interface TicketLifeCycleInfo {
     ticketId: number;
     isClosed: boolean;
     isResolved: boolean;
-    isOnTime: boolean;
+    sentToVerificationOnTime: boolean; // Ticket was sent to verification before due date
+    completionOnTime: boolean; // Ticket was completed before due date
     firstAwaitingVerificationAt: Date | null;
     verificationCycles: Array<{
         startTime: Date;
@@ -67,7 +68,9 @@ interface TicketLifeCycleInfo {
 }
 
 interface DetailedMetrics {
-    onTimeCompleted: number;
+    onTimeCompleted: number; // Sent to verification on time (legacy alias for sentToVerificationOnTime)
+    sentToVerificationOnTime: number; // Count of tickets sent to verification before due date
+    completionOnTime: number; // Count of tickets completed before due date
     totalCompleted: number;
     onTimeVerified: number;
     totalVerified: number;
@@ -238,8 +241,6 @@ export class TicketStatsService {
         let avgResolutionTimeSeconds = 0;
         let avgAcceptanceTimeSeconds = 0;
 
-        
-
         // Only calculate time-based metrics when there are tickets in the selected period
         if (filteredTicketIds.length > 0) {
             // Calculate average resolution time using business hours
@@ -399,7 +400,7 @@ export class TicketStatsService {
         lifeCycleMap.forEach((lc) => {
             if (lc.isResolved) {
                 totalCompleted++;
-                if (lc.isOnTime) onTimeCompleted++;
+                if (lc.sentToVerificationOnTime) onTimeCompleted++;
                 if (lc.wasReturned) returnedCount++;
             }
 
@@ -421,7 +422,7 @@ export class TicketStatsService {
             totalEntries,
         );
 
-        const deliveryOverdueRate =
+        const sentToVerificationOverdueRate =
             totalCompleted > 0 ? ((totalCompleted - onTimeCompleted) / totalCompleted) * 100 : 0;
 
         return {
@@ -433,7 +434,7 @@ export class TicketStatsService {
             averageAcceptanceTimeSeconds: avgAcceptanceTimeSeconds,
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
             efficiencyScore: parseFloat(efficiencyScore.toFixed(2)),
-            deliveryOverdueRate: parseFloat(deliveryOverdueRate.toFixed(2)),
+            sentToVerificationOverdueRate: parseFloat(sentToVerificationOverdueRate.toFixed(2)),
         };
     }
 
@@ -507,7 +508,8 @@ export class TicketStatsService {
                     await this.calculateDepartmentAverages(accessProfile, dept.id, startDate);
 
                 let resolutionRate = 0;
-                let deliveryOverdueRate = 0;
+                let sentToVerificationOverdueRate = 0;
+                let completionOverdueRate = 0;
                 const totalTickets = deptTicketStats.length;
 
                 // Build the department stats object
@@ -517,7 +519,8 @@ export class TicketStatsService {
                     totalTickets,
                     resolvedTickets: deptTicketStats.filter((s) => s.isResolved).length,
                     resolutionRate: 0,
-                    deliveryOverdueRate: 0,
+                    sentToVerificationOverdueRate: 0,
+                    completionOverdueRate: 0,
                     averageResolutionTimeSeconds: avgResolutionTime,
                     averageAcceptanceTimeSeconds: avgAcceptanceTime,
                     userCount: await this.userRepository.count({
@@ -548,15 +551,27 @@ export class TicketStatsService {
                         );
                     }
 
-                    deliveryOverdueRate =
+                    // Calculate sent to verification overdue rate (tickets sent to verification after due date)
+                    sentToVerificationOverdueRate =
                         metrics.totalCompleted > 0
-                            ? ((metrics.totalCompleted - metrics.onTimeCompleted) /
+                            ? ((metrics.totalCompleted - metrics.sentToVerificationOnTime) /
+                                  metrics.totalCompleted) *
+                              100
+                            : 0;
+
+                    // Calculate completion overdue rate (tickets completed after due date)
+                    completionOverdueRate =
+                        metrics.totalCompleted > 0
+                            ? ((metrics.totalCompleted - metrics.completionOnTime) /
                                   metrics.totalCompleted) *
                               100
                             : 0;
 
                     deptStats.resolutionRate = parseFloat(resolutionRate.toFixed(2));
-                    deptStats.deliveryOverdueRate = parseFloat(deliveryOverdueRate.toFixed(2));
+                    deptStats.sentToVerificationOverdueRate = parseFloat(
+                        sentToVerificationOverdueRate.toFixed(2),
+                    );
+                    deptStats.completionOverdueRate = parseFloat(completionOverdueRate.toFixed(2));
                 }
 
                 return deptStats;
@@ -1502,7 +1517,7 @@ export class TicketStatsService {
             userMetrics.totalEntries,
         );
 
-        const deliveryOverdueRate =
+        const sentToVerificationOverdueRate =
             userMetrics.totalCompleted > 0
                 ? ((userMetrics.totalCompleted - userMetrics.onTimeCompleted) /
                       userMetrics.totalCompleted) *
@@ -1518,7 +1533,7 @@ export class TicketStatsService {
             averageResolutionTimeSeconds: avgResolutionTimeSeconds,
             averageAcceptanceTimeSeconds: avgAcceptanceTimeSeconds,
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
-            deliveryOverdueRate: parseFloat(deliveryOverdueRate.toFixed(2)),
+            sentToVerificationOverdueRate: parseFloat(sentToVerificationOverdueRate.toFixed(2)),
             detailedMetrics: {
                 onTimeCompleted: userMetrics.onTimeCompleted,
                 totalCompleted: userMetrics.totalCompleted,
@@ -2135,6 +2150,8 @@ export class TicketStatsService {
                     // User only has verification activity, no target activity
                     userDetailedMetrics.set(userId, {
                         onTimeCompleted: 0,
+                        sentToVerificationOnTime: 0,
+                        completionOnTime: 0,
                         totalCompleted: 0,
                         onTimeVerified: metrics.onTimeVerified,
                         totalVerified: metrics.totalVerified,
@@ -2178,7 +2195,7 @@ export class TicketStatsService {
                 resolutionRate: 0,
                 averageAcceptanceTimeSeconds: 0,
                 averageResolutionTimeSeconds: 0,
-                deliveryOverdueRate: 0,
+                sentToVerificationOverdueRate: 0,
                 avatarUrl: null,
                 isActive: user.isActive,
             });
@@ -2229,7 +2246,7 @@ export class TicketStatsService {
                         );
                     }
 
-                    user.deliveryOverdueRate =
+                    user.sentToVerificationOverdueRate =
                         m.totalCompleted > 0
                             ? parseFloat(
                                   (
@@ -2256,8 +2273,8 @@ export class TicketStatsService {
                         : a.averageResolutionTimeSeconds - b.averageResolutionTimeSeconds;
                 } else if (sortBy === 'overdue_rate') {
                     return sort === 'bottom'
-                        ? b.deliveryOverdueRate - a.deliveryOverdueRate
-                        : a.deliveryOverdueRate - b.deliveryOverdueRate;
+                        ? b.sentToVerificationOverdueRate - a.sentToVerificationOverdueRate
+                        : a.sentToVerificationOverdueRate - b.sentToVerificationOverdueRate;
                 } else {
                     // Sort by efficiency - users without scores (0) go to the bottom
                     return sort === 'bottom'
@@ -2686,18 +2703,28 @@ export class TicketStatsService {
 
         const isClosed = stat.isResolved || stat.isRejected;
         const isResolved = stat.isResolved;
-        const isOnTime =
+
+        // Sent to verification on time: ticket was sent to awaiting verification before or on the due date
+        const sentToVerificationOnTime =
             isClosed &&
             firstAwaitingVerificationAt &&
             stat.dueAt &&
             (isBefore(firstAwaitingVerificationAt, stat.dueAt) ||
                 isEqual(firstAwaitingVerificationAt, stat.dueAt));
 
+        // Completion on time: ticket was completed before or on the due date
+        const completionOnTime =
+            isResolved &&
+            stat.completedAt &&
+            stat.dueAt &&
+            (isBefore(stat.completedAt, stat.dueAt) || isEqual(stat.completedAt, stat.dueAt));
+
         return {
             ticketId: stat.ticketId,
             isClosed,
             isResolved,
-            isOnTime: !!isOnTime,
+            sentToVerificationOnTime: !!sentToVerificationOnTime,
+            completionOnTime: !!completionOnTime,
             firstAwaitingVerificationAt,
             verificationCycles,
             isRejected,
@@ -2717,6 +2744,8 @@ export class TicketStatsService {
             if (!userMetrics.has(userId)) {
                 userMetrics.set(userId, {
                     onTimeCompleted: 0,
+                    sentToVerificationOnTime: 0,
+                    completionOnTime: 0,
                     totalCompleted: 0,
                     onTimeVerified: 0,
                     totalVerified: 0,
@@ -2747,7 +2776,13 @@ export class TicketStatsService {
 
                 if (lifeCycle.isResolved) {
                     m.totalCompleted++;
-                    if (lifeCycle.isOnTime) m.onTimeCompleted++;
+                    if (lifeCycle.sentToVerificationOnTime) {
+                        m.onTimeCompleted++;
+                        m.sentToVerificationOnTime++;
+                    }
+                    if (lifeCycle.completionOnTime) {
+                        m.completionOnTime++;
+                    }
                     if (lifeCycle.wasReturned) {
                         if (
                             stat.targetUserIds.length > 1 &&
@@ -2788,6 +2823,8 @@ export class TicketStatsService {
             if (!deptMetrics.has(deptId)) {
                 deptMetrics.set(deptId, {
                     onTimeCompleted: 0,
+                    sentToVerificationOnTime: 0,
+                    completionOnTime: 0,
                     totalCompleted: 0,
                     onTimeVerified: 0,
                     totalVerified: 0,
@@ -2826,7 +2863,13 @@ export class TicketStatsService {
                             m.returnedCount++;
                         }
                     }
-                    if (lifeCycle.isOnTime) m.onTimeCompleted++;
+                    if (lifeCycle.sentToVerificationOnTime) {
+                        m.onTimeCompleted++;
+                        m.sentToVerificationOnTime++;
+                    }
+                    if (lifeCycle.completionOnTime) {
+                        m.completionOnTime++;
+                    }
                 }
 
                 if (lifeCycle.isRejected) m.rejectedCount++;
