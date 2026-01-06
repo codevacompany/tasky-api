@@ -179,6 +179,7 @@ export class StripeService {
             line_items: lineItems,
             success_url: options.successUrl,
             cancel_url: options.cancelUrl,
+            billing_address_collection: 'auto',
             metadata: {
                 tenantId: options.tenantId.toString(),
                 planSlug: options.planSlug,
