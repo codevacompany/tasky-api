@@ -179,7 +179,7 @@ export class StripeService {
             line_items: lineItems,
             success_url: options.successUrl,
             cancel_url: options.cancelUrl,
-            payment_method_types: ['card', 'pix'],
+            payment_method_types: ['card'],
             billing_address_collection: 'auto',
             metadata: {
                 tenantId: options.tenantId.toString(),
