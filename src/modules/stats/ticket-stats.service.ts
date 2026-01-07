@@ -538,8 +538,8 @@ export class TicketStatsService {
                             ? metrics.totalCompleted / metrics.totalEntries
                             : 0;
 
-                    // Only calculate efficiency score if department has at least 10 tickets
-                    if (totalTickets >= 10) {
+                    // Only calculate efficiency score if department has at least 5 tickets
+                    if (totalTickets >= 5) {
                         deptStats.efficiencyScore = this.calculateComprehensiveScore(
                             metrics.onTimeCompleted,
                             metrics.totalCompleted,
@@ -1549,8 +1549,8 @@ export class TicketStatsService {
             },
         };
 
-        // Only add efficiency score if user has at least 10 tickets
-        if (totalTickets >= 10) {
+        // Only add efficiency score if user has at least 5 tickets
+        if (totalTickets >= 5) {
             response.efficiencyScore = parseFloat(efficiencyScore.toFixed(2));
         }
 
@@ -2233,8 +2233,8 @@ export class TicketStatsService {
                             ? parseFloat((m.totalCompleted / m.totalEntries).toFixed(2))
                             : 0;
 
-                    // Only calculate efficiency score if user has at least 10 tickets
-                    if (user.totalTickets >= 10) {
+                    // Only calculate efficiency score if user has at least 5 tickets
+                    if (user.totalTickets >= 5) {
                         user.efficiencyScore = this.calculateComprehensiveScore(
                             m.onTimeCompleted,
                             m.totalCompleted,
@@ -2262,8 +2262,8 @@ export class TicketStatsService {
                 if (sortBy === 'resolution_time') return user.averageResolutionTimeSeconds > 0;
                 if (sortBy === 'overdue_rate')
                     return (userDetailedMetrics.get(user.userId)?.totalCompleted || 0) > 0;
-                // When excludeUnscored is true and sorting by efficiency, only show users with at least 10 tickets
-                if (excludeUnscored && sortBy === 'efficiency') return user.totalTickets >= 10;
+                // When excludeUnscored is true and sorting by efficiency, only show users with at least 5 tickets
+                if (excludeUnscored && sortBy === 'efficiency') return user.totalTickets >= 5;
                 return true;
             })
             .sort((a, b) => {
