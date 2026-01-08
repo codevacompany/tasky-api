@@ -85,7 +85,7 @@ export class TenantSubscriptionService {
 
         const subscription = await this.findCurrentTenantSubscription(tenantId);
 
-        if (!subscription || !subscription.subscriptionPlan) {
+        if (!subscription || !subscription.subscriptionPlan || !subscription.isActive) {
             return [];
         }
 

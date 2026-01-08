@@ -60,6 +60,7 @@ export class TenantSubscription extends TenantBoundBaseEntity {
     @AfterLoad()
     calculateIsActive() {
         const now = new Date();
+        const GRACE_PERIOD_MS = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
 
         if (this.cancelledAt) {
             this.isActive = false;
@@ -77,10 +78,17 @@ export class TenantSubscription extends TenantBoundBaseEntity {
         }
 
         if (this.status === SubscriptionStatus.TRIAL && this.trialEndDate) {
-            this.isActive = this.trialEndDate > now;
+            const trialExpirationWithGrace = new Date(
+                this.trialEndDate.getTime() + GRACE_PERIOD_MS,
+            );
+            this.isActive = trialExpirationWithGrace > now;
             return;
         }
 
-        this.isActive = !this.endDate || this.endDate > now;
+        const expirationWithGrace = this.endDate
+            ? new Date(this.endDate.getTime() + GRACE_PERIOD_MS)
+            : null;
+
+        this.isActive = !expirationWithGrace || expirationWithGrace > now;
     }
 }
