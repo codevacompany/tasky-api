@@ -40,7 +40,7 @@ export class AwsService {
         return `${sanitized}_${timestamp}${extension}`;
     }
 
-    async generateUploadURL(fileName: string): Promise<string> {
+    async generateUploadURL(fileName: string): Promise<{ url: string; fileName: string }> {
         const sanitizedFileName = this.sanitizeFileName(fileName);
 
         const command = new PutObjectCommand({
@@ -52,7 +52,10 @@ export class AwsService {
             expiresIn: 60,
         });
 
-        return url;
+        return {
+            url,
+            fileName: sanitizedFileName,
+        };
     }
 
     async getFileStream(

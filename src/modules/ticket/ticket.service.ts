@@ -1956,7 +1956,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
     }
 
-    async addFiles(accessProfile: AccessProfile, customId: string, files: string[]) {
+    async addFiles(
+        accessProfile: AccessProfile,
+        customId: string,
+        files: Array<{ url: string; name: string; mimeType: string; size?: number }>,
+    ) {
         const ticket = await this.findOne(accessProfile, {
             where: { customId },
             relations: [
@@ -1976,11 +1980,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        const ticketFiles = files.map((url: string) => ({
+        const ticketFiles = files.map((file) => ({
             tenantId: accessProfile.tenantId,
-            url,
-            name: extractFileName(url),
-            mimeType: extractMimeTypeFromUrl(url),
+            url: file.url,
+            name: file.name,
+            mimeType: file.mimeType,
+            size: file.size || 0,
             ticketId: ticket.id,
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
