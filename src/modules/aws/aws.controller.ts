@@ -7,9 +7,8 @@ export class AwsController {
     constructor(private readonly awsService: AwsService) {}
 
     @Get('upload-url')
-    async getPresignedUrl(@Query('fileName') fileName: string): Promise<{ url: string }> {
-        const url = await this.awsService.generateUploadURL(fileName);
-        return { url };
+    async getPresignedUrl(@Query('fileName') fileName: string) {
+        return this.awsService.generateUploadURL(fileName);
     }
 
     @Get('download')

@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Param,
+    ParseIntPipe,
+    Post,
+    UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { CreateTicketFileDto } from './dtos/create-ticket-file.dto';
@@ -24,5 +33,20 @@ export class TicketFileController {
     ) {
         await this.ticketFileService.delete(acessProfile, id);
         return { message: 'Successfully deleted!' };
+    }
+
+    @Get('storage/total')
+    async getTotalStorage(@GetAccessProfile() accessProfile: AccessProfile) {
+        const totalBytes = await this.ticketFileService.getTotalStorageUsed(accessProfile.tenantId);
+
+        // Convert bytes to more readable formats
+        const totalMB = totalBytes / (1024 * 1024);
+        const totalGB = totalBytes / (1024 * 1024 * 1024);
+
+        return {
+            totalBytes,
+            totalMB: parseFloat(totalMB.toFixed(2)),
+            totalGB: parseFloat(totalGB.toFixed(4)),
+        };
     }
 }
