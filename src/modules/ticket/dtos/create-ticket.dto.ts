@@ -16,6 +16,24 @@ import {
 import { Type } from 'class-transformer';
 import { TicketPriority } from '../entities/ticket.entity';
 
+export class FileMetadataDto {
+    @IsNotEmpty()
+    @IsString()
+    url: string;
+
+    @IsNotEmpty()
+    @IsString()
+    name: string;
+
+    @IsNotEmpty()
+    @IsString()
+    mimeType: string;
+
+    @IsOptional()
+    @IsNumber()
+    size?: number;
+}
+
 export class CreateTicketDto {
     @IsNotEmpty()
     @IsString()
@@ -53,7 +71,9 @@ export class CreateTicketDto {
 
     @IsArray()
     @IsOptional()
-    files?: string[];
+    @ValidateNested({ each: true })
+    @Type(() => FileMetadataDto)
+    files?: FileMetadataDto[];
 
     @IsArray()
     @IsOptional()
