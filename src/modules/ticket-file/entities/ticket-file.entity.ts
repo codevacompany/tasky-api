@@ -13,6 +13,9 @@ export class TicketFile extends TenantBoundBaseEntity {
     @Column()
     mimeType: string;
 
+    @Column({ type: 'bigint', default: 0 })
+    size: number;
+
     @ManyToOne(() => Ticket, (ticket) => ticket.files, { onDelete: 'CASCADE' })
     ticket: Ticket;
 

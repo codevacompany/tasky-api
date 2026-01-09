@@ -18,4 +18,14 @@ export class TicketFileService extends TenantBoundBaseService<TicketFile> {
     async delete(acessProfile: AccessProfile, id: number): Promise<void> {
         return super.delete(acessProfile, id);
     }
+
+    async getTotalStorageUsed(tenantId: number): Promise<number> {
+        const result = await this.ticketFileRepository
+            .createQueryBuilder('ticketFile')
+            .select('SUM(ticketFile.size)', 'total')
+            .where('ticketFile.tenantId = :tenantId', { tenantId })
+            .getRawOne();
+
+        return parseInt(result?.total || '0', 10);
+    }
 }
