@@ -7,6 +7,7 @@ export class UpdateTenantDto {
     @MinLength(2)
     name?: string;
 
+    @IsOptional()
     @IsNotEmpty()
     @IsString()
     @MinLength(2)
@@ -18,6 +19,50 @@ export class UpdateTenantDto {
     email?: string;
 
     @IsOptional()
+    @IsEmail()
+    billingEmail?: string;
+
+    @IsOptional()
     @IsString()
     cnpj?: string;
+
+    @IsOptional()
+    @IsString()
+    phoneNumber?: string;
+
+    @IsOptional()
+    @IsString()
+    cep?: string;
+
+    @IsOptional()
+    @IsString()
+    state?: string;
+
+    @IsOptional()
+    @IsString()
+    city?: string;
+
+    @IsOptional()
+    @IsString()
+    neighborhood?: string;
+
+    @IsOptional()
+    @IsString()
+    street?: string;
+
+    @IsOptional()
+    @IsString()
+    number?: string;
+
+    @IsOptional()
+    @IsString()
+    complement?: string;
+
+    @IsOptional()
+    @IsString()
+    companySize?: string;
+
+    @IsOptional()
+    @IsString()
+    mainActivity?: string;
 }

@@ -10,6 +10,9 @@ export class Tenant extends IdTimestampBaseEntity {
     @Column({ default: '', transformer: encryptedTransformer })
     email: string;
 
+    @Column({ default: '', transformer: encryptedTransformer })
+    billingEmail: string;
+
     @Column({ nullable: true })
     emailHash: string;
 

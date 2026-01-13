@@ -152,7 +152,7 @@ export class TenantSubscriptionService {
         const customer = await this.stripeService.ensureCustomer({
             tenantId,
             name: tenant.name,
-            email: tenant.email,
+            email: tenant.billingEmail || tenant.email,
             existingCustomerId: tenant.stripeCustomerId,
         });
 

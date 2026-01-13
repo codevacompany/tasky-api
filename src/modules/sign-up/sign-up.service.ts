@@ -345,6 +345,7 @@ export class SignUpService {
             name: signUp.companyName,
             customKey,
             email: signUp.email,
+            billingEmail: signUp.email,
             cnpj: signUp.cnpj,
             phoneNumber: signUp.phoneNumber,
             cep: signUp.cep,

@@ -18,11 +18,28 @@ import { UpdateTenantDto } from './dtos/update-tenant.dto';
 import { TenantStatsResponseDto } from './dtos/tenant-with-stats.dto';
 import { Tenant } from './entities/tenant.entity';
 import { TenantService } from './tenant.service';
+import { GetAccessProfile } from '../../shared/common/access-profile';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
+import { TenantAdminGuard } from '../../shared/guards/tenant-admin.guard';
 
 @Controller('tenants')
 export class TenantController {
     constructor(private readonly tenantService: TenantService) {}
+
+    @Get('me')
+    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    async findMe(@GetAccessProfile() accessProfile: any) {
+        return this.tenantService.findById(accessProfile.tenantId);
+    }
+
+    @Patch('me')
+    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    async updateMe(
+        @GetAccessProfile() accessProfile: any,
+        @Body() updateTenantDto: UpdateTenantDto,
+    ) {
+        return this.tenantService.update(accessProfile.tenantId, updateTenantDto);
+    }
 
     @Get()
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
