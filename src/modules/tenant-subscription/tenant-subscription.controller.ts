@@ -16,6 +16,7 @@ import { TenantAdminGuard } from '../../shared/guards/tenant-admin.guard';
 import { TenantSubscriptionService } from './tenant-subscription.service';
 import { BillingService } from './billing.service';
 import { SubscribeRequestDto } from './dtos/subscribe-request.dto';
+import { PaymentService } from '../payment/payment.service';
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 @Controller('tenant-subscriptions')
@@ -24,6 +25,7 @@ export class TenantSubscriptionController {
     constructor(
         private readonly tenantSubscriptionService: TenantSubscriptionService,
         private readonly billingService: BillingService,
+        private readonly paymentService: PaymentService,
     ) {}
 
     @Get('tenant/:tenantId/summary')
@@ -64,6 +66,15 @@ export class TenantSubscriptionController {
         @GetAccessProfile() _accessProfile: AccessProfile,
     ) {
         return this.tenantSubscriptionService.validateUserLimit(tenantId);
+    }
+
+    @Get('tenant/:tenantId/payments')
+    @UseGuards(GlobalAdminGuard)
+    getTenantPayments(
+        @Param('tenantId', ParseIntPipe) tenantId: number,
+        @GetAccessProfile() _accessProfile: AccessProfile,
+    ) {
+        return this.paymentService.findByTenantId(tenantId);
     }
 
     // Billing endpoints

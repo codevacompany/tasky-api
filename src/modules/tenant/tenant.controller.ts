@@ -80,7 +80,14 @@ export class TenantController {
         return this.tenantService.create(createTenantDto);
     }
 
+    @Get(':id/details')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    async findDetails(@Param('id', ParseIntPipe) id: number) {
+        return this.tenantService.findDetails(id);
+    }
+
     @Patch(':id')
+    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async update(@Param('id', ParseIntPipe) id: number, @Body() updateTenantDto: UpdateTenantDto) {
         return this.tenantService.update(id, updateTenantDto);
     }

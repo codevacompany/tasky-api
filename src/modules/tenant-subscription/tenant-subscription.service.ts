@@ -558,7 +558,9 @@ export class TenantSubscriptionService {
                 tenantSubscriptionId: subscription.id,
                 amount,
                 dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : new Date(),
-                description: invoice.description || `Payment for subscription ${subscription.id}`,
+                description:
+                    invoice.description ||
+                    `Assinatura - ${subscription.subscriptionPlan?.name || 'Tasky Pro'}`,
             });
 
             await this.paymentService.markAsPaid(payment.id, PaymentMethod.CREDIT_CARD, invoice.id);

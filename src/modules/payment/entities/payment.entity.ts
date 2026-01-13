@@ -50,6 +50,9 @@ export class Payment extends TenantBoundBaseEntity {
     @Column({ nullable: true })
     invoiceUrl: string;
 
+    @Column({ type: 'timestamp', nullable: true })
+    invoiceSentAt: Date;
+
     @Column({ type: 'json', nullable: true })
     metadata: Record<string, any>;
 

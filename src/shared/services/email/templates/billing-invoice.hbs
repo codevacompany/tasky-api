@@ -1,0 +1,28 @@
+{{#> layout}}
+<div style="padding: 20px; color: #333; font-family: sans-serif;">
+    <p>Olá,</p>
+
+    <p>Informamos que a nota fiscal referente ao seu pagamento do Tasky Pro já foi gerada e está disponível para consulta.</p>
+
+    <div style="background-color: #f3f4f6; border-radius: 8px; padding: 20px; margin: 20px 0; border: 1px solid #e5e7eb;">
+        <p style="margin: 0; font-weight: bold; color: #4b5563;">Resumo do Pagamento:</p>
+        <p style="margin: 5px 0;"><strong>Valor:</strong> {{amount}}</p>
+        <p style="margin: 5px 0;"><strong>Vencimento:</strong> {{dueDate}}</p>
+        <p style="margin: 5px 0;"><strong>Referente a:</strong> {{description}}</p>
+    </div>
+
+    {{#if invoiceLink}}
+    <div style="margin: 30px 0; text-align: center;">
+        <a href="{{invoiceLink}}" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">
+            Visualizar Nota Fiscal Online
+        </a>
+    </div>
+    {{/if}}
+
+    <p>Em anexo a este e-mail, você também encontrará o arquivo em PDF da sua nota fiscal.</p>
+
+    <p style="margin-top: 30px; font-size: 14px; color: #6b7280;">
+        Se você tiver qualquer dúvida em relação a este faturamento, por favor, entre em contato com nosso suporte através do email contato@taskypro.com.br.
+    </p>
+</div>
+{{/layout}}
