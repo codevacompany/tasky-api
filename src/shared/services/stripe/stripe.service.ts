@@ -70,7 +70,18 @@ export class StripeService {
                 );
 
                 if (!('deleted' in existingCustomer) || !existingCustomer.deleted) {
-                    return existingCustomer as Stripe.Customer;
+                    const stripeCustomer = existingCustomer as Stripe.Customer;
+                    // Check if we need to update the customer info to match tenant info
+                    if (
+                        (options.name && stripeCustomer.name !== options.name) ||
+                        (options.email && stripeCustomer.email !== options.email)
+                    ) {
+                        return await this.stripe.customers.update(stripeCustomer.id, {
+                            name: options.name,
+                            email: options.email,
+                        });
+                    }
+                    return stripeCustomer;
                 }
             } catch (error) {
                 this.logger.warn(
@@ -180,7 +191,13 @@ export class StripeService {
             success_url: options.successUrl,
             cancel_url: options.cancelUrl,
             payment_method_types: ['card'],
-            billing_address_collection: 'auto',
+            billing_address_collection: 'required',
+            tax_id_collection: {
+                enabled: true,
+            },
+            automatic_tax: {
+                enabled: true,
+            },
             metadata: {
                 tenantId: options.tenantId.toString(),
                 planSlug: options.planSlug,

@@ -1,4 +1,13 @@
-import { IsBoolean, IsDate, IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+    IsBoolean,
+    IsDate,
+    IsEmail,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    MaxLength,
+    MinLength,
+} from 'class-validator';
 
 export class CreateTenantDto {
     @IsNotEmpty()
@@ -15,6 +24,10 @@ export class CreateTenantDto {
     @IsOptional()
     @IsEmail()
     email?: string;
+
+    @IsOptional()
+    @IsEmail()
+    billingEmail?: string;
 
     @IsOptional()
     @IsString()

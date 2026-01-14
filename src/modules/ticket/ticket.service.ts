@@ -11,11 +11,7 @@ import {
 import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
-import {
-    extractFileName,
-    extractMimeTypeFromUrl,
-    formatSnakeToNaturalCase,
-} from '../../shared/utils/file-helper';
+import { formatSnakeToNaturalCase } from '../../shared/utils/file-helper';
 import { CorrectionRequestService } from '../correction-request-reason/correction-request-reason.service';
 import { CorrectionReason } from '../correction-request-reason/entities/correction-request-reason.entity';
 import { CreateCorrectionRequestDto } from '../correction-request-reason/dtos/create-correction-request-reason.dto';
@@ -1030,11 +1026,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             await manager.save(this.ticketTargetUserRepository.create(ticketTargetUsers));
 
             if (files?.length) {
-                const ticketFiles = files.map((url: string) => ({
+                const ticketFiles = files.map((file) => ({
                     tenantId: accessProfile.tenantId,
-                    url,
-                    name: extractFileName(url),
-                    mimeType: extractMimeTypeFromUrl(url),
+                    url: file.url,
+                    name: file.name,
+                    mimeType: file.mimeType,
+                    size: file.size || 0,
                     ticketId: createdTicket.id,
                     createdById: requester.id,
                     updatedById: requester.id,
@@ -1956,7 +1953,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
     }
 
-    async addFiles(accessProfile: AccessProfile, customId: string, files: string[]) {
+    async addFiles(
+        accessProfile: AccessProfile,
+        customId: string,
+        files: Array<{ url: string; name: string; mimeType: string; size?: number }>,
+    ) {
         const ticket = await this.findOne(accessProfile, {
             where: { customId },
             relations: [
@@ -1976,11 +1977,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        const ticketFiles = files.map((url: string) => ({
+        const ticketFiles = files.map((file) => ({
             tenantId: accessProfile.tenantId,
-            url,
-            name: extractFileName(url),
-            mimeType: extractMimeTypeFromUrl(url),
+            url: file.url,
+            name: file.name,
+            mimeType: file.mimeType,
+            size: file.size || 0,
             ticketId: ticket.id,
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,

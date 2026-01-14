@@ -33,7 +33,8 @@ export class BillingService {
      * For Plano Avançado: R$ 399 base + R$ 15 per additional user beyond 30 users
      */
     async calculateTenantBilling(tenantId: number): Promise<BillingCalculation> {
-        const subscription = await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
+        const subscription =
+            await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
         const currentUsers = await this.tenantSubscriptionService.getCurrentUserCount(tenantId);
 
         if (!subscription || !subscription.subscriptionPlan) {
@@ -44,7 +45,7 @@ export class BillingService {
         const basePlanCost = Number(plan.priceMonthly);
         let additionalUsersCost = 0;
         let additionalUsers = 0;
-        let description = `${plan.name}`;
+        let description = `Plano ${plan.name}`;
 
         // For Plano Avançado (30 users max), calculate additional user costs
         if (plan.slug === 'avancado' && plan.maxUsers && currentUsers > plan.maxUsers) {
@@ -91,7 +92,8 @@ export class BillingService {
      */
     async createBillingPayment(tenantId: number, dueDate?: Date): Promise<any> {
         const billing = await this.calculateTenantBilling(tenantId);
-        const subscription = await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
+        const subscription =
+            await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
 
         if (!subscription) {
             throw new Error('No active subscription found for tenant');
@@ -118,7 +120,8 @@ export class BillingService {
         overduePayments: any[];
     }> {
         const currentBilling = await this.calculateTenantBilling(tenantId);
-        const subscription = await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
+        const subscription =
+            await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
 
         let nextBillingDate: Date | null = null;
         if (subscription && subscription.status === 'active') {
@@ -148,14 +151,18 @@ export class BillingService {
     /**
      * Validate if a tenant can add more users based on their billing limits
      */
-    async validateUserAddition(tenantId: number, usersToAdd: number = 1): Promise<{
+    async validateUserAddition(
+        tenantId: number,
+        usersToAdd: number = 1,
+    ): Promise<{
         canAdd: boolean;
         reason?: string;
         additionalCost?: number;
         newTotalCost?: number;
     }> {
         const currentBilling = await this.calculateTenantBilling(tenantId);
-        const subscription = await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
+        const subscription =
+            await this.tenantSubscriptionService.findCurrentTenantSubscription(tenantId);
 
         if (!subscription || !subscription.subscriptionPlan) {
             return {
@@ -171,7 +178,7 @@ export class BillingService {
             return {
                 canAdd: true,
                 additionalCost: usersToAdd * Number(plan.priceMonthly),
-                newTotalCost: currentBilling.totalCost + (usersToAdd * Number(plan.priceMonthly)),
+                newTotalCost: currentBilling.totalCost + usersToAdd * Number(plan.priceMonthly),
             };
         }
 
@@ -213,7 +220,11 @@ export class BillingService {
     /**
      * Generate a billing report for a tenant
      */
-    async generateBillingReport(tenantId: number, fromDate?: Date, toDate?: Date): Promise<{
+    async generateBillingReport(
+        tenantId: number,
+        fromDate?: Date,
+        toDate?: Date,
+    ): Promise<{
         tenant: any;
         period: { from: Date; to: Date };
         currentBilling: BillingCalculation;
@@ -231,17 +242,17 @@ export class BillingService {
         ]);
 
         // Filter payments by date range
-        const filteredPayments = paymentHistory.filter(payment => {
+        const filteredPayments = paymentHistory.filter((payment) => {
             const paymentDate = new Date(payment.createdAt);
             return paymentDate >= from && paymentDate <= to;
         });
 
         const totalPaidAmount = filteredPayments
-            .filter(p => p.status === 'completed')
+            .filter((p) => p.status === 'completed')
             .reduce((sum, p) => sum + Number(p.amount), 0);
 
         const totalPendingAmount = filteredPayments
-            .filter(p => p.status === 'pending')
+            .filter((p) => p.status === 'pending')
             .reduce((sum, p) => sum + Number(p.amount), 0);
 
         // Get tenant info (this would need to be implemented)
