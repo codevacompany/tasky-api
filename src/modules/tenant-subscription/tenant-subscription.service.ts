@@ -132,6 +132,16 @@ export class TenantSubscriptionService {
             });
         }
 
+        if (plan.maxUsers !== null) {
+            const activeUsersCount = await this.userService.getActiveUserCount(tenantId);
+            if (activeUsersCount > plan.maxUsers) {
+                throw new CustomBadRequestException({
+                    code: 'insufficient-plan-capacity',
+                    message: `This plan supports only ${plan.maxUsers} users. You currently have ${activeUsersCount} active users.`,
+                });
+            }
+        }
+
         const billingInterval: StripeBillingInterval = options.billingInterval || 'monthly';
         const priceId =
             billingInterval === 'yearly' ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
