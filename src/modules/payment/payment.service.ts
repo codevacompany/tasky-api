@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PaymentRepository } from './payment.repository';
 import { PaymentStatus, PaymentMethod } from './entities/payment.entity';
+import { EmailService } from '../../shared/services/email/email.service';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 @Injectable()
 export class PaymentService {
-    constructor(private paymentRepository: PaymentRepository) {}
+    constructor(
+        private paymentRepository: PaymentRepository,
+        private emailService: EmailService,
+    ) {}
 
     async findByTenantId(tenantId: number) {
         return this.paymentRepository.find({
@@ -69,7 +75,7 @@ export class PaymentService {
         tenantId: number,
         amount: number,
         dueDate: Date,
-        description: string = 'Pagamento mensal da assinatura',
+        description: string = 'Assinatura - Plano Tasky Pro',
     ) {
         return this.createPayment({
             tenantId,
@@ -214,6 +220,52 @@ export class PaymentService {
             ...payment.metadata,
             retryCount: (payment.metadata?.retryCount || 0) + 1,
         };
+
+        return this.paymentRepository.save(payment);
+    }
+
+    async sendInvoiceEmail(
+        paymentId: number,
+        options: { to: string; invoiceLink?: string; file?: any },
+    ) {
+        const payment = await this.paymentRepository.findOne({
+            where: { id: paymentId },
+            relations: ['tenantSubscription', 'tenantSubscription.subscriptionPlan'],
+        });
+
+        if (!payment) {
+            throw new Error('Payment not found');
+        }
+
+        const html = this.emailService.compileTemplate('billing-invoice', {
+            amount: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                payment.amount,
+            ),
+            dueDate: format(new Date(payment.dueDate), 'dd/MM/yyyy', { locale: ptBR }),
+            description: payment.description || 'Assinatura',
+            invoiceLink: options.invoiceLink || payment.invoiceUrl,
+        });
+
+        const attachments = [];
+        if (options.file) {
+            attachments.push({
+                filename: options.file.originalname,
+                content: options.file.buffer,
+            });
+        }
+
+        await this.emailService.sendMail({
+            to: options.to,
+            subject: 'Tasky Pro - Nota Fiscal',
+            html,
+            attachments,
+        });
+
+        // Update payment record
+        payment.invoiceSentAt = new Date();
+        if (options.invoiceLink) {
+            payment.invoiceUrl = options.invoiceLink;
+        }
 
         return this.paymentRepository.save(payment);
     }

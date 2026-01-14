@@ -247,6 +247,61 @@ export class TenantService {
         };
     }
 
+    async findDetails(id: number) {
+        const tenant = await this.findById(id);
+        const now = new Date();
+        const monthStart = startOfMonth(now);
+        const monthEnd = endOfMonth(now);
+
+        const [users, allTickets, ticketsThisMonth, subscriptionSummary] = await Promise.all([
+            this.userRepository.find({
+                where: { tenantId: tenant.id },
+                relations: ['department', 'role'],
+            }),
+            this.ticketRepository.find({
+                where: { tenantId: tenant.id },
+            }),
+            this.ticketRepository.count({
+                where: {
+                    tenantId: tenant.id,
+                    createdAt: Between(monthStart, monthEnd),
+                },
+            }),
+            this.tenantSubscriptionService.getSubscriptionSummary(tenant.id),
+        ]);
+
+        const userStats = users.map((user) => ({
+            id: user.id,
+            uuid: user.uuid,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            departmentName: user.department?.name || 'N/A',
+            role: user.role?.name || 'N/A',
+            isActive: user.isActive,
+            loginCount: user.loginCount || 0,
+            lastLogin: user.lastLogin || null,
+        }));
+
+        return {
+            ...tenant,
+            totalUsers: users.length,
+            activeUsers: users.filter((user) => user.isActive).length,
+            totalTickets: allTickets.length,
+            ticketsThisMonth,
+            users: userStats,
+            subscription: subscriptionSummary.hasSubscription
+                ? {
+                      planName: subscriptionSummary.subscription?.planName,
+                      planSlug: subscriptionSummary.subscription?.planSlug,
+                      maxUsers: subscriptionSummary.subscription?.maxUsers,
+                      status: subscriptionSummary.subscription?.status,
+                      trialEndDate: subscriptionSummary.subscription?.trialEndDate,
+                  }
+                : undefined,
+        };
+    }
+
     //TODO: Refactor to get the name from the options.where
     async findWithStats(
         where?: { name?: string },
@@ -269,7 +324,7 @@ export class TenantService {
             this.userRepository.count({
                 where: {
                     isActive: true,
-                }
+                },
             }),
             this.ticketRepository.count({
                 where: {
