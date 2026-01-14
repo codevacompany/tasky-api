@@ -278,17 +278,33 @@ export class TicketStatsService {
             let totalResolutionBusinessHours = 0;
             const resolutionTicketIds = new Set<number>();
 
+            // Batch fetch entry updates to avoid N+1 queries
+            //TODO: Check if we can create a function to avoid code duplication (we have similar code in other places here)
+            const resolutionTicketIdsArray = Array.from(
+                new Set(resolutionUpdates.map((u) => u.ticketId)),
+            );
+
+            const resolutionEntryUpdates =
+                resolutionTicketIdsArray.length > 0
+                    ? await this.ticketUpdateRepository.find({
+                          where: {
+                              ticketId: In(resolutionTicketIdsArray),
+                              toStatus: TicketStatus.InProgress,
+                              tenantId: accessProfile.tenantId,
+                          },
+                          order: { createdAt: 'DESC' },
+                      })
+                    : [];
+
+            const resEntriesByTicket = new Map<number, TicketUpdate[]>();
+            resolutionEntryUpdates.forEach((u) => {
+                if (!resEntriesByTicket.has(u.ticketId)) resEntriesByTicket.set(u.ticketId, []);
+                resEntriesByTicket.get(u.ticketId).push(u);
+            });
+
             for (const update of resolutionUpdates) {
-                const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                    where: {
-                        ticketId: update.ticketId,
-                        toStatus: TicketStatus.InProgress,
-                        createdAt: LessThan(update.createdAt),
-                    },
-                    order: {
-                        createdAt: 'DESC',
-                    },
-                });
+                const entries = resEntriesByTicket.get(update.ticketId) || [];
+                const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
                 if (previousStatusUpdate && !resolutionTicketIds.has(update.ticketId)) {
                     const businessHours = this.businessHoursService.calculateBusinessHours(
@@ -340,17 +356,31 @@ export class TicketStatsService {
             let totalAcceptanceBusinessHours = 0;
             let acceptanceCount = 0;
 
+            // Batch fetch entry updates to avoid N+1 queries
+            const acceptanceTicketIdsArray = Array.from(
+                new Set(acceptanceUpdates.map((u) => u.ticketId)),
+            );
+            const acceptanceEntryUpdates =
+                acceptanceTicketIdsArray.length > 0
+                    ? await this.ticketUpdateRepository.find({
+                          where: {
+                              ticketId: In(acceptanceTicketIdsArray),
+                              toStatus: TicketStatus.Pending,
+                              tenantId: accessProfile.tenantId,
+                          },
+                          order: { createdAt: 'DESC' },
+                      })
+                    : [];
+
+            const accEntriesByTicket = new Map<number, TicketUpdate[]>();
+            acceptanceEntryUpdates.forEach((u) => {
+                if (!accEntriesByTicket.has(u.ticketId)) accEntriesByTicket.set(u.ticketId, []);
+                accEntriesByTicket.get(u.ticketId).push(u);
+            });
+
             for (const update of acceptanceUpdates) {
-                const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                    where: {
-                        ticketId: update.ticketId,
-                        toStatus: TicketStatus.Pending,
-                        createdAt: LessThan(update.createdAt),
-                    },
-                    order: {
-                        createdAt: 'DESC',
-                    },
-                });
+                const entries = accEntriesByTicket.get(update.ticketId) || [];
+                const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
                 if (previousStatusUpdate) {
                     const businessHours = this.businessHoursService.calculateBusinessHours(
@@ -648,21 +678,28 @@ export class TicketStatsService {
         const calcWithWeekendExclusion = async (updates: TicketUpdate[]) => {
             if (updates.length === 0) return 0;
 
+            const updateTicketIds = Array.from(new Set(updates.map((u) => u.ticketId)));
+            const entryUpdates = await this.ticketUpdateRepository.find({
+                where: {
+                    ticketId: In(updateTicketIds),
+                    toStatus: TicketStatus.InProgress,
+                    tenantId: accessProfile.tenantId,
+                },
+                order: { createdAt: 'DESC' },
+            });
+
+            const entriesByTicket = new Map<number, TicketUpdate[]>();
+            entryUpdates.forEach((u) => {
+                if (!entriesByTicket.has(u.ticketId)) entriesByTicket.set(u.ticketId, []);
+                entriesByTicket.get(u.ticketId).push(u);
+            });
+
             let totalBusinessHours = 0;
             const processedTickets = new Set<number>();
 
             for (const update of updates) {
-                // Find when the ticket entered the InProgress status
-                const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                    where: {
-                        ticketId: update.ticketId,
-                        toStatus: TicketStatus.InProgress,
-                        createdAt: LessThan(update.createdAt),
-                    },
-                    order: {
-                        createdAt: 'DESC',
-                    },
-                });
+                const entries = entriesByTicket.get(update.ticketId) || [];
+                const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
                 if (previousStatusUpdate && !processedTickets.has(update.ticketId)) {
                     // Calculate business hours between entering InProgress and leaving it
@@ -2320,23 +2357,34 @@ export class TicketStatsService {
             fetchAverages(TicketStatus.InProgress),
         ]);
 
-        // Calculate acceptance times with weekend exclusion
+        // Batch fetch entry updates for acceptance times
+        const acceptanceTicketIds = Array.from(new Set(acceptanceUpdates.map((u) => u.ticketId)));
+        const acceptanceEntryUpdates =
+            acceptanceTicketIds.length > 0
+                ? await this.ticketUpdateRepository.find({
+                      where: {
+                          ticketId: In(acceptanceTicketIds),
+                          toStatus: TicketStatus.Pending,
+                          tenantId: accessProfile.tenantId,
+                      },
+                      order: { createdAt: 'DESC' },
+                  })
+                : [];
+
+        const accEntriesByTicket = new Map<number, TicketUpdate[]>();
+        acceptanceEntryUpdates.forEach((u) => {
+            if (!accEntriesByTicket.has(u.ticketId)) accEntriesByTicket.set(u.ticketId, []);
+            accEntriesByTicket.get(u.ticketId).push(u);
+        });
+
         const accMap = new Map<number, { sum: number; count: number }>();
 
         for (const update of acceptanceUpdates) {
             const userId = update.fromUserId || update.ticket?.currentTargetUserId;
             if (!userId || !userStatsMap.has(userId)) continue;
 
-            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                where: {
-                    ticketId: update.ticketId,
-                    toStatus: TicketStatus.Pending,
-                    createdAt: LessThan(update.createdAt),
-                },
-                order: {
-                    createdAt: 'DESC',
-                },
-            });
+            const entries = accEntriesByTicket.get(update.ticketId) || [];
+            const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
             if (previousStatusUpdate) {
                 const businessHours = this.businessHoursService.calculateBusinessHours(
@@ -2352,6 +2400,26 @@ export class TicketStatsService {
         }
 
         // Calculate resolution times with weekend exclusion
+        // Batch fetch entry updates for resolution times
+        const resolutionTicketIds = Array.from(new Set(resolutionUpdates.map((u) => u.ticketId)));
+        const resolutionEntryUpdates =
+            resolutionTicketIds.length > 0
+                ? await this.ticketUpdateRepository.find({
+                      where: {
+                          ticketId: In(resolutionTicketIds),
+                          toStatus: TicketStatus.InProgress,
+                          tenantId: accessProfile.tenantId,
+                      },
+                      order: { createdAt: 'DESC' },
+                  })
+                : [];
+
+        const resEntriesByTicket = new Map<number, TicketUpdate[]>();
+        resolutionEntryUpdates.forEach((u) => {
+            if (!resEntriesByTicket.has(u.ticketId)) resEntriesByTicket.set(u.ticketId, []);
+            resEntriesByTicket.get(u.ticketId).push(u);
+        });
+
         const resMap = new Map<number, { sum: number; count: number }>();
         const processedTickets = new Set<string>(); // Track userId-ticketId pairs
 
@@ -2362,16 +2430,8 @@ export class TicketStatsService {
             const ticketKey = `${userId}-${update.ticketId}`;
             if (processedTickets.has(ticketKey)) continue;
 
-            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                where: {
-                    ticketId: update.ticketId,
-                    toStatus: TicketStatus.InProgress,
-                    createdAt: LessThan(update.createdAt),
-                },
-                order: {
-                    createdAt: 'DESC',
-                },
-            });
+            const entries = resEntriesByTicket.get(update.ticketId) || [];
+            const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
             if (previousStatusUpdate) {
                 const businessHours = this.businessHoursService.calculateBusinessHours(
