@@ -524,6 +524,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 ])
                 .leftJoin('targetUser.department', 'targetUserDepartment')
                 .addSelect(['targetUserDepartment.id', 'targetUserDepartment.name'])
+                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
+                .addSelect([
+                    'currentTargetUser.id',
+                    'currentTargetUser.firstName',
+                    'currentTargetUser.lastName',
+                    'currentTargetUser.email',
+                ])
                 // Reviewer - only id needed for verification flow checks
                 .leftJoin('ticket.reviewer', 'reviewer')
                 .addSelect(['reviewer.id'])
