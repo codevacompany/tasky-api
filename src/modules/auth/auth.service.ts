@@ -331,9 +331,9 @@ export class AuthService {
 
         const hashedPassword = this.encryptionService.hashSync(adminResetPasswordDto.newPassword);
 
-        await this.userService.superAdminUpdate(accessProfile, userId, {
-            password: hashedPassword,
-        });
+            await this.userService.superAdminUpdate(accessProfile, userId, {
+                password: hashedPassword,
+            });
 
         try {
             const html = this.emailService.compileTemplate('password-reset', {
@@ -360,9 +360,13 @@ export class AuthService {
         accessProfile: AccessProfile,
         uuid: string,
     ): Promise<{ message: string }> {
+        const requester = await this.userService.findById(accessProfile.userId);
+        const isGlobalAdmin = requester?.role?.name === RoleName.GlobalAdmin;
+
         // For global admin operations, bypass tenant filtering
+        // For others (Tenant Admin), ensure tenant filtering is active
         const user = await this.userService.findByUuid(accessProfile, uuid, {
-            tenantAware: false,
+            tenantAware: !isGlobalAdmin,
         });
 
         if (!user) {
@@ -383,7 +387,7 @@ export class AuthService {
             {
                 password: hashedPassword,
             },
-            { tenantAware: false },
+            { tenantAware: !isGlobalAdmin },
         );
 
         // Send email with the new password
