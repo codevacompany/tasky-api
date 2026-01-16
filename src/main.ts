@@ -25,6 +25,9 @@ async function bootstrap() {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
     app.useGlobalInterceptors(new DatabaseRetryInterceptor());
 
-    await app.listen(4443);
+    const port = process.env.PORT || 4443;
+    await app.listen(port);
+
+    console.log(`Application is running on: ${await app.getUrl()}`);
 }
 bootstrap();

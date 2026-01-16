@@ -10,6 +10,7 @@ import { ResetPasswordWithTokenDto } from './dtos/reset-password-with-token.dto'
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { ChangePasswordDto } from './dtos/change-password.dto';
 import { AdminResetPasswordDto } from './dtos/admin-reset-password.dto';
+import { TenantAdminGuard } from '../../shared/guards/tenant-admin.guard';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 
@@ -63,7 +64,7 @@ export class AuthController {
     }
 
     @Patch('admin/reset-password-uuid/:uuid')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
     adminResetPasswordWithRandomPassword(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Param('uuid', UUIDValidationPipe) uuid: string,
