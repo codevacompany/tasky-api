@@ -1586,8 +1586,8 @@ export class TicketStatsService {
             },
         };
 
-        // Only add efficiency score if user has at least 5 tickets
-        if (totalTickets >= 5) {
+        // Only add efficiency score if user has at least 5 closed tasks
+        if (closedTickets >= 5) {
             response.efficiencyScore = parseFloat(efficiencyScore.toFixed(2));
         }
 
