@@ -4,6 +4,8 @@ import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
 import { DatabaseRetryInterceptor } from './shared/interceptors/database-retry.interceptor';
 import { json, raw, Request, Response, NextFunction } from 'express';
+import morgan from 'morgan';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 async function bootstrap() {
     dotenv.config();
@@ -12,6 +14,22 @@ async function bootstrap() {
         cors: true,
         bodyParser: false, // Disable default to handle manually
     });
+
+    app.use(morgan('dev'));
+
+    // Transparent Proxy for migration (Vercel -> VPS)
+    if (process.env.API_PROXY_TARGET) {
+        app.use(
+            '/api',
+            createProxyMiddleware({
+                target: process.env.API_PROXY_TARGET,
+                changeOrigin: true,
+                pathRewrite: {
+                    '^/api': '', // Removes /api prefix if the target expects clean routes
+                },
+            }),
+        );
+    }
 
     // Configure body parser: use raw for webhook, JSON for everything else
     app.use((req: Request, res: Response, next: NextFunction) => {
