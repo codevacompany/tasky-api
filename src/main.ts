@@ -4,7 +4,7 @@ import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
 import { DatabaseRetryInterceptor } from './shared/interceptors/database-retry.interceptor';
 import { json, raw, Request, Response, NextFunction } from 'express';
-import * as morgan from 'morgan';
+import morgan from 'morgan';
 
 async function bootstrap() {
     dotenv.config();
