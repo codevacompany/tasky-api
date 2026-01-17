@@ -1,0 +1,25 @@
+name: Deploy Development API
+
+on:
+    push:
+        branches:
+            - development
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Deploy to VPS via SSH
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                  host: ${{ secrets.SSH_HOST }}
+                  username: ${{ secrets.SSH_USER }}
+                  key: ${{ secrets.SSH_PRIVATE_KEY }}
+                  port: 22
+                  script: |
+                      export PATH=$PATH:/usr/bin:/usr/local/bin
+                      cd /var/www/tasky-dev/tasky-api
+                      git pull origin development
+                      npm install
+                      npm run build
+                      pm2 reload tasky-api-dev || pm2 restart tasky-api-dev
