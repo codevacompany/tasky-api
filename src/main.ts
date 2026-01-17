@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
 import { DatabaseRetryInterceptor } from './shared/interceptors/database-retry.interceptor';
 import { json, raw, Request, Response, NextFunction } from 'express';
+import * as morgan from 'morgan';
 
 async function bootstrap() {
     dotenv.config();
@@ -12,6 +13,8 @@ async function bootstrap() {
         cors: true,
         bodyParser: false, // Disable default to handle manually
     });
+
+    app.use(morgan('dev'));
 
     // Configure body parser: use raw for webhook, JSON for everything else
     app.use((req: Request, res: Response, next: NextFunction) => {
