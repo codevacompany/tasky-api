@@ -47,11 +47,15 @@ export class PermissionSeeder extends Seeder {
             },
         ];
 
-        await permissionRepository.upsert(permissions, {
-            conflictPaths: ['key'],
-            skipUpdateIfNoValuesChanged: true,
-        });
-
-        console.log(`✅ Created/updated ${permissions.length} permissions`);
+        const existingCount = await permissionRepository.count();
+        if (existingCount >= permissions.length) {
+            console.log(`ℹ️ Permissions already exist, skipping...`);
+        } else {
+            await permissionRepository.upsert(permissions, {
+                conflictPaths: ['key'],
+                skipUpdateIfNoValuesChanged: true,
+            });
+            console.log(`✅ Created/updated ${permissions.length} permissions`);
+        }
     }
 }

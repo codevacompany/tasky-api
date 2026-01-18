@@ -22,4 +22,6 @@ jobs:
                       git pull origin main
                       npm install
                       npm run build
+                      npm run migration:run
+                      npm run seed
                       pm2 reload tasky-api-prod || pm2 restart tasky-api-prod
