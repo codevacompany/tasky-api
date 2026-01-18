@@ -79,6 +79,12 @@ export class SubscriptionPlanSeeder extends Seeder {
             },
         ];
 
+        const existingPlansCount = await planRepository.count();
+        if (existingPlansCount >= plansData.length) {
+            console.log('ℹ️ Subscription plans already exist, skipping plan seeding');
+            return;
+        }
+
         for (const planData of plansData) {
             await planRepository.upsert(
                 {

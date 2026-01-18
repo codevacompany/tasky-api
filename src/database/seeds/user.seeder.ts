@@ -50,17 +50,20 @@ export class UserSeeder extends Seeder {
             { name: RoleName.User },
         ];
 
-        await roleRepository.upsert(rolesData, {
-            conflictPaths: ['name'],
-            skipUpdateIfNoValuesChanged: true,
-        });
-
-        const createdRoles: Role[] = [];
-        for (const roleData of rolesData) {
-            const role = await roleRepository.findOne({ where: { name: roleData.name } });
-            if (role) createdRoles.push(role);
+        const existingRolesCount = await roleRepository.count();
+        if (existingRolesCount >= rolesData.length) {
+            console.log('ℹ️ Roles already exist, skipping roles seeding');
+        } else {
+            await roleRepository.upsert(rolesData, {
+                conflictPaths: ['name'],
+                skipUpdateIfNoValuesChanged: true,
+            });
+            console.log(`✅ Created/updated ${rolesData.length} roles`);
         }
-        console.log(`✅ Created/updated ${createdRoles.length} roles`);
+
+        const createdRoles = await roleRepository.find({
+            where: { name: In(rolesData.map((r) => r.name)) },
+        });
 
         const departmentsData: DepartmentData[] = [];
         for (const tenant of tenants) {
@@ -72,131 +75,133 @@ export class UserSeeder extends Seeder {
             );
         }
 
-        await departmentRepository.upsert(departmentsData, {
-            conflictPaths: ['name', 'tenantId'],
-            skipUpdateIfNoValuesChanged: true,
+        const existingDepartmentsCount = await departmentRepository.count();
+        if (existingDepartmentsCount >= departmentsData.length) {
+            console.log('ℹ️ Departments already exist, skipping departments seeding');
+        } else {
+            await departmentRepository.upsert(departmentsData, {
+                conflictPaths: ['name', 'tenantId'],
+                skipUpdateIfNoValuesChanged: true,
+            });
+            console.log(`✅ Created/updated ${departmentsData.length} departments`);
+        }
+
+        const createdDepartments = await departmentRepository.find({
+            where: {
+                name: In(departmentsData.map((d) => d.name)),
+                tenantId: In(tenants.map((t) => t.id)),
+            },
         });
 
-        const createdDepartments: Department[] = [];
-        for (const deptData of departmentsData) {
-            const department = await departmentRepository.findOne({
-                where: { name: deptData.name, tenantId: deptData.tenantId },
-            });
-            if (department) createdDepartments.push(department);
-        }
-        console.log(`✅ Created/updated ${createdDepartments.length} departments`);
+        // Create users if they don't exist
+        const existingUsersCount = await userRepository.count();
+        if (existingUsersCount >= 13) {
+            console.log('ℹ️ Users already exist, skipping user seeding');
+        } else {
+            const hashedPassword = await bcrypt.hash('User@1234', 10);
 
-        // Create users
-        const hashedPassword = await bcrypt.hash('User@1234', 10);
+            const globalAdminRole = createdRoles.find((r) => r.name === RoleName.GlobalAdmin);
+            const tenantAdminRole = createdRoles.find((r) => r.name === RoleName.TenantAdmin);
+            const userRole = createdRoles.find((r) => r.name === RoleName.User);
 
-        const globalAdminRole = createdRoles.find((r) => r.name === RoleName.GlobalAdmin);
-        const tenantAdminRole = createdRoles.find((r) => r.name === RoleName.TenantAdmin);
-        const userRole = createdRoles.find((r) => r.name === RoleName.User);
+            const usersData: UserData[] = [];
 
-        const usersData: UserData[] = [];
+            // Create global admin (belongs to internal tenant)
+            const internalTenant = tenants.find((t) => t.isInternal);
+            const internalAdminDept = createdDepartments.find(
+                (d) => d.tenantId === internalTenant?.id && d.name === 'Administrativo',
+            );
 
-        // Create global admin (belongs to internal tenant)
-        const internalTenant = tenants.find((t) => t.isInternal);
-        const internalAdminDept = createdDepartments.find(
-            (d) => d.tenantId === internalTenant?.id && d.name === 'Administrativo',
-        );
-
-        if (internalTenant && internalAdminDept) {
-            if (process.env.APP_ENV === 'production') {
-                usersData.push({
-                    firstName: 'Isaac',
-                    lastName: 'Silva',
-                    email: 'isaac@codeva.com.br',
-                    password: hashedPassword,
-                    isActive: true,
-                    departmentId: internalAdminDept.id,
-                    roleId: globalAdminRole!.id,
-                    tenantId: internalTenant.id,
-                });
-            } else {
-                usersData.push({
-                    firstName: 'Admin',
-                    lastName: 'Global',
-                    email: 'admin@tasky.com.br',
-                    password: hashedPassword,
-                    isActive: true,
-                    departmentId: internalAdminDept.id,
-                    roleId: globalAdminRole!.id,
-                    tenantId: internalTenant.id,
-                });
-            }
-        }
-
-        if (process.env.APP_ENV !== 'production') {
-            for (const tenant of tenants) {
-                const tenantDepartments = createdDepartments.filter(
-                    (d) => d.tenantId === tenant.id,
-                );
-                const adminDept = tenantDepartments.find((d) => d.name === 'Administrativo');
-                const devDept = tenantDepartments.find((d) => d.name === 'Desenvolvimento');
-                const supportDept = tenantDepartments.find((d) => d.name === 'Suporte');
-
-                if (adminDept && devDept && supportDept) {
-                    // Tenant Admin
+            if (internalTenant && internalAdminDept) {
+                if (process.env.APP_ENV === 'production') {
                     usersData.push({
-                        firstName: 'Admin',
-                        lastName: tenant.name.split(' ')[0],
-                        email: `admin@${tenant.customKey.toLowerCase()}.com.br`,
+                        firstName: 'Isaac',
+                        lastName: 'Silva',
+                        email: 'isaac@codeva.com.br',
                         password: hashedPassword,
                         isActive: true,
-                        departmentId: adminDept.id,
-                        roleId: tenantAdminRole!.id,
-                        tenantId: tenant.id,
+                        departmentId: internalAdminDept.id,
+                        roleId: globalAdminRole!.id,
+                        tenantId: internalTenant.id,
                     });
+                } else {
+                    usersData.push({
+                        firstName: 'Admin',
+                        lastName: 'Global',
+                        email: 'admin@tasky.com.br',
+                        password: hashedPassword,
+                        isActive: true,
+                        departmentId: internalAdminDept.id,
+                        roleId: globalAdminRole!.id,
+                        tenantId: internalTenant.id,
+                    });
+                }
+            }
 
-                    // Regular users
-                    usersData.push(
-                        {
-                            firstName: 'João',
-                            lastName: 'Silva',
-                            email: `joao@${tenant.customKey.toLowerCase()}.com.br`,
-                            password: hashedPassword,
-                            isActive: true,
-                            departmentId: devDept.id,
-                            roleId: userRole!.id,
-                            tenantId: tenant.id,
-                        },
-                        {
-                            firstName: 'Maria',
-                            lastName: 'Santos',
-                            email: `maria@${tenant.customKey.toLowerCase()}.com.br`,
-                            password: hashedPassword,
-                            isActive: true,
-                            departmentId: supportDept.id,
-                            roleId: userRole!.id,
-                            tenantId: tenant.id,
-                        },
-                        {
-                            firstName: 'Pedro',
-                            lastName: 'Costa',
-                            email: `pedro@${tenant.customKey.toLowerCase()}.com.br`,
+            if (process.env.APP_ENV !== 'production') {
+                for (const tenant of tenants) {
+                    const tenantDepartments = createdDepartments.filter(
+                        (d) => d.tenantId === tenant.id,
+                    );
+                    const adminDept = tenantDepartments.find((d) => d.name === 'Administrativo');
+                    const devDept = tenantDepartments.find((d) => d.name === 'Desenvolvimento');
+                    const supportDept = tenantDepartments.find((d) => d.name === 'Suporte');
+
+                    if (adminDept && devDept && supportDept) {
+                        // Tenant Admin
+                        usersData.push({
+                            firstName: 'Admin',
+                            lastName: tenant.name.split(' ')[0],
+                            email: `admin@${tenant.customKey.toLowerCase()}.com.br`,
                             password: hashedPassword,
                             isActive: true,
                             departmentId: adminDept.id,
-                            roleId: userRole!.id,
+                            roleId: tenantAdminRole!.id,
                             tenantId: tenant.id,
-                        },
-                    );
+                        });
+
+                        // Regular users
+                        usersData.push(
+                            {
+                                firstName: 'João',
+                                lastName: 'Silva',
+                                email: `joao@${tenant.customKey.toLowerCase()}.com.br`,
+                                password: hashedPassword,
+                                isActive: true,
+                                departmentId: devDept.id,
+                                roleId: userRole!.id,
+                                tenantId: tenant.id,
+                            },
+                            {
+                                firstName: 'Maria',
+                                lastName: 'Santos',
+                                email: `maria@${tenant.customKey.toLowerCase()}.com.br`,
+                                password: hashedPassword,
+                                isActive: true,
+                                departmentId: supportDept.id,
+                                roleId: userRole!.id,
+                                tenantId: tenant.id,
+                            },
+                            {
+                                firstName: 'Pedro',
+                                lastName: 'Costa',
+                                email: `pedro@${tenant.customKey.toLowerCase()}.com.br`,
+                                password: hashedPassword,
+                                isActive: true,
+                                departmentId: adminDept.id,
+                                roleId: userRole!.id,
+                                tenantId: tenant.id,
+                            },
+                        );
+                    }
                 }
             }
+
+            await userRepository.upsert(usersData, {
+                conflictPaths: ['email'],
+                skipUpdateIfNoValuesChanged: true,
+            });
+            console.log(`✅ Created/updated ${usersData.length} users`);
         }
-
-        await userRepository.upsert(usersData, {
-            conflictPaths: ['email'],
-            skipUpdateIfNoValuesChanged: true,
-        });
-
-        const createdUsers: User[] = [];
-        for (const userData of usersData) {
-            const user = await userRepository.findOne({ where: { email: userData.email } });
-            if (user) createdUsers.push(user);
-        }
-
-        console.log(`✅ Created/updated ${createdUsers.length} users`);
     }
 }

@@ -44,6 +44,7 @@ export class TenantSeeder extends Seeder {
             console.log('⚠️ Avançado plan not found, skipping trial subscriptions');
         }
 
+        const fixedDate = new Date('2024-01-01T00:00:00Z');
         const tenantsData: TenantData[] = [
             {
                 name: 'Codeva LTDA',
@@ -54,10 +55,10 @@ export class TenantSeeder extends Seeder {
                 isInternal: true,
                 mainActivity: 'Desenvolvimento de Software',
                 termsAccepted: true,
-                termsAcceptedAt: new Date(),
+                termsAcceptedAt: fixedDate,
                 termsVersion: '1.0.0',
                 privacyPolicyAccepted: true,
-                privacyPolicyAcceptedAt: new Date(),
+                privacyPolicyAcceptedAt: fixedDate,
                 privacyPolicyVersion: '1.0.0',
             },
         ];
@@ -85,10 +86,10 @@ export class TenantSeeder extends Seeder {
                     companySize: 'Média',
                     mainActivity: 'Consultoria',
                     termsAccepted: true,
-                    termsAcceptedAt: new Date(),
+                    termsAcceptedAt: fixedDate,
                     termsVersion: '1.0.0',
                     privacyPolicyAccepted: true,
-                    privacyPolicyAcceptedAt: new Date(),
+                    privacyPolicyAcceptedAt: fixedDate,
                     privacyPolicyVersion: '1.0.0',
                 },
                 {
@@ -107,21 +108,26 @@ export class TenantSeeder extends Seeder {
                     companySize: 'Pequena',
                     mainActivity: 'Tecnologia',
                     termsAccepted: true,
-                    termsAcceptedAt: new Date(),
+                    termsAcceptedAt: fixedDate,
                     termsVersion: '1.0.0',
                     privacyPolicyAccepted: true,
-                    privacyPolicyAcceptedAt: new Date(),
+                    privacyPolicyAcceptedAt: fixedDate,
                     privacyPolicyVersion: '1.0.0',
                 },
             );
 
-            await tenantRepository.upsert(tenantsData, {
-                conflictPaths: ['customKey'],
-                skipUpdateIfNoValuesChanged: true,
-            });
+            // Check if seeding is needed
+            const existingTenantsCount = await tenantRepository.count();
+            if (existingTenantsCount >= tenantsData.length) {
+                console.log('ℹ️ Tenants already exist, skipping tenant seeding');
+            } else {
+                await tenantRepository.upsert(tenantsData, {
+                    conflictPaths: ['customKey'],
+                    skipUpdateIfNoValuesChanged: true,
+                });
+                console.log(`✅ Created/updated ${tenantsData.length} tenants`);
+            }
         }
-
-        console.log(`✅ Created/updated ${tenantsData.length} tenants`);
 
         if (avancadoPlan) {
             console.log('💳 Creating trial subscriptions...');
