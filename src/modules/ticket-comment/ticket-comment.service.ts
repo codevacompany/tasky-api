@@ -188,27 +188,14 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             }
         }
 
-        await Promise.all(notifications);
-
-        //Uncomment when we are ready to use SSE
-        // if (ticketCommentDto.userId !== commentWithTicket.ticket.requesterId) {
-        //     this.notificationService.sendNotification(commentWithTicket.ticket.requesterId, {
-        //         type: NotificationType.Comment,
-        //         message: `Novo comentário de ${commentUser.firstName} ${commentUser.lastName}`,
-        //         resourceId: commentWithTicket.ticketId,
-        //     });
-        // }
-
-        // if (
-        //     commentWithTicket.ticket.targetUserId &&
-        //     ticketCommentDto.userId !== commentWithTicket.ticket.targetUserId
-        // ) {
-        //     this.notificationService.sendNotification(commentWithTicket.ticket.targetUserId, {
-        //         type: NotificationType.Comment,
-        //         message: `${commentUser.firstName} ${commentUser.lastName} comentou no ticket #${commentWithTicket.ticketId}`,
-        //         resourceId: commentWithTicket.ticketId,
-        //     });
-        // }
+        const savedNotifications = await Promise.all(notifications);
+        await Promise.all(
+            savedNotifications.map((notification) => {
+                if (notification) {
+                    return this.notificationService.emitFromEntity(notification);
+                }
+            }),
+        );
 
         return commentWithTicket;
     }

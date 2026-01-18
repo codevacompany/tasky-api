@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
+import { v4 as uuidv4 } from 'uuid';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
@@ -12,19 +13,87 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
         super(notificationRepository);
     }
 
-    private notificationStreams = new Map<number, Subject<MessageEvent>>();
+    private notificationStreams = new Map<number, Subject<any>>();
+    private streamTickets = new Map<string, { userId: number; expiresAt: number }>();
 
-    getNotificationStream(userId: number): Observable<MessageEvent> {
+    createStreamTicket(userId: number): string {
+        const ticket = uuidv4();
+
+        const expiresAt = Date.now() + 60 * 1000;
+        this.streamTickets.set(ticket, { userId, expiresAt });
+
+        // Cleanup expired tickets occasionally or for this specific user
+        setTimeout(() => this.streamTickets.delete(ticket), 60 * 1000);
+
+        return ticket;
+    }
+
+    validateStreamTicket(streamTicket: string): number | null {
+        const ticketData = this.streamTickets.get(streamTicket);
+
+        if (!ticketData) return null;
+
+        if (Date.now() > ticketData.expiresAt) {
+            this.streamTickets.delete(streamTicket);
+            return null;
+        }
+
+        // Ticket used, delete it (One-Time Token)
+        this.streamTickets.delete(streamTicket);
+        return ticketData.userId;
+    }
+
+    getNotificationStream(userId: number): Observable<any> {
         if (!this.notificationStreams.has(userId)) {
-            this.notificationStreams.set(userId, new Subject<MessageEvent>());
+            this.notificationStreams.set(userId, new Subject<any>());
         }
         return this.notificationStreams.get(userId).asObservable();
     }
 
-    sendNotification(userId: number, notification: any) {
+    async pushNotification(
+        accessProfile: AccessProfile,
+        notificationData: Partial<Notification>,
+    ): Promise<Notification> {
+        const notification = await this.save(accessProfile, notificationData);
+        await this.emitFromEntity(notification);
+        return notification;
+    }
+
+    async countUnread(tenantId: number, targetUserId: number): Promise<number> {
+        return await this.notificationRepository.count({
+            where: {
+                tenantId,
+                targetUserId,
+                read: false,
+            },
+        });
+    }
+
+    async emitFromEntity(notification: Notification) {
+        const stream = this.notificationStreams.get(notification.targetUserId);
+        if (stream) {
+            const unreadCount = await this.countUnread(
+                notification.tenantId,
+                notification.targetUserId,
+            );
+            stream.next({
+                data: {
+                    ...notification,
+                    unreadCount,
+                },
+            });
+        }
+    }
+
+    async emitUnreadCount(tenantId: number, userId: number) {
         const stream = this.notificationStreams.get(userId);
         if (stream) {
-            stream.next({ data: notification } as MessageEvent);
+            const unreadCount = await this.countUnread(tenantId, userId);
+            stream.next({
+                data: {
+                    unreadCount,
+                },
+            });
         }
     }
 
@@ -58,6 +127,8 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
         notification.read = true;
         await this.notificationRepository.save(notification);
 
+        await this.emitUnreadCount(accessProfile.tenantId, accessProfile.userId);
+
         return { message: 'Notification marked as read' };
     }
 
@@ -66,6 +137,8 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
             { tenantId: accessProfile.tenantId, targetUserId: accessProfile.userId },
             { read: true },
         );
+
+        await this.emitUnreadCount(accessProfile.tenantId, accessProfile.userId);
 
         return { message: 'All notifications marked as read' };
     }
