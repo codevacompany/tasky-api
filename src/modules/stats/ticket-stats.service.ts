@@ -2087,6 +2087,7 @@ export class TicketStatsService {
             where: {
                 tenantId: accessProfile.tenantId,
                 currentTargetUserId: Not(IsNull()),
+                isCanceled: false,
                 ...dateFilter,
             },
         });
@@ -2230,6 +2231,7 @@ export class TicketStatsService {
                 totalTickets: 0,
                 resolvedTickets: 0,
                 resolutionRate: 0,
+                efficiencyScore: 0,
                 averageAcceptanceTimeSeconds: 0,
                 averageResolutionTimeSeconds: 0,
                 sentToVerificationOverdueRate: 0,
@@ -2314,9 +2316,9 @@ export class TicketStatsService {
                         : a.sentToVerificationOverdueRate - b.sentToVerificationOverdueRate;
                 } else {
                     // Sort by efficiency - users without scores (0) go to the bottom
-                    return sort === 'bottom'
-                        ? a.efficiencyScore - b.efficiencyScore
-                        : b.efficiencyScore - a.efficiencyScore;
+                    const scoreA = a.efficiencyScore || 0;
+                    const scoreB = b.efficiencyScore || 0;
+                    return sort === 'bottom' ? scoreA - scoreB : scoreB - scoreA;
                 }
             });
 
@@ -2511,10 +2513,17 @@ export class TicketStatsService {
         const completionIndex = this.calculateWilsonScore(onTimeCompleted, totalCompleted);
         const verificationIndex =
             totalVerified > 0 ? Math.max(0, onTimeVerified / totalVerified) : 1;
-        const rejectionIndex =
-            totalEntries > 0 ? Math.max(0, 1 - rejectedCount / totalCompleted) : 1;
-        const returnIndex =
-            totalEntries > 0 ? Math.max(0, 1 - returnedTickets / totalCompleted) : 1;
+        let rejectionIndex = 1;
+        if (totalEntries > 0) {
+            rejectionIndex =
+                totalCompleted > 0 ? Math.max(0, 1 - rejectedCount / totalCompleted) : 0;
+        }
+
+        let returnIndex = 1;
+        if (totalEntries > 0) {
+            returnIndex =
+                totalCompleted > 0 ? Math.max(0, 1 - returnedTickets / totalCompleted) : 0;
+        }
 
         const score =
             completionIndex * 0.4 +
