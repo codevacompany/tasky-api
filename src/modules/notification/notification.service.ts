@@ -78,10 +78,26 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
             );
             stream.next({
                 data: {
-                    ...notification,
+                    type: 'notification',
+                    notification,
                     unreadCount,
                 },
             });
+        }
+    }
+
+    async broadcastTicketUpdate(userIds: number[], ticket: any) {
+        const uniqueUserIds = [...new Set(userIds)];
+        for (const userId of uniqueUserIds) {
+            const stream = this.notificationStreams.get(userId);
+            if (stream) {
+                stream.next({
+                    data: {
+                        type: 'ticket_update',
+                        ticket,
+                    },
+                });
+            }
         }
     }
 

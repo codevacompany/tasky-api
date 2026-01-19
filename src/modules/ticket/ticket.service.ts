@@ -1120,6 +1120,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             }
         });
 
+        await this.notifyTicketUpdate(accessProfile, createdTicket.id);
+
         return createdTicket;
     }
 
@@ -1193,6 +1195,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 this.notificationService.emitFromEntity(notification);
             }
         }
+
+        await this.notifyTicketUpdate(accessProfile, ticketResponse.id);
 
         return ticketResponse;
     }
@@ -1434,6 +1438,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
             const updatedTicket = await this.findById(accessProfile, customId);
 
+            await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
+
             return {
                 message: 'Successfully updated!',
                 ticketData: updatedTicket,
@@ -1554,6 +1560,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
         }
 
+        await this.notifyTicketUpdate(accessProfile, ticketResponse.id);
+
         return {
             message: 'Ticket accepted!',
             ticketId: customId,
@@ -1651,6 +1659,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 ticketResponse.customId,
             );
         }
+
+        await this.notifyTicketUpdate(accessProfile, ticketResponse.id);
 
         return {
             message: 'Ticket successfully approved!',
@@ -1771,6 +1781,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
         }
 
+        await this.notifyTicketUpdate(accessProfile, ticketResponse.id);
         const updatedTicket = await this.findById(accessProfile, customId);
 
         return updatedTicket;
@@ -1898,6 +1909,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             );
         }
 
+        await this.notifyTicketUpdate(accessProfile, ticketResponse.id);
         const updatedTicket = await this.findById(accessProfile, customId);
 
         return updatedTicket;
@@ -2032,6 +2044,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         );
 
         const updatedTicket = await this.findById(accessProfile, customId);
+        await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
 
         return updatedTicket;
     }
@@ -2259,7 +2272,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             }
         }
 
-        return this.findById(accessProfile, customId);
+        const updatedTicket = await this.findById(accessProfile, customId);
+        await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
+        return updatedTicket;
     }
 
     async updateAssignee(
@@ -2379,6 +2394,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
         await this.notificationService.emitFromEntity(notificationOut);
 
+        await this.notifyTicketUpdate(accessProfile, ticket.id);
         return ticket;
     }
 
@@ -2504,7 +2520,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
         await this.notificationService.emitFromEntity(notificationAssign);
 
-        return this.findById(accessProfile, customId);
+        const updatedTicket = await this.findById(accessProfile, customId);
+        await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
+        return updatedTicket;
     }
 
     async removeAssignee(
@@ -2770,7 +2788,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        return this.findById(accessProfile, customId);
+        const updatedTicket = await this.findById(accessProfile, customId);
+        await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
+        return updatedTicket;
     }
 
     async sendToNextDepartment(accessProfile: AccessProfile, customId: string) {
@@ -2941,7 +2961,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             }
         }
 
-        return this.findById(accessProfile, customId);
+        const updatedTicket = await this.findById(accessProfile, customId);
+        await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
+        return updatedTicket;
     }
 
     async updateReviewer(accessProfile: AccessProfile, customId: string, newReviewerId: number) {
@@ -3011,6 +3033,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
         await this.notificationService.emitFromEntity(notificationReviewer);
 
+        await this.notifyTicketUpdate(accessProfile, ticket.id);
         return ticket;
     }
 
@@ -3125,7 +3148,72 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
 
             // Return updated ticket
-            return this.findById(accessProfile, customId);
+            const updatedTicket = await this.findById(accessProfile, customId);
+            await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
+            return updatedTicket;
         });
+    }
+
+    async notifyTicketUpdate(accessProfile: AccessProfile, ticketId: number) {
+        try {
+            const ticket = await this.ticketRepository.findOne({
+                where: { id: ticketId, tenantId: accessProfile.tenantId },
+                relations: [
+                    'requester',
+                    'requester.department',
+                    'targetUsers',
+                    'targetUsers.user',
+                    'targetUsers.user.department',
+                    'currentTargetUser',
+                    'currentTargetUser.department',
+                    'reviewer',
+                    'reviewer.department',
+                    'ticketStatus',
+                    'category',
+                    'comments',
+                    'files',
+                    'updates',
+                    'checklistItems',
+                ],
+            });
+
+            if (!ticket) return;
+
+            const userIds = new Set<number>();
+
+            // Add involved users
+            if (ticket.requesterId) userIds.add(ticket.requesterId);
+            if (ticket.reviewerId) userIds.add(ticket.reviewerId);
+            if (ticket.currentTargetUserId) userIds.add(ticket.currentTargetUserId);
+
+            const departmentIds = new Set<number>();
+
+            // Target Users and their departments
+            if (ticket.targetUsers) {
+                ticket.targetUsers.forEach((tu) => {
+                    userIds.add(tu.userId);
+                    if (tu.user?.departmentId) {
+                        departmentIds.add(tu.user.departmentId);
+                    }
+                });
+            }
+
+            // Get users from involved departments
+            if (departmentIds.size > 0) {
+                const usersInDepts = await this.userRepository.find({
+                    where: {
+                        departmentId: In([...departmentIds]),
+                        tenantId: accessProfile.tenantId,
+                        isActive: true,
+                    },
+                    select: ['id'],
+                });
+                usersInDepts.forEach((u) => userIds.add(u.id));
+            }
+
+            await this.notificationService.broadcastTicketUpdate([...userIds], ticket);
+        } catch (error) {
+            console.error('Error broadcasting ticket update:', error);
+        }
     }
 }

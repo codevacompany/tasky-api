@@ -20,6 +20,7 @@ import { CreateTicketCommentDto } from './dtos/create-ticket-comment.dto';
 import { UpdateTicketCommentDto } from './dtos/update-ticket-comment.dto';
 import { TicketComment } from './entities/ticket-comment.entity';
 import { TicketCommentRepository } from './ticket-comment.repository';
+import { TicketService } from '../ticket/ticket.service';
 
 @Injectable()
 export class TicketCommentService extends TenantBoundBaseService<TicketComment> {
@@ -30,6 +31,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         private readonly notificationRepository: NotificationRepository,
         @InjectRepository(Ticket)
         private readonly ticketRepository: Repository<Ticket>,
+        private readonly ticketService: TicketService,
     ) {
         super(ticketCommentRepository);
     }
@@ -197,15 +199,16 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             }),
         );
 
+        await this.ticketService.notifyTicketUpdate(accessProfile, commentWithTicket.ticketId);
+
         return commentWithTicket;
     }
 
-    async update(
-        accessProfile: AccessProfile,
-        id: number,
-        ticketCommentDto: UpdateTicketCommentDto,
-    ) {
-        return super.update(accessProfile, id, ticketCommentDto);
+    async update(accessProfile: AccessProfile, id: number, dto: UpdateTicketCommentDto) {
+        const updated = await super.update(accessProfile, id, dto);
+        const comment = await this.findById(accessProfile, id);
+        await this.ticketService.notifyTicketUpdate(accessProfile, comment.ticketId);
+        return updated;
     }
 
     /**
