@@ -31,6 +31,7 @@ import { TicketActionType } from '../ticket-updates/entities/ticket-update.entit
 import { TicketUpdateRepository } from '../ticket-updates/ticket-update.repository';
 import { TicketTargetUserRepository } from '../ticket-target-user/ticket-target-user.repository';
 import { UserRepository } from '../user/user.repository';
+import { User } from '../user/entities/user.entity';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
@@ -1116,6 +1117,42 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                                 ticketLink,
                             }),
                             to: targetUser.email,
+                        });
+                    }
+                }
+            }
+
+            // Notify the reviewer if one was assigned and it's not the requester
+            if (reviewerId && reviewerId !== ticketDto.requesterId) {
+                await manager.save(
+                    this.notificationRepository.create({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.Open,
+                        message: `<p><span>user</span> atribuiu você como revisor de uma tarefa.</p>`,
+                        createdById: requester.id,
+                        updatedById: requester.id,
+                        targetUserId: reviewerId,
+                        resourceId: createdTicket.id,
+                        resourceCustomId: createdTicket.customId,
+                    }),
+                );
+
+                const reviewer = await manager.findOne(User, { where: { id: reviewerId } });
+                if (reviewer) {
+                    const message = `Você foi designado como revisor da tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
+
+                    const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(
+                        accessProfile.tenantId,
+                    );
+                    if (emailNotificationsEnabled) {
+                        const ticketLink = `${process.env.FRONTEND_URL}/minhas-tarefas?ticket=${createdTicket.customId}`;
+                        this.emailService.sendMail({
+                            subject: `Você foi designado como revisor de uma tarefa.`,
+                            html: this.emailService.compileTemplate('ticket-update', {
+                                message,
+                                ticketLink,
+                            }),
+                            to: reviewer.email,
                         });
                     }
                 }
