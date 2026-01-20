@@ -945,7 +945,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         let reviewerId: number | null = null;
 
-        if (isRequesterInTargetUsers) {
+        // If admin/supervisor provided a reviewerId, use it
+        if (ticketDto.reviewerId) {
+            reviewerId = ticketDto.reviewerId;
+        } else if (isRequesterInTargetUsers) {
             const supervisorRole = await this.roleService.findByName(RoleName.Supervisor);
 
             if (supervisorRole && requester.roleId !== supervisorRole.id) {

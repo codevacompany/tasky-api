@@ -69,6 +69,10 @@ export class CreateTicketDto {
     @IsBoolean()
     isPrivate?: boolean;
 
+    @IsOptional()
+    @IsInt()
+    reviewerId?: number;
+
     @IsArray()
     @IsOptional()
     @ValidateNested({ each: true })

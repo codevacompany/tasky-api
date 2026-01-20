@@ -17,16 +17,15 @@ async function bootstrap() {
 
     app.use(morgan('dev'));
 
-    // Transparent Proxy for migration (Vercel -> VPS)
+    // Proxy de Migração: Captura tudo o que chegar se a variável estiver setada
     if (process.env.API_PROXY_TARGET) {
+        console.log(
+            `[Proxy] Ativo: Redirecionando requisições para ${process.env.API_PROXY_TARGET}`,
+        );
         app.use(
-            '/api',
             createProxyMiddleware({
                 target: process.env.API_PROXY_TARGET,
                 changeOrigin: true,
-                pathRewrite: {
-                    '^/api': '', // Removes /api prefix if the target expects clean routes
-                },
             }),
         );
     }
