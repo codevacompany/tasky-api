@@ -503,43 +503,25 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         return (
             this.repository
                 .createQueryBuilder('ticket')
-                // Requester - only basic info needed
-                .leftJoin('ticket.requester', 'requester')
-                .addSelect([
-                    'requester.id',
-                    'requester.firstName',
-                    'requester.lastName',
-                    'requester.isActive',
-                ])
-                .leftJoin('requester.department', 'requesterDepartment')
-                .addSelect(['requesterDepartment.id', 'requesterDepartment.name'])
+                .leftJoinAndSelect('ticket.requester', 'requester')
+                .leftJoinAndSelect('requester.department', 'requesterDepartment')
                 // Target users - needed for displaying assignees
                 .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
-                .leftJoin('targetUsers.user', 'targetUser')
-                .addSelect([
-                    'targetUser.id',
-                    'targetUser.firstName',
-                    'targetUser.lastName',
-                    'targetUser.isActive',
-                    'targetUser.departmentId',
-                ])
-                .leftJoin('targetUser.department', 'targetUserDepartment')
-                .addSelect(['targetUserDepartment.id', 'targetUserDepartment.name'])
-                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
-                .addSelect([
-                    'currentTargetUser.id',
-                    'currentTargetUser.firstName',
-                    'currentTargetUser.lastName',
-                    'currentTargetUser.email',
-                ])
-                // Reviewer - only id needed for verification flow checks
+                .leftJoinAndSelect('targetUsers.user', 'targetUser')
+                .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
+                .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
+                .leftJoinAndSelect('currentTargetUser.department', 'currentTargetUserDepartment')
+                // Reviewer - only basic info needed
                 .leftJoin('ticket.reviewer', 'reviewer')
-                .addSelect(['reviewer.id'])
+                .addSelect(['reviewer.id', 'reviewer.firstName', 'reviewer.lastName'])
+                .leftJoin('reviewer.department', 'reviewerDepartment')
+                .addSelect(['reviewerDepartment.id', 'reviewerDepartment.name'])
                 // Status - essential for status display
                 .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
                 // Category - for category display
                 .leftJoin('ticket.category', 'category')
                 .addSelect(['category.id', 'category.name'])
+                .addOrderBy('targetUsers.order', 'ASC')
                 // Checklist items - only basic fields for progress calculation
                 .leftJoin('ticket.checklistItems', 'checklistItems')
                 .addSelect(['checklistItems.id', 'checklistItems.isCompleted'])
