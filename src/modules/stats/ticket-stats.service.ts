@@ -1535,24 +1535,36 @@ export class TicketStatsService {
             userMetrics.totalVerified > 0
                 ? Math.max(0, userMetrics.onTimeVerified / userMetrics.totalVerified)
                 : 1;
-        const rejectionIndex =
-            userMetrics.totalEntries > 0
-                ? Math.max(0, 1 - userMetrics.rejectedCount / userMetrics.totalEntries)
-                : 1;
-        const returnIndex =
-            userMetrics.totalEntries > 0
-                ? Math.max(0, 1 - userMetrics.returnedCount / userMetrics.totalEntries)
-                : 1;
+        let rejectionIndex = 1;
+        if (userMetrics.totalEntries > 0) {
+            rejectionIndex =
+                userMetrics.totalCompleted > 0
+                    ? Math.max(0, 1 - userMetrics.rejectedCount / userMetrics.totalCompleted)
+                    : 0;
+        }
 
-        const efficiencyScore = this.calculateComprehensiveScore(
-            userMetrics.onTimeCompleted,
-            userMetrics.totalCompleted,
-            userMetrics.onTimeVerified,
-            userMetrics.totalVerified,
-            userMetrics.rejectedCount,
-            userMetrics.returnedCount,
-            userMetrics.totalEntries,
-        );
+        let returnIndex = 1;
+        if (userMetrics.totalEntries > 0) {
+            returnIndex =
+                userMetrics.totalCompleted > 0
+                    ? Math.max(0, 1 - userMetrics.returnedCount / userMetrics.totalCompleted)
+                    : 0;
+        }
+
+        let efficiencyScore: number | undefined = undefined;
+
+        // Only calculate efficiency score if user has at least 5 finished tickets
+        if (userMetrics.totalEntries >= 5) {
+            efficiencyScore = this.calculateComprehensiveScore(
+                userMetrics.onTimeCompleted,
+                userMetrics.totalCompleted,
+                userMetrics.onTimeVerified,
+                userMetrics.totalVerified,
+                userMetrics.rejectedCount,
+                userMetrics.returnedCount,
+                userMetrics.totalEntries,
+            );
+        }
 
         const sentToVerificationOverdueRate =
             userMetrics.totalCompleted > 0
@@ -1586,8 +1598,8 @@ export class TicketStatsService {
             },
         };
 
-        // Only add efficiency score if user has at least 5 tickets
-        if (totalTickets >= 5) {
+        // Only add efficiency score if calculated
+        if (efficiencyScore !== undefined) {
             response.efficiencyScore = parseFloat(efficiencyScore.toFixed(2));
         }
 
@@ -2231,7 +2243,6 @@ export class TicketStatsService {
                 totalTickets: 0,
                 resolvedTickets: 0,
                 resolutionRate: 0,
-                efficiencyScore: 0,
                 averageAcceptanceTimeSeconds: 0,
                 averageResolutionTimeSeconds: 0,
                 sentToVerificationOverdueRate: 0,
@@ -2272,8 +2283,8 @@ export class TicketStatsService {
                             ? parseFloat((m.totalCompleted / m.totalEntries).toFixed(2))
                             : 0;
 
-                    // Only calculate efficiency score if user has at least 5 tickets
-                    if (user.totalTickets >= 5) {
+                    // Only calculate efficiency score if user has at least 5 finished tickets
+                    if (m.totalEntries >= 5) {
                         user.efficiencyScore = this.calculateComprehensiveScore(
                             m.onTimeCompleted,
                             m.totalCompleted,
@@ -2301,8 +2312,10 @@ export class TicketStatsService {
                 if (sortBy === 'resolution_time') return user.averageResolutionTimeSeconds > 0;
                 if (sortBy === 'overdue_rate')
                     return (userDetailedMetrics.get(user.userId)?.totalCompleted || 0) > 0;
-                // When excludeUnscored is true and sorting by efficiency, only show users with at least 5 tickets
-                if (excludeUnscored && sortBy === 'efficiency') return user.totalTickets >= 5;
+                // When excludeUnscored is true and sorting by efficiency, only show users with a score
+                if (excludeUnscored && sortBy === 'efficiency') {
+                    return user.efficiencyScore !== undefined && user.efficiencyScore !== null;
+                }
                 return true;
             })
             .sort((a, b) => {
