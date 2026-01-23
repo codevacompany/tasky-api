@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, FindOptionsOrder, FindOptionsWhere, In } from 'typeorm';
+import { DataSource, FindOptionsOrder, FindOptionsWhere, In, Not } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import {
@@ -1944,6 +1944,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             where: {
                 ticketId,
                 toStatus: status,
+                action: Not(TicketActionType.Update),
             },
             order: {
                 createdAt: 'DESC',

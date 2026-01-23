@@ -23,7 +23,7 @@ import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { BusinessHoursService } from '../../shared/services/business-hours.service';
 import { DepartmentService } from '../department/department.service';
 import { User } from '../user/entities/user.entity';
-import { TicketUpdate } from '../ticket-updates/entities/ticket-update.entity';
+import { TicketUpdate, TicketActionType } from '../ticket-updates/entities/ticket-update.entity';
 import { Ticket, TicketPriority, TicketStatus } from '../ticket/entities/ticket.entity';
 import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
 import {
@@ -291,6 +291,7 @@ export class TicketStatsService {
                               ticketId: In(resolutionTicketIdsArray),
                               toStatus: TicketStatus.InProgress,
                               tenantId: accessProfile.tenantId,
+                              action: Not(TicketActionType.Update),
                           },
                           order: { createdAt: 'DESC' },
                       })
@@ -306,7 +307,7 @@ export class TicketStatsService {
                 const entries = resEntriesByTicket.get(update.ticketId) || [];
                 const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
-                if (previousStatusUpdate && !resolutionTicketIds.has(update.ticketId)) {
+                if (previousStatusUpdate) {
                     const businessHours = this.businessHoursService.calculateBusinessHours(
                         previousStatusUpdate.createdAt,
                         update.createdAt,
@@ -367,6 +368,7 @@ export class TicketStatsService {
                               ticketId: In(acceptanceTicketIdsArray),
                               toStatus: TicketStatus.Pending,
                               tenantId: accessProfile.tenantId,
+                              action: Not(TicketActionType.Update),
                           },
                           order: { createdAt: 'DESC' },
                       })
@@ -684,6 +686,7 @@ export class TicketStatsService {
                     ticketId: In(updateTicketIds),
                     toStatus: TicketStatus.InProgress,
                     tenantId: accessProfile.tenantId,
+                    action: Not(TicketActionType.Update),
                 },
                 order: { createdAt: 'DESC' },
             });
@@ -701,7 +704,7 @@ export class TicketStatsService {
                 const entries = entriesByTicket.get(update.ticketId) || [];
                 const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
-                if (previousStatusUpdate && !processedTickets.has(update.ticketId)) {
+                if (previousStatusUpdate) {
                     // Calculate business hours between entering InProgress and leaving it
                     const businessHours = this.businessHoursService.calculateBusinessHours(
                         previousStatusUpdate.createdAt,
@@ -2381,6 +2384,7 @@ export class TicketStatsService {
                           ticketId: In(acceptanceTicketIds),
                           toStatus: TicketStatus.Pending,
                           tenantId: accessProfile.tenantId,
+                          action: Not(TicketActionType.Update),
                       },
                       order: { createdAt: 'DESC' },
                   })
@@ -2424,6 +2428,7 @@ export class TicketStatsService {
                           ticketId: In(resolutionTicketIds),
                           toStatus: TicketStatus.InProgress,
                           tenantId: accessProfile.tenantId,
+                          action: Not(TicketActionType.Update),
                       },
                       order: { createdAt: 'DESC' },
                   })
@@ -2443,7 +2448,6 @@ export class TicketStatsService {
             if (!userId || !userStatsMap.has(userId)) continue;
 
             const ticketKey = `${userId}-${update.ticketId}`;
-            if (processedTickets.has(ticketKey)) continue;
 
             const entries = resEntriesByTicket.get(update.ticketId) || [];
             const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
@@ -2457,8 +2461,11 @@ export class TicketStatsService {
                 if (!resMap.has(userId)) resMap.set(userId, { sum: 0, count: 0 });
                 const s = resMap.get(userId)!;
                 s.sum += businessHours * 3600; // Convert hours to seconds
-                s.count++;
-                processedTickets.add(ticketKey);
+
+                if (!processedTickets.has(ticketKey)) {
+                    s.count++;
+                    processedTickets.add(ticketKey);
+                }
             }
         }
 
