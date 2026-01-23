@@ -1345,35 +1345,48 @@ export class TicketStatsService {
         const resolutionUpdates = await resolutionQuery.getMany();
 
         // Calculate resolution time with weekend exclusion
+        const resolutionTicketIdsArray = Array.from(
+            new Set(resolutionUpdates.map((u) => u.ticketId)),
+        );
+        const resolutionEntryUpdates =
+            resolutionTicketIdsArray.length > 0
+                ? await this.ticketUpdateRepository.find({
+                      where: {
+                          ticketId: In(resolutionTicketIdsArray),
+                          toStatus: TicketStatus.InProgress,
+                          tenantId: accessProfile.tenantId,
+                          action: Not(TicketActionType.Update),
+                      },
+                      order: { createdAt: 'DESC' },
+                  })
+                : [];
+
+        const resEntriesByTicket = new Map<number, TicketUpdate[]>();
+        resolutionEntryUpdates.forEach((u) => {
+            if (!resEntriesByTicket.has(u.ticketId)) resEntriesByTicket.set(u.ticketId, []);
+            resEntriesByTicket.get(u.ticketId).push(u);
+        });
+
         let totalResolutionBusinessHours = 0;
-        const resolutionTicketIds = new Set<number>();
+        const processedResolutionTicks = new Set<number>();
 
         for (const update of resolutionUpdates) {
-            // Find when the ticket entered the InProgress status
-            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                where: {
-                    ticketId: update.ticketId,
-                    toStatus: TicketStatus.InProgress,
-                    createdAt: LessThan(update.createdAt),
-                },
-                order: {
-                    createdAt: 'DESC',
-                },
-            });
+            const entries = resEntriesByTicket.get(update.ticketId) || [];
+            const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
-            if (previousStatusUpdate && !resolutionTicketIds.has(update.ticketId)) {
+            if (previousStatusUpdate) {
                 const businessHours = this.businessHoursService.calculateBusinessHours(
                     previousStatusUpdate.createdAt,
                     update.createdAt,
                 );
                 totalResolutionBusinessHours += businessHours;
-                resolutionTicketIds.add(update.ticketId);
+                processedResolutionTicks.add(update.ticketId);
             }
         }
 
         const avgResolutionTimeSeconds =
-            resolutionTicketIds.size > 0
-                ? (totalResolutionBusinessHours * 3600) / resolutionTicketIds.size
+            processedResolutionTicks.size > 0
+                ? (totalResolutionBusinessHours * 3600) / processedResolutionTicks.size
                 : 0;
 
         // Calculate average acceptance time from ticket updates with weekend exclusion
@@ -1397,21 +1410,34 @@ export class TicketStatsService {
         const acceptanceUpdates = await acceptanceQuery.getMany();
 
         // Calculate acceptance time with weekend exclusion
+        const acceptanceTicketIdsArray = Array.from(
+            new Set(acceptanceUpdates.map((u) => u.ticketId)),
+        );
+        const acceptanceEntryUpdates =
+            acceptanceTicketIdsArray.length > 0
+                ? await this.ticketUpdateRepository.find({
+                      where: {
+                          ticketId: In(acceptanceTicketIdsArray),
+                          toStatus: TicketStatus.Pending,
+                          tenantId: accessProfile.tenantId,
+                          action: Not(TicketActionType.Update),
+                      },
+                      order: { createdAt: 'DESC' },
+                  })
+                : [];
+
+        const accEntriesByTicket = new Map<number, TicketUpdate[]>();
+        acceptanceEntryUpdates.forEach((u) => {
+            if (!accEntriesByTicket.has(u.ticketId)) accEntriesByTicket.set(u.ticketId, []);
+            accEntriesByTicket.get(u.ticketId).push(u);
+        });
+
         let totalAcceptanceBusinessHours = 0;
-        let acceptanceCount = 0;
+        const processedAcceptanceTicks = new Set<number>();
 
         for (const update of acceptanceUpdates) {
-            // Find when the ticket entered the Pending status (ticket creation)
-            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                where: {
-                    ticketId: update.ticketId,
-                    toStatus: TicketStatus.Pending,
-                    createdAt: LessThan(update.createdAt),
-                },
-                order: {
-                    createdAt: 'DESC',
-                },
-            });
+            const entries = accEntriesByTicket.get(update.ticketId) || [];
+            const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
             if (previousStatusUpdate) {
                 const businessHours = this.businessHoursService.calculateBusinessHours(
@@ -1419,12 +1445,14 @@ export class TicketStatsService {
                     update.createdAt,
                 );
                 totalAcceptanceBusinessHours += businessHours;
-                acceptanceCount++;
+                processedAcceptanceTicks.add(update.ticketId);
             }
         }
 
         const avgAcceptanceTimeSeconds =
-            acceptanceCount > 0 ? (totalAcceptanceBusinessHours * 3600) / acceptanceCount : 0;
+            processedAcceptanceTicks.size > 0
+                ? (totalAcceptanceBusinessHours * 3600) / processedAcceptanceTicks.size
+                : 0;
 
         // Process lifecycle for target user tickets
         const finishedTicketIds = this.getFinishedTicketIds(statsItemsWithWeekendExclusion);
