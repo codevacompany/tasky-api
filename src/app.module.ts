@@ -29,12 +29,14 @@ import { TicketUpdateModule } from './modules/ticket-updates/ticket-update.modul
 import { TicketModule } from './modules/ticket/ticket.module';
 import { UserModule } from './modules/user/user.module';
 import { VerificationCodeModule } from './modules/verification-code/verification-code.module';
+import { RedisModule } from './shared/redis/redis.module';
 
 @Module({
     imports: [
         ConfigModule.forRoot({
             isGlobal: true,
         }),
+        RedisModule,
         DatabaseModule,
         UserModule,
         AuthModule,
