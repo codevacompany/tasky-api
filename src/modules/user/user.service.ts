@@ -83,8 +83,21 @@ export class UserService extends TenantBoundBaseService<User> {
                 qb.andWhere('user.departmentId = :departmentId', {
                     departmentId: options.where.departmentId,
                 });
-                qb.andWhere('user.isActive = :isActive', { isActive: true });
             }
+
+            const isActiveParam = options.where.isActive as any;
+            if (isActiveParam !== 'all') {
+                const isActive =
+                    isActiveParam !== undefined
+                        ? typeof isActiveParam === 'string'
+                            ? isActiveParam === 'true'
+                            : !!isActiveParam
+                        : true;
+                qb.andWhere('user.isActive = :isActive', { isActive });
+            }
+        } else {
+            // Default to only active users if no where clause provided
+            qb.andWhere('user.isActive = :isActive', { isActive: true });
         }
 
         if (additionalFilter?.name) {

@@ -23,7 +23,7 @@ import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { BusinessHoursService } from '../../shared/services/business-hours.service';
 import { DepartmentService } from '../department/department.service';
 import { User } from '../user/entities/user.entity';
-import { TicketUpdate } from '../ticket-updates/entities/ticket-update.entity';
+import { TicketUpdate, TicketActionType } from '../ticket-updates/entities/ticket-update.entity';
 import { Ticket, TicketPriority, TicketStatus } from '../ticket/entities/ticket.entity';
 import { ResolutionTimeResponseDto } from './dtos/resolution-time.dto';
 import {
@@ -291,6 +291,7 @@ export class TicketStatsService {
                               ticketId: In(resolutionTicketIdsArray),
                               toStatus: TicketStatus.InProgress,
                               tenantId: accessProfile.tenantId,
+                              action: Not(TicketActionType.Update),
                           },
                           order: { createdAt: 'DESC' },
                       })
@@ -306,7 +307,7 @@ export class TicketStatsService {
                 const entries = resEntriesByTicket.get(update.ticketId) || [];
                 const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
-                if (previousStatusUpdate && !resolutionTicketIds.has(update.ticketId)) {
+                if (previousStatusUpdate) {
                     const businessHours = this.businessHoursService.calculateBusinessHours(
                         previousStatusUpdate.createdAt,
                         update.createdAt,
@@ -367,6 +368,7 @@ export class TicketStatsService {
                               ticketId: In(acceptanceTicketIdsArray),
                               toStatus: TicketStatus.Pending,
                               tenantId: accessProfile.tenantId,
+                              action: Not(TicketActionType.Update),
                           },
                           order: { createdAt: 'DESC' },
                       })
@@ -684,6 +686,7 @@ export class TicketStatsService {
                     ticketId: In(updateTicketIds),
                     toStatus: TicketStatus.InProgress,
                     tenantId: accessProfile.tenantId,
+                    action: Not(TicketActionType.Update),
                 },
                 order: { createdAt: 'DESC' },
             });
@@ -701,7 +704,7 @@ export class TicketStatsService {
                 const entries = entriesByTicket.get(update.ticketId) || [];
                 const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
-                if (previousStatusUpdate && !processedTickets.has(update.ticketId)) {
+                if (previousStatusUpdate) {
                     // Calculate business hours between entering InProgress and leaving it
                     const businessHours = this.businessHoursService.calculateBusinessHours(
                         previousStatusUpdate.createdAt,
@@ -1342,35 +1345,48 @@ export class TicketStatsService {
         const resolutionUpdates = await resolutionQuery.getMany();
 
         // Calculate resolution time with weekend exclusion
+        const resolutionTicketIdsArray = Array.from(
+            new Set(resolutionUpdates.map((u) => u.ticketId)),
+        );
+        const resolutionEntryUpdates =
+            resolutionTicketIdsArray.length > 0
+                ? await this.ticketUpdateRepository.find({
+                      where: {
+                          ticketId: In(resolutionTicketIdsArray),
+                          toStatus: TicketStatus.InProgress,
+                          tenantId: accessProfile.tenantId,
+                          action: Not(TicketActionType.Update),
+                      },
+                      order: { createdAt: 'DESC' },
+                  })
+                : [];
+
+        const resEntriesByTicket = new Map<number, TicketUpdate[]>();
+        resolutionEntryUpdates.forEach((u) => {
+            if (!resEntriesByTicket.has(u.ticketId)) resEntriesByTicket.set(u.ticketId, []);
+            resEntriesByTicket.get(u.ticketId).push(u);
+        });
+
         let totalResolutionBusinessHours = 0;
-        const resolutionTicketIds = new Set<number>();
+        const processedResolutionTicks = new Set<number>();
 
         for (const update of resolutionUpdates) {
-            // Find when the ticket entered the InProgress status
-            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                where: {
-                    ticketId: update.ticketId,
-                    toStatus: TicketStatus.InProgress,
-                    createdAt: LessThan(update.createdAt),
-                },
-                order: {
-                    createdAt: 'DESC',
-                },
-            });
+            const entries = resEntriesByTicket.get(update.ticketId) || [];
+            const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
-            if (previousStatusUpdate && !resolutionTicketIds.has(update.ticketId)) {
+            if (previousStatusUpdate) {
                 const businessHours = this.businessHoursService.calculateBusinessHours(
                     previousStatusUpdate.createdAt,
                     update.createdAt,
                 );
                 totalResolutionBusinessHours += businessHours;
-                resolutionTicketIds.add(update.ticketId);
+                processedResolutionTicks.add(update.ticketId);
             }
         }
 
         const avgResolutionTimeSeconds =
-            resolutionTicketIds.size > 0
-                ? (totalResolutionBusinessHours * 3600) / resolutionTicketIds.size
+            processedResolutionTicks.size > 0
+                ? (totalResolutionBusinessHours * 3600) / processedResolutionTicks.size
                 : 0;
 
         // Calculate average acceptance time from ticket updates with weekend exclusion
@@ -1394,21 +1410,34 @@ export class TicketStatsService {
         const acceptanceUpdates = await acceptanceQuery.getMany();
 
         // Calculate acceptance time with weekend exclusion
+        const acceptanceTicketIdsArray = Array.from(
+            new Set(acceptanceUpdates.map((u) => u.ticketId)),
+        );
+        const acceptanceEntryUpdates =
+            acceptanceTicketIdsArray.length > 0
+                ? await this.ticketUpdateRepository.find({
+                      where: {
+                          ticketId: In(acceptanceTicketIdsArray),
+                          toStatus: TicketStatus.Pending,
+                          tenantId: accessProfile.tenantId,
+                          action: Not(TicketActionType.Update),
+                      },
+                      order: { createdAt: 'DESC' },
+                  })
+                : [];
+
+        const accEntriesByTicket = new Map<number, TicketUpdate[]>();
+        acceptanceEntryUpdates.forEach((u) => {
+            if (!accEntriesByTicket.has(u.ticketId)) accEntriesByTicket.set(u.ticketId, []);
+            accEntriesByTicket.get(u.ticketId).push(u);
+        });
+
         let totalAcceptanceBusinessHours = 0;
-        let acceptanceCount = 0;
+        const processedAcceptanceTicks = new Set<number>();
 
         for (const update of acceptanceUpdates) {
-            // Find when the ticket entered the Pending status (ticket creation)
-            const previousStatusUpdate = await this.ticketUpdateRepository.findOne({
-                where: {
-                    ticketId: update.ticketId,
-                    toStatus: TicketStatus.Pending,
-                    createdAt: LessThan(update.createdAt),
-                },
-                order: {
-                    createdAt: 'DESC',
-                },
-            });
+            const entries = accEntriesByTicket.get(update.ticketId) || [];
+            const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
 
             if (previousStatusUpdate) {
                 const businessHours = this.businessHoursService.calculateBusinessHours(
@@ -1416,12 +1445,14 @@ export class TicketStatsService {
                     update.createdAt,
                 );
                 totalAcceptanceBusinessHours += businessHours;
-                acceptanceCount++;
+                processedAcceptanceTicks.add(update.ticketId);
             }
         }
 
         const avgAcceptanceTimeSeconds =
-            acceptanceCount > 0 ? (totalAcceptanceBusinessHours * 3600) / acceptanceCount : 0;
+            processedAcceptanceTicks.size > 0
+                ? (totalAcceptanceBusinessHours * 3600) / processedAcceptanceTicks.size
+                : 0;
 
         // Process lifecycle for target user tickets
         const finishedTicketIds = this.getFinishedTicketIds(statsItemsWithWeekendExclusion);
@@ -1535,24 +1566,36 @@ export class TicketStatsService {
             userMetrics.totalVerified > 0
                 ? Math.max(0, userMetrics.onTimeVerified / userMetrics.totalVerified)
                 : 1;
-        const rejectionIndex =
-            userMetrics.totalEntries > 0
-                ? Math.max(0, 1 - userMetrics.rejectedCount / userMetrics.totalEntries)
-                : 1;
-        const returnIndex =
-            userMetrics.totalEntries > 0
-                ? Math.max(0, 1 - userMetrics.returnedCount / userMetrics.totalEntries)
-                : 1;
+        let rejectionIndex = 1;
+        if (userMetrics.totalEntries > 0) {
+            rejectionIndex =
+                userMetrics.totalCompleted > 0
+                    ? Math.max(0, 1 - userMetrics.rejectedCount / userMetrics.totalCompleted)
+                    : 0;
+        }
 
-        const efficiencyScore = this.calculateComprehensiveScore(
-            userMetrics.onTimeCompleted,
-            userMetrics.totalCompleted,
-            userMetrics.onTimeVerified,
-            userMetrics.totalVerified,
-            userMetrics.rejectedCount,
-            userMetrics.returnedCount,
-            userMetrics.totalEntries,
-        );
+        let returnIndex = 1;
+        if (userMetrics.totalEntries > 0) {
+            returnIndex =
+                userMetrics.totalCompleted > 0
+                    ? Math.max(0, 1 - userMetrics.returnedCount / userMetrics.totalCompleted)
+                    : 0;
+        }
+
+        let efficiencyScore: number | undefined = undefined;
+
+        // Only calculate efficiency score if user has at least 5 finished tickets
+        if (userMetrics.totalEntries >= 5) {
+            efficiencyScore = this.calculateComprehensiveScore(
+                userMetrics.onTimeCompleted,
+                userMetrics.totalCompleted,
+                userMetrics.onTimeVerified,
+                userMetrics.totalVerified,
+                userMetrics.rejectedCount,
+                userMetrics.returnedCount,
+                userMetrics.totalEntries,
+            );
+        }
 
         const sentToVerificationOverdueRate =
             userMetrics.totalCompleted > 0
@@ -1586,8 +1629,8 @@ export class TicketStatsService {
             },
         };
 
-        // Only add efficiency score if user has at least 5 tickets
-        if (totalTickets >= 5) {
+        // Only add efficiency score if calculated
+        if (efficiencyScore !== undefined) {
             response.efficiencyScore = parseFloat(efficiencyScore.toFixed(2));
         }
 
@@ -2087,6 +2130,7 @@ export class TicketStatsService {
             where: {
                 tenantId: accessProfile.tenantId,
                 currentTargetUserId: Not(IsNull()),
+                isCanceled: false,
                 ...dateFilter,
             },
         });
@@ -2270,8 +2314,8 @@ export class TicketStatsService {
                             ? parseFloat((m.totalCompleted / m.totalEntries).toFixed(2))
                             : 0;
 
-                    // Only calculate efficiency score if user has at least 5 tickets
-                    if (user.totalTickets >= 5) {
+                    // Only calculate efficiency score if user has at least 5 finished tickets
+                    if (m.totalEntries >= 5) {
                         user.efficiencyScore = this.calculateComprehensiveScore(
                             m.onTimeCompleted,
                             m.totalCompleted,
@@ -2299,8 +2343,10 @@ export class TicketStatsService {
                 if (sortBy === 'resolution_time') return user.averageResolutionTimeSeconds > 0;
                 if (sortBy === 'overdue_rate')
                     return (userDetailedMetrics.get(user.userId)?.totalCompleted || 0) > 0;
-                // When excludeUnscored is true and sorting by efficiency, only show users with at least 5 tickets
-                if (excludeUnscored && sortBy === 'efficiency') return user.totalTickets >= 5;
+                // When excludeUnscored is true and sorting by efficiency, only show users with a score
+                if (excludeUnscored && sortBy === 'efficiency') {
+                    return user.efficiencyScore !== undefined && user.efficiencyScore !== null;
+                }
                 return true;
             })
             .sort((a, b) => {
@@ -2314,9 +2360,9 @@ export class TicketStatsService {
                         : a.sentToVerificationOverdueRate - b.sentToVerificationOverdueRate;
                 } else {
                     // Sort by efficiency - users without scores (0) go to the bottom
-                    return sort === 'bottom'
-                        ? a.efficiencyScore - b.efficiencyScore
-                        : b.efficiencyScore - a.efficiencyScore;
+                    const scoreA = a.efficiencyScore || 0;
+                    const scoreB = b.efficiencyScore || 0;
+                    return sort === 'bottom' ? scoreA - scoreB : scoreB - scoreA;
                 }
             });
 
@@ -2366,6 +2412,7 @@ export class TicketStatsService {
                           ticketId: In(acceptanceTicketIds),
                           toStatus: TicketStatus.Pending,
                           tenantId: accessProfile.tenantId,
+                          action: Not(TicketActionType.Update),
                       },
                       order: { createdAt: 'DESC' },
                   })
@@ -2409,6 +2456,7 @@ export class TicketStatsService {
                           ticketId: In(resolutionTicketIds),
                           toStatus: TicketStatus.InProgress,
                           tenantId: accessProfile.tenantId,
+                          action: Not(TicketActionType.Update),
                       },
                       order: { createdAt: 'DESC' },
                   })
@@ -2428,7 +2476,6 @@ export class TicketStatsService {
             if (!userId || !userStatsMap.has(userId)) continue;
 
             const ticketKey = `${userId}-${update.ticketId}`;
-            if (processedTickets.has(ticketKey)) continue;
 
             const entries = resEntriesByTicket.get(update.ticketId) || [];
             const previousStatusUpdate = entries.find((e) => e.createdAt < update.createdAt);
@@ -2442,8 +2489,11 @@ export class TicketStatsService {
                 if (!resMap.has(userId)) resMap.set(userId, { sum: 0, count: 0 });
                 const s = resMap.get(userId)!;
                 s.sum += businessHours * 3600; // Convert hours to seconds
-                s.count++;
-                processedTickets.add(ticketKey);
+
+                if (!processedTickets.has(ticketKey)) {
+                    s.count++;
+                    processedTickets.add(ticketKey);
+                }
             }
         }
 
@@ -2511,10 +2561,17 @@ export class TicketStatsService {
         const completionIndex = this.calculateWilsonScore(onTimeCompleted, totalCompleted);
         const verificationIndex =
             totalVerified > 0 ? Math.max(0, onTimeVerified / totalVerified) : 1;
-        const rejectionIndex =
-            totalEntries > 0 ? Math.max(0, 1 - rejectedCount / totalCompleted) : 1;
-        const returnIndex =
-            totalEntries > 0 ? Math.max(0, 1 - returnedTickets / totalCompleted) : 1;
+        let rejectionIndex = 1;
+        if (totalEntries > 0) {
+            rejectionIndex =
+                totalCompleted > 0 ? Math.max(0, 1 - rejectedCount / totalCompleted) : 0;
+        }
+
+        let returnIndex = 1;
+        if (totalEntries > 0) {
+            returnIndex =
+                totalCompleted > 0 ? Math.max(0, 1 - returnedTickets / totalCompleted) : 0;
+        }
 
         const score =
             completionIndex * 0.4 +

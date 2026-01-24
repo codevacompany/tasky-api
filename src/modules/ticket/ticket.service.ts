@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, FindOptionsOrder, FindOptionsWhere, In } from 'typeorm';
+import { DataSource, FindOptionsOrder, FindOptionsWhere, In, Not } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
 import {
@@ -31,6 +31,7 @@ import { TicketActionType } from '../ticket-updates/entities/ticket-update.entit
 import { TicketUpdateRepository } from '../ticket-updates/ticket-update.repository';
 import { TicketTargetUserRepository } from '../ticket-target-user/ticket-target-user.repository';
 import { UserRepository } from '../user/user.repository';
+import { User } from '../user/entities/user.entity';
 import { CreateTicketDto } from './dtos/create-ticket.dto';
 import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
@@ -502,43 +503,25 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         return (
             this.repository
                 .createQueryBuilder('ticket')
-                // Requester - only basic info needed
-                .leftJoin('ticket.requester', 'requester')
-                .addSelect([
-                    'requester.id',
-                    'requester.firstName',
-                    'requester.lastName',
-                    'requester.isActive',
-                ])
-                .leftJoin('requester.department', 'requesterDepartment')
-                .addSelect(['requesterDepartment.id', 'requesterDepartment.name'])
+                .leftJoinAndSelect('ticket.requester', 'requester')
+                .leftJoinAndSelect('requester.department', 'requesterDepartment')
                 // Target users - needed for displaying assignees
                 .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
-                .leftJoin('targetUsers.user', 'targetUser')
-                .addSelect([
-                    'targetUser.id',
-                    'targetUser.firstName',
-                    'targetUser.lastName',
-                    'targetUser.isActive',
-                    'targetUser.departmentId',
-                ])
-                .leftJoin('targetUser.department', 'targetUserDepartment')
-                .addSelect(['targetUserDepartment.id', 'targetUserDepartment.name'])
-                .leftJoin('ticket.currentTargetUser', 'currentTargetUser')
-                .addSelect([
-                    'currentTargetUser.id',
-                    'currentTargetUser.firstName',
-                    'currentTargetUser.lastName',
-                    'currentTargetUser.email',
-                ])
-                // Reviewer - only id needed for verification flow checks
+                .leftJoinAndSelect('targetUsers.user', 'targetUser')
+                .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
+                .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
+                .leftJoinAndSelect('currentTargetUser.department', 'currentTargetUserDepartment')
+                // Reviewer - only basic info needed
                 .leftJoin('ticket.reviewer', 'reviewer')
-                .addSelect(['reviewer.id'])
+                .addSelect(['reviewer.id', 'reviewer.firstName', 'reviewer.lastName'])
+                .leftJoin('reviewer.department', 'reviewerDepartment')
+                .addSelect(['reviewerDepartment.id', 'reviewerDepartment.name'])
                 // Status - essential for status display
                 .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
                 // Category - for category display
                 .leftJoin('ticket.category', 'category')
                 .addSelect(['category.id', 'category.name'])
+                .addOrderBy('targetUsers.order', 'ASC')
                 // Checklist items - only basic fields for progress calculation
                 .leftJoin('ticket.checklistItems', 'checklistItems')
                 .addSelect(['checklistItems.id', 'checklistItems.isCompleted'])
@@ -945,7 +928,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         let reviewerId: number | null = null;
 
-        if (isRequesterInTargetUsers) {
+        // If admin/supervisor provided a reviewerId, use it
+        if (ticketDto.reviewerId) {
+            reviewerId = ticketDto.reviewerId;
+        } else if (isRequesterInTargetUsers) {
             const supervisorRole = await this.roleService.findByName(RoleName.Supervisor);
 
             if (supervisorRole && requester.roleId !== supervisorRole.id) {
@@ -1114,6 +1100,42 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                                 ticketLink,
                             }),
                             to: targetUser.email,
+                        });
+                    }
+                }
+            }
+
+            // Notify the reviewer if one was assigned and it's not the requester
+            if (reviewerId && reviewerId !== ticketDto.requesterId) {
+                await manager.save(
+                    this.notificationRepository.create({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.Open,
+                        message: `<p><span>user</span> atribuiu você como revisor de uma tarefa.</p>`,
+                        createdById: requester.id,
+                        updatedById: requester.id,
+                        targetUserId: reviewerId,
+                        resourceId: createdTicket.id,
+                        resourceCustomId: createdTicket.customId,
+                    }),
+                );
+
+                const reviewer = await manager.findOne(User, { where: { id: reviewerId } });
+                if (reviewer) {
+                    const message = `Você foi designado como revisor da tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
+
+                    const emailNotificationsEnabled = await this.isEmailNotificationsEnabled(
+                        accessProfile.tenantId,
+                    );
+                    if (emailNotificationsEnabled) {
+                        const ticketLink = `${process.env.FRONTEND_URL}/minhas-tarefas?ticket=${createdTicket.customId}`;
+                        this.emailService.sendMail({
+                            subject: `Você foi designado como revisor de uma tarefa.`,
+                            html: this.emailService.compileTemplate('ticket-update', {
+                                message,
+                                ticketLink,
+                            }),
+                            to: reviewer.email,
                         });
                     }
                 }
@@ -1944,6 +1966,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             where: {
                 ticketId,
                 toStatus: status,
+                action: Not(TicketActionType.Update),
             },
             order: {
                 createdAt: 'DESC',
