@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
 import { AccessProfile } from '../../shared/common/access-profile';
@@ -6,11 +6,54 @@ import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-se
 import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { Notification } from './entities/notification.entity';
 import { NotificationRepository } from './notification.repository';
+import { RedisService } from '../../shared/redis/redis.service';
+
+const SSE_CHANNEL = 'tasky:sse:notifications';
 
 @Injectable()
-export class NotificationService extends TenantBoundBaseService<Notification> {
-    constructor(private readonly notificationRepository: NotificationRepository) {
+export class NotificationService
+    extends TenantBoundBaseService<Notification>
+    implements OnModuleInit
+{
+    private readonly logger = new Logger(NotificationService.name);
+
+    constructor(
+        private readonly notificationRepository: NotificationRepository,
+        private readonly redisService: RedisService,
+    ) {
         super(notificationRepository);
+    }
+
+    async onModuleInit() {
+        await this.redisService.subscribe(SSE_CHANNEL, (message) => {
+            this.handleRedisMessage(message);
+        });
+    }
+
+    private handleRedisMessage(message: any) {
+        const { data, targetUserId } = message;
+
+        this.logger.log(`[Redis] Mensagem recebida para o usuário ${targetUserId}`);
+
+        if (Array.isArray(targetUserId)) {
+            for (const id of targetUserId) {
+                this.emitToLocalStream(id, data);
+            }
+            return;
+        }
+
+        // Single user notification
+        if (targetUserId) {
+            this.emitToLocalStream(targetUserId, data);
+        }
+    }
+
+    private emitToLocalStream(userId: number, data: any) {
+        const stream = this.notificationStreams.get(userId);
+        if (stream) {
+            this.logger.log(`[SSE] Entregando evento via streaming para o usuário ${userId}`);
+            stream.next({ data });
+        }
     }
 
     private notificationStreams = new Map<number, Subject<any>>();
@@ -70,47 +113,66 @@ export class NotificationService extends TenantBoundBaseService<Notification> {
     }
 
     async emitFromEntity(notification: Notification) {
-        const stream = this.notificationStreams.get(notification.targetUserId);
-        if (stream) {
-            const unreadCount = await this.countUnread(
-                notification.tenantId,
-                notification.targetUserId,
-            );
-            stream.next({
-                data: {
-                    type: 'notification',
-                    notification,
-                    unreadCount,
-                },
-            });
-        }
+        const unreadCount = await this.countUnread(
+            notification.tenantId,
+            notification.targetUserId,
+        );
+
+        const eventData = {
+            type: 'notification',
+            notification,
+            unreadCount,
+        };
+
+        // Emit locally
+        this.emitToLocalStream(notification.targetUserId, eventData);
+
+        // Publish to Redis for other instances
+        this.logger.log(
+            `[Redis] Publicando notificação para o usuário ${notification.targetUserId}`,
+        );
+        await this.redisService.publish(SSE_CHANNEL, {
+            targetUserId: notification.targetUserId,
+            data: eventData,
+        });
     }
 
     async broadcastTicketUpdate(userIds: number[], ticket: any) {
         const uniqueUserIds = [...new Set(userIds)];
+        const eventData = {
+            type: 'ticket_update',
+            ticket,
+        };
+
+        // Emit locally
         for (const userId of uniqueUserIds) {
-            const stream = this.notificationStreams.get(userId);
-            if (stream) {
-                stream.next({
-                    data: {
-                        type: 'ticket_update',
-                        ticket,
-                    },
-                });
-            }
+            this.emitToLocalStream(userId, eventData);
         }
+
+        // Publish to Redis for other instances
+        this.logger.log(
+            `[Redis] Publicando atualização de ticket para usuários: ${uniqueUserIds.join(', ')}`,
+        );
+        await this.redisService.publish(SSE_CHANNEL, {
+            targetUserId: uniqueUserIds,
+            data: eventData,
+        });
     }
 
     async emitUnreadCount(tenantId: number, userId: number) {
-        const stream = this.notificationStreams.get(userId);
-        if (stream) {
-            const unreadCount = await this.countUnread(tenantId, userId);
-            stream.next({
-                data: {
-                    unreadCount,
-                },
-            });
-        }
+        const unreadCount = await this.countUnread(tenantId, userId);
+        const eventData = {
+            unreadCount,
+        };
+
+        this.emitToLocalStream(userId, eventData);
+
+        // Publish to Redis for other instances
+        this.logger.log(`[Redis] Publicando contagem de não lidas para o usuário ${userId}`);
+        await this.redisService.publish(SSE_CHANNEL, {
+            targetUserId: userId,
+            data: eventData,
+        });
     }
 
     async findMany(
