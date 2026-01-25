@@ -15,7 +15,7 @@ import { formatSnakeToNaturalCase } from '../../shared/utils/file-helper';
 import { CorrectionRequestService } from '../correction-request-reason/correction-request-reason.service';
 import { CorrectionReason } from '../correction-request-reason/entities/correction-request-reason.entity';
 import { CreateCorrectionRequestDto } from '../correction-request-reason/dtos/create-correction-request-reason.dto';
-import { NotificationType } from '../notification/entities/notification.entity';
+import { Notification, NotificationType } from '../notification/entities/notification.entity';
 import { NotificationRepository } from '../notification/notification.repository';
 import { NotificationService } from '../notification/notification.service';
 import { TenantRepository } from '../tenant/tenant.repository';
@@ -952,6 +952,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         let createdTicket: Ticket;
+        const notificationsToEmit: Notification[] = [];
 
         await this.dataSource.transaction(async (manager) => {
             const lastTicket = await manager
@@ -1084,7 +1085,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                             resourceCustomId: createdTicket.customId,
                         }),
                     );
-                    this.notificationService.emitFromEntity(notification);
+                    notificationsToEmit.push(notification);
 
                     const message = `Nova tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`;
 
@@ -1107,7 +1108,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
             // Notify the reviewer if one was assigned and it's not the requester
             if (reviewerId && reviewerId !== ticketDto.requesterId) {
-                await manager.save(
+                const notification = await manager.save(
                     this.notificationRepository.create({
                         tenantId: accessProfile.tenantId,
                         type: NotificationType.Open,
@@ -1119,6 +1120,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         resourceCustomId: createdTicket.customId,
                     }),
                 );
+                notificationsToEmit.push(notification);
 
                 const reviewer = await manager.findOne(User, { where: { id: reviewerId } });
                 if (reviewer) {
@@ -1141,6 +1143,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 }
             }
         });
+
+        // Emit notifications via SSE after the transaction is successfully committed
+        await Promise.all(
+            notificationsToEmit.map((notification) =>
+                this.notificationService.emitFromEntity(notification),
+            ),
+        );
 
         await this.notifyTicketUpdate(accessProfile, createdTicket.id);
 
@@ -1214,7 +1223,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     resourceId: ticketResponse.id,
                     resourceCustomId: ticketResponse.customId,
                 });
-                this.notificationService.emitFromEntity(notification);
+                await this.notificationService.emitFromEntity(notification);
             }
         }
 
@@ -1302,7 +1311,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                         resourceId: ticket.id,
                         resourceCustomId: ticket.customId,
                     });
-                    this.notificationService.emitFromEntity(notification);
+                    await this.notificationService.emitFromEntity(notification);
                 }
 
                 // Only send email if reviewer exists
