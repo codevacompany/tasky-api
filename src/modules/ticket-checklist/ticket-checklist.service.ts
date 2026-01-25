@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { CustomNotFoundException } from '../../shared/exceptions/http-exception';
 import { TicketRepository } from '../ticket/ticket.repository';
+import { TicketService } from '../ticket/ticket.service';
 import { CreateChecklistItemDto } from './dtos/create-checklist-item.dto';
 import { UpdateChecklistItemDto } from './dtos/update-checklist-item.dto';
 import { TicketChecklistItem } from './entities/ticket-checklist-item.entity';
@@ -14,9 +15,13 @@ export class TicketChecklistService {
         @InjectRepository(TicketChecklistItem)
         private readonly checklistItemRepository: Repository<TicketChecklistItem>,
         private readonly ticketRepository: TicketRepository,
+        private readonly ticketService: TicketService,
     ) {}
 
-    async getByTicket(accessProfile: AccessProfile, ticketId: number): Promise<TicketChecklistItem[]> {
+    async getByTicket(
+        accessProfile: AccessProfile,
+        ticketId: number,
+    ): Promise<TicketChecklistItem[]> {
         // Verify ticket exists and belongs to tenant
         const ticket = await this.ticketRepository.findOne({
             where: { id: ticketId, tenantId: accessProfile.tenantId },
@@ -72,7 +77,9 @@ export class TicketChecklistService {
             order: dto.order ?? maxOrder + 1,
         });
 
-        return this.checklistItemRepository.save(item);
+        const savedItem = await this.checklistItemRepository.save(item);
+        await this.ticketService.notifyTicketUpdate(accessProfile, dto.ticketId);
+        return savedItem;
     }
 
     async updateItem(
@@ -110,7 +117,9 @@ export class TicketChecklistService {
 
         item.updatedById = accessProfile.userId;
 
-        return this.checklistItemRepository.save(item);
+        const savedItem = await this.checklistItemRepository.save(item);
+        await this.ticketService.notifyTicketUpdate(accessProfile, item.ticketId);
+        return savedItem;
     }
 
     async deleteItem(accessProfile: AccessProfile, id: number): Promise<void> {
@@ -125,7 +134,8 @@ export class TicketChecklistService {
             });
         }
 
+        const ticketId = item.ticketId;
         await this.checklistItemRepository.remove(item);
+        await this.ticketService.notifyTicketUpdate(accessProfile, ticketId);
     }
 }
-
