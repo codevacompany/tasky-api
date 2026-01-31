@@ -10,7 +10,6 @@ import {
     UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { In, Not } from 'typeorm';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
 import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
@@ -25,7 +24,7 @@ import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { UpdateTicketAssigneeDto } from './dtos/update-ticket-assignee.dto';
 import { AddTicketAssigneeDto } from './dtos/add-ticket-assignee.dto';
-import { Ticket, TicketStatus } from './entities/ticket.entity';
+import { Ticket } from './entities/ticket.entity';
 import { TicketService } from './ticket.service';
 
 @Controller('tickets')
@@ -96,14 +95,6 @@ export class TicketController {
             ...options.where,
             requesterId,
         };
-
-        // Only apply the default status filter if no status filter is provided
-        const whereWithStatus = options.where as any;
-        if (!options.where || whereWithStatus?.status === undefined) {
-            whereClause.status = Not(
-                In([TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled]),
-            );
-        }
 
         options.where = whereClause;
 
