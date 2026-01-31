@@ -727,7 +727,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
         qb.andWhere(
-            '(ticketStatus.key NOT IN (:...terminalStatuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
+            '(ticketStatus.key NOT IN (:...terminalStatuses) AND (ticketStatus.key != :completedStatus OR ticket.completedAt >= :sevenDaysAgo))',
             {
                 terminalStatuses: [TicketStatus.Rejected, TicketStatus.Canceled],
                 completedStatus: TicketStatus.Completed,
@@ -760,7 +760,16 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 console.warn('Unhandled TypeORM status operator:', statusValue);
             }
         } else {
-            qb.andWhere('ticketStatus.key = :status', { status: statusValue });
+            if (statusValue === TicketStatus.Completed) {
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                qb.andWhere('ticketStatus.key = :status AND ticket.completedAt >= :sevenDaysAgo', {
+                    status: statusValue,
+                    sevenDaysAgo,
+                });
+            } else {
+                qb.andWhere('ticketStatus.key = :status', { status: statusValue });
+            }
         }
     }
 
@@ -776,21 +785,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             },
         );
 
+        // Apply status filter (will handle Completed status 7-day rule automatically)
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
-        if (whereWithStatus?.status) {
-            qb.andWhere('ticketStatus.key = :status', { status: whereWithStatus.status });
+        if (whereWithStatus?.status !== undefined) {
+            this.applyStatusFilter(qb, whereWithStatus.status);
         } else {
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-            qb.andWhere(
-                '(ticketStatus.key NOT IN (:...statuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
-                {
-                    statuses: [TicketStatus.Rejected, TicketStatus.Canceled],
-                    completedStatus: TicketStatus.Completed,
-                    sevenDaysAgo: sevenDaysAgo,
-                },
-            );
+            this.applyDefaultStatusFilter(qb);
         }
 
         if (options?.where) {
@@ -836,22 +836,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             },
         );
 
+        // Apply status filter (will handle Completed status 7-day rule automatically)
         const whereWithStatus = options?.where as FindOptionsWhere<Ticket> & { status?: any };
-        if (whereWithStatus?.status) {
-            qb.andWhere('ticketStatus.key = :status', { status: whereWithStatus.status });
+        if (whereWithStatus?.status !== undefined) {
+            this.applyStatusFilter(qb, whereWithStatus.status);
         } else {
-            // Include completed tickets from the last 7 days
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-            qb.andWhere(
-                '(ticketStatus.key NOT IN (:...statuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt >= :sevenDaysAgo))',
-                {
-                    statuses: [TicketStatus.Rejected, TicketStatus.Canceled],
-                    completedStatus: TicketStatus.Completed,
-                    sevenDaysAgo: sevenDaysAgo,
-                },
-            );
+            this.applyDefaultStatusFilter(qb);
         }
 
         if (options?.where) {
@@ -2087,16 +2077,16 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             relations: ['department', 'role'],
         });
 
+        // Archived tickets: completed 7 days ago or earlier (use <= to include tickets completed exactly 7 days ago)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
         const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId).andWhere(
             '(ticketStatus.key IN (:...terminalStatuses) OR (ticketStatus.key = :completedStatus AND ticket.completedAt < :sevenDaysAgo))',
             {
                 terminalStatuses: [TicketStatus.Rejected, TicketStatus.Canceled],
                 completedStatus: TicketStatus.Completed,
-                sevenDaysAgo: (() => {
-                    const date = new Date();
-                    date.setDate(date.getDate() - 7);
-                    return date;
-                })(),
+                sevenDaysAgo,
             },
         );
 
