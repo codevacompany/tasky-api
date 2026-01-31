@@ -13,8 +13,10 @@ export class DepartmentStatsDto {
 }
 
 export class DetailedMetricsDto {
-    onTimeCompleted: number; // Number of tickets completed on time (sent to verification before dueAt)
+    sentToVerificationOnTime: number; // Number of tickets sent to verification before dueAt
     totalCompleted: number; // Total number of completed tickets
+    totalClosed: number; // Total number of closed tickets (completed + rejected)
+    completionIndexTicketsTotal: number; // Total number of tickets in completion index
     onTimeVerified: number; // Number of verification cycles completed on time (within 24h)
     totalVerified: number; // Total number of verification cycles
     rejectedCount: number; // Total number of rejections
