@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { v4 as uuidv4 } from 'uuid';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
@@ -52,7 +53,12 @@ export class NotificationService
         const stream = this.notificationStreams.get(userId);
         if (stream) {
             this.logger.log(`[SSE] Entregando evento via streaming para o usuário ${userId}`);
+            // Emit the data object - the Observable pipe will format it as MessageEvent
             stream.next({ data });
+        } else {
+            this.logger.warn(
+                `[SSE] Stream não encontrado para o usuário ${userId}. Usuário pode estar conectado em outra instância ou desconectado. Total de streams ativos: ${this.notificationStreams.size}`,
+            );
         }
     }
 
@@ -88,9 +94,16 @@ export class NotificationService
 
     getNotificationStream(userId: number): Observable<any> {
         if (!this.notificationStreams.has(userId)) {
+            this.logger.log(`[SSE] Criando novo stream para o usuário ${userId}`);
             this.notificationStreams.set(userId, new Subject<any>());
+        } else {
+            this.logger.log(`[SSE] Reutilizando stream existente para o usuário ${userId}`);
         }
-        return this.notificationStreams.get(userId).asObservable();
+        return this.notificationStreams.get(userId).asObservable().pipe(
+            map((event: any) => ({
+                data: typeof event.data === 'string' ? event.data : JSON.stringify(event.data),
+            })),
+        );
     }
 
     async pushNotification(

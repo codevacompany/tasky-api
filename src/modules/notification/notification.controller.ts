@@ -98,9 +98,15 @@ export class NotificationController {
         }
 
         if (!userId) {
+            this.notificationService['logger'].warn(
+                '[SSE] Tentativa de conexão sem userId válido',
+            );
             return new Observable();
         }
 
+        this.notificationService['logger'].log(
+            `[SSE] Cliente conectando ao stream para o usuário ${userId}`,
+        );
         return this.notificationService.getNotificationStream(userId);
     }
 }
