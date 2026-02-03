@@ -8,8 +8,13 @@ import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { Notification } from './entities/notification.entity';
 import { NotificationRepository } from './notification.repository';
 import { RedisService } from '../../shared/redis/redis.service';
+import { ConfigService } from '@nestjs/config';
 
-const SSE_CHANNEL = 'tasky:sse:notifications';
+// Use environment-specific channel to prevent cross-environment message leakage
+const getSSEChannel = (env?: string): string => {
+    const envSuffix = env === 'production' ? 'prod' : 'dev';
+    return `tasky:sse:notifications:${envSuffix}`;
+};
 
 @Injectable()
 export class NotificationService
@@ -17,16 +22,22 @@ export class NotificationService
     implements OnModuleInit
 {
     private readonly logger = new Logger(NotificationService.name);
+    private readonly sseChannel: string;
 
     constructor(
         private readonly notificationRepository: NotificationRepository,
         private readonly redisService: RedisService,
+        private readonly configService: ConfigService,
     ) {
         super(notificationRepository);
+        // Use environment-specific channel to prevent cross-environment message leakage
+        const nodeEnv = this.configService.get<string>('NODE_ENV', 'dev');
+        this.sseChannel = getSSEChannel(nodeEnv);
+        this.logger.log(`[Redis] Using channel: ${this.sseChannel}`);
     }
 
     async onModuleInit() {
-        await this.redisService.subscribe(SSE_CHANNEL, (message) => {
+        await this.redisService.subscribe(this.sseChannel, (message) => {
             this.handleRedisMessage(message);
         });
     }
@@ -34,7 +45,8 @@ export class NotificationService
     private handleRedisMessage(message: any) {
         const { data, targetUserId } = message;
 
-        this.logger.log(`[Redis] Mensagem recebida para o usuário ${targetUserId}`);
+        // Log at debug level to reduce noise - this is expected behavior in cluster mode
+        this.logger.debug(`[Redis] Mensagem recebida para o usuário ${targetUserId}`);
 
         if (Array.isArray(targetUserId)) {
             for (const id of targetUserId) {
@@ -144,7 +156,7 @@ export class NotificationService
         this.logger.log(
             `[Redis] Publicando notificação para o usuário ${notification.targetUserId}`,
         );
-        await this.redisService.publish(SSE_CHANNEL, {
+        await this.redisService.publish(this.sseChannel, {
             targetUserId: notification.targetUserId,
             data: eventData,
         });
@@ -166,7 +178,7 @@ export class NotificationService
         this.logger.log(
             `[Redis] Publicando atualização de ticket para usuários: ${uniqueUserIds.join(', ')}`,
         );
-        await this.redisService.publish(SSE_CHANNEL, {
+        await this.redisService.publish(this.sseChannel, {
             targetUserId: uniqueUserIds,
             data: eventData,
         });
@@ -182,7 +194,7 @@ export class NotificationService
 
         // Publish to Redis for other instances
         this.logger.log(`[Redis] Publicando contagem de não lidas para o usuário ${userId}`);
-        await this.redisService.publish(SSE_CHANNEL, {
+        await this.redisService.publish(this.sseChannel, {
             targetUserId: userId,
             data: eventData,
         });
