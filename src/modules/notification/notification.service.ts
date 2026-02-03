@@ -79,31 +79,115 @@ export class NotificationService
 
     private notificationStreams = new Map<number, Subject<any>>();
     private streamTickets = new Map<string, { userId: number; expiresAt: number }>();
+    private readonly TICKET_PREFIX = 'tasky:sse:ticket:';
 
-    createStreamTicket(userId: number): string {
+    async createStreamTicket(userId: number): Promise<string> {
         const ticket = uuidv4();
 
-        const expiresAt = Date.now() + 60 * 1000;
-        this.streamTickets.set(ticket, { userId, expiresAt });
+        // Ticket valid for 5 minutes to allow for reconnections
+        // EventSource may reconnect automatically, so we need a longer window
+        const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+        const ticketData = { userId, expiresAt };
 
-        // Cleanup expired tickets occasionally or for this specific user
-        setTimeout(() => this.streamTickets.delete(ticket), 60 * 1000);
+        // Store in local Map for fast access
+        this.streamTickets.set(ticket, ticketData);
+
+        // Also store in Redis for cross-instance access (cluster mode)
+        if (this.redisService.redisEnabled && this.redisService.connected) {
+            try {
+                const redisKey = `${this.TICKET_PREFIX}${ticket}`;
+                await this.redisService.publisher.setex(
+                    redisKey,
+                    300, // 5 minutes in seconds
+                    JSON.stringify(ticketData),
+                );
+                this.logger.log(
+                    `[SSE] Stream ticket armazenado no Redis para o usuário ${userId}. Key: ${redisKey.substring(0, 20)}...`,
+                );
+            } catch (error) {
+                this.logger.error(
+                    `[SSE] Falha ao armazenar ticket no Redis para o usuário ${userId}: ${error}`,
+                );
+            }
+        } else {
+            this.logger.warn(
+                `[SSE] Redis não disponível. Ticket armazenado apenas localmente para o usuário ${userId}. Cross-instance access não funcionará.`,
+            );
+        }
+
+        // Cleanup expired tickets after expiration
+        setTimeout(() => {
+            const existingTicket = this.streamTickets.get(ticket);
+            if (existingTicket && Date.now() > existingTicket.expiresAt) {
+                this.streamTickets.delete(ticket);
+                this.logger.debug(`[SSE] Stream ticket expirado e removido para o usuário ${userId}`);
+            }
+        }, 5 * 60 * 1000);
 
         return ticket;
     }
 
-    validateStreamTicket(streamTicket: string): number | null {
-        const ticketData = this.streamTickets.get(streamTicket);
+    async validateStreamTicket(streamTicket: string): Promise<number | null> {
+        // First check local Map
+        let ticketData = this.streamTickets.get(streamTicket);
 
-        if (!ticketData) return null;
+        // If not found locally and Redis is enabled, check Redis (for cross-instance access)
+        if (!ticketData && this.redisService.redisEnabled && this.redisService.connected) {
+            try {
+                const redisKey = `${this.TICKET_PREFIX}${streamTicket}`;
+                this.logger.log(
+                    `[SSE] Ticket não encontrado localmente. Buscando no Redis: ${redisKey.substring(0, 20)}...`,
+                );
+                const redisData = await this.redisService.publisher.get(redisKey);
+                if (redisData) {
+                    ticketData = JSON.parse(redisData);
+                    // Cache it locally for faster future access
+                    this.streamTickets.set(streamTicket, ticketData);
+                    this.logger.log(
+                        `[SSE] Stream ticket encontrado no Redis para o usuário ${ticketData.userId}`,
+                    );
+                } else {
+                    this.logger.warn(
+                        `[SSE] Stream ticket não encontrado no Redis: ${redisKey.substring(0, 20)}...`,
+                    );
+                }
+            } catch (error) {
+                this.logger.error(`[SSE] Erro ao buscar ticket no Redis: ${error}`);
+            }
+        } else if (!ticketData) {
+            if (!this.redisService.redisEnabled) {
+                this.logger.warn(
+                    `[SSE] Redis não habilitado. Ticket não encontrado localmente e Redis não disponível para busca cross-instance.`,
+                );
+            } else if (!this.redisService.connected) {
+                this.logger.warn(
+                    `[SSE] Redis não conectado. Ticket não encontrado localmente e Redis não disponível para busca cross-instance.`,
+                );
+            }
+        }
 
-        if (Date.now() > ticketData.expiresAt) {
-            this.streamTickets.delete(streamTicket);
+        if (!ticketData) {
+            this.logger.debug(`[SSE] Stream ticket não encontrado: ${streamTicket.substring(0, 8)}...`);
             return null;
         }
 
-        // Ticket used, delete it (One-Time Token)
-        this.streamTickets.delete(streamTicket);
+        if (Date.now() > ticketData.expiresAt) {
+            this.streamTickets.delete(streamTicket);
+            // Also remove from Redis
+            if (this.redisService.redisEnabled && this.redisService.connected) {
+                try {
+                    await this.redisService.publisher.del(`${this.TICKET_PREFIX}${streamTicket}`);
+                } catch (error) {
+                    // Silent fail
+                }
+            }
+            this.logger.debug(`[SSE] Stream ticket expirado para o usuário ${ticketData.userId}`);
+            return null;
+        }
+
+        // Ticket is valid - don't delete it immediately to allow reconnections
+        // It will be cleaned up when it expires
+        this.logger.debug(`[SSE] Stream ticket válido para o usuário ${ticketData.userId}`);
         return ticketData.userId;
     }
 

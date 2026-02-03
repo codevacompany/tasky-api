@@ -17,7 +17,8 @@ import { GetQueryOptions } from '../../shared/decorators/get-query-options.decor
 import { QueryOptions } from '../../shared/types/http';
 import { Notification } from './entities/notification.entity';
 import { NotificationService } from './notification.service';
-import { Observable } from 'rxjs';
+import { Observable, from } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 
 @Controller('notifications')
 export class NotificationController {
@@ -80,7 +81,9 @@ export class NotificationController {
     @UseGuards(AuthGuard('jwt'))
     @Post('stream-ticket')
     async getStreamTicket(@GetAccessProfile() accessProfile: AccessProfile) {
-        return { streamTicket: this.notificationService.createStreamTicket(accessProfile.userId) };
+        return {
+            streamTicket: await this.notificationService.createStreamTicket(accessProfile.userId),
+        };
     }
 
     @Sse('stream')
@@ -88,27 +91,49 @@ export class NotificationController {
         @Query('streamTicket') streamTicket?: string,
         @GetAccessProfile() accessProfile?: AccessProfile,
     ): Observable<MessageEvent> {
-        let userId = accessProfile?.userId;
-
         this.notificationService['logger'].log(
             `[SSE] Tentativa de conexão recebida. streamTicket: ${streamTicket ? 'presente' : 'ausente'}, accessProfile.userId: ${accessProfile?.userId || 'não disponível'}`,
         );
 
+        // Handle async ticket validation using RxJS
         if (streamTicket) {
-            const ticketUserId = this.notificationService.validateStreamTicket(streamTicket);
-            this.notificationService['logger'].log(
-                `[SSE] Validando streamTicket. Resultado: ${ticketUserId || 'inválido/expirado'}`,
+            return from(this.notificationService.validateStreamTicket(streamTicket)).pipe(
+                switchMap((ticketUserId) => {
+                    this.notificationService['logger'].log(
+                        `[SSE] Validando streamTicket. Resultado: ${ticketUserId || 'inválido/expirado'}`,
+                    );
+
+                    const userId = ticketUserId || accessProfile?.userId;
+
+                    if (!userId) {
+                        this.notificationService['logger'].warn(
+                            '[SSE] Tentativa de conexão sem userId válido. streamTicket e accessProfile.userId ambos ausentes.',
+                        );
+                        return new Observable<MessageEvent>();
+                    }
+
+                    this.notificationService['logger'].log(
+                        `[SSE] Cliente conectando ao stream para o usuário ${userId}`,
+                    );
+                    const stream = this.notificationService.getNotificationStream(userId);
+                    const activeStreams = Array.from(
+                        this.notificationService['notificationStreams'].keys(),
+                    );
+                    this.notificationService['logger'].log(
+                        `[SSE] Stream criado para o usuário ${userId}. Total de streams ativos: ${this.notificationService['notificationStreams'].size}. Usuários conectados: [${activeStreams.join(', ')}]`,
+                    );
+                    return stream;
+                }),
             );
-            if (ticketUserId) {
-                userId = ticketUserId;
-            }
         }
 
+        // No stream ticket, use accessProfile userId directly
+        const userId = accessProfile?.userId;
         if (!userId) {
             this.notificationService['logger'].warn(
                 '[SSE] Tentativa de conexão sem userId válido. streamTicket e accessProfile.userId ambos ausentes.',
             );
-            return new Observable();
+            return new Observable<MessageEvent>();
         }
 
         this.notificationService['logger'].log(

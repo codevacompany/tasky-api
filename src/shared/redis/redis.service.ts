@@ -10,6 +10,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     private isRedisEnabled = false;
     private isConnected = false;
 
+    get redisEnabled(): boolean {
+        return this.isRedisEnabled;
+    }
+
+    get connected(): boolean {
+        return this.isConnected;
+    }
+
     constructor(private readonly configService: ConfigService) {
         this.isRedisEnabled = this.configService.get<string>('REDIS_HOST') !== undefined;
 
