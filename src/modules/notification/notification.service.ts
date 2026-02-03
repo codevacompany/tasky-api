@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, finalize } from 'rxjs/operators';
 import { v4 as uuidv4 } from 'uuid';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
@@ -105,16 +105,28 @@ export class NotificationService
     }
 
     getNotificationStream(userId: number): Observable<any> {
-        if (!this.notificationStreams.has(userId)) {
-            this.logger.log(`[SSE] Criando novo stream para o usuário ${userId}`);
-            this.notificationStreams.set(userId, new Subject<any>());
-        } else {
-            this.logger.log(`[SSE] Reutilizando stream existente para o usuário ${userId}`);
+        // Check if stream already exists - if so, complete it first to clean up
+        if (this.notificationStreams.has(userId)) {
+            this.logger.log(`[SSE] Cliente desconectado anteriormente detectado. Limpando stream antigo para o usuário ${userId}`);
+            const oldStream = this.notificationStreams.get(userId);
+            oldStream.complete();
+            this.notificationStreams.delete(userId);
         }
-        return this.notificationStreams.get(userId).asObservable().pipe(
+
+        // Create new stream
+        this.logger.log(`[SSE] Criando novo stream para o usuário ${userId}`);
+        const stream = new Subject<any>();
+        this.notificationStreams.set(userId, stream);
+
+        return stream.asObservable().pipe(
             map((event: any) => ({
                 data: typeof event.data === 'string' ? event.data : JSON.stringify(event.data),
             })),
+            finalize(() => {
+                // Cleanup when client disconnects
+                this.logger.log(`[SSE] Cliente desconectado. Removendo stream para o usuário ${userId}`);
+                this.notificationStreams.delete(userId);
+            }),
         );
     }
 
