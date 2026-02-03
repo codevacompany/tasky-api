@@ -68,8 +68,11 @@ export class NotificationService
             // Emit the data object - the Observable pipe will format it as MessageEvent
             stream.next({ data });
         } else {
+            // This is expected behavior in cluster mode - user might be on another instance or disconnected
+            // Using warn level temporarily to debug the issue with user 46
+            const activeUserIds = Array.from(this.notificationStreams.keys());
             this.logger.warn(
-                `[SSE] Stream não encontrado para o usuário ${userId}. Usuário pode estar conectado em outra instância ou desconectado. Total de streams ativos: ${this.notificationStreams.size}`,
+                `[SSE] Stream não encontrado para o usuário ${userId}. Usuário pode estar conectado em outra instância ou desconectado. Total de streams ativos: ${this.notificationStreams.size}. Usuários conectados nesta instância: [${activeUserIds.join(', ')}]`,
             );
         }
     }
