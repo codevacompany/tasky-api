@@ -17,7 +17,8 @@ import { GetQueryOptions } from '../../shared/decorators/get-query-options.decor
 import { QueryOptions } from '../../shared/types/http';
 import { Notification } from './entities/notification.entity';
 import { NotificationService } from './notification.service';
-import { Observable } from 'rxjs';
+import { Observable, from } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 
 @Controller('notifications')
 export class NotificationController {
@@ -80,7 +81,9 @@ export class NotificationController {
     @UseGuards(AuthGuard('jwt'))
     @Post('stream-ticket')
     async getStreamTicket(@GetAccessProfile() accessProfile: AccessProfile) {
-        return { streamTicket: this.notificationService.createStreamTicket(accessProfile.userId) };
+        return {
+            streamTicket: await this.notificationService.createStreamTicket(accessProfile.userId),
+        };
     }
 
     @Sse('stream')
@@ -88,19 +91,29 @@ export class NotificationController {
         @Query('streamTicket') streamTicket?: string,
         @GetAccessProfile() accessProfile?: AccessProfile,
     ): Observable<MessageEvent> {
-        let userId = accessProfile?.userId;
-
+        // Handle async ticket validation using RxJS
         if (streamTicket) {
-            const ticketUserId = this.notificationService.validateStreamTicket(streamTicket);
-            if (ticketUserId) {
-                userId = ticketUserId;
-            }
+            return from(this.notificationService.validateStreamTicket(streamTicket)).pipe(
+                switchMap((ticketUserId) => {
+                    const userId = ticketUserId || accessProfile?.userId;
+
+                    if (!userId) {
+                        return new Observable<MessageEvent>();
+                    }
+
+                    const stream = this.notificationService.getNotificationStream(userId);
+                    return stream;
+                }),
+            );
         }
 
+        // No stream ticket, use accessProfile userId directly
+        const userId = accessProfile?.userId;
         if (!userId) {
-            return new Observable();
+            return new Observable<MessageEvent>();
         }
 
-        return this.notificationService.getNotificationStream(userId);
+        const stream = this.notificationService.getNotificationStream(userId);
+        return stream;
     }
 }
