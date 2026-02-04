@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
+import { map, finalize } from 'rxjs/operators';
 import { v4 as uuidv4 } from 'uuid';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { TenantBoundBaseService } from '../../shared/common/tenant-bound.base-service';
@@ -7,8 +8,13 @@ import { PaginatedResponse, QueryOptions } from '../../shared/types/http';
 import { Notification } from './entities/notification.entity';
 import { NotificationRepository } from './notification.repository';
 import { RedisService } from '../../shared/redis/redis.service';
+import { ConfigService } from '@nestjs/config';
 
-const SSE_CHANNEL = 'tasky:sse:notifications';
+// Use environment-specific channel to prevent cross-environment message leakage
+const getSSEChannel = (env?: string): string => {
+    const envSuffix = env === 'production' ? 'prod' : 'dev';
+    return `tasky:sse:notifications:${envSuffix}`;
+};
 
 @Injectable()
 export class NotificationService
@@ -16,16 +22,21 @@ export class NotificationService
     implements OnModuleInit
 {
     private readonly logger = new Logger(NotificationService.name);
+    private readonly sseChannel: string;
 
     constructor(
         private readonly notificationRepository: NotificationRepository,
         private readonly redisService: RedisService,
+        private readonly configService: ConfigService,
     ) {
         super(notificationRepository);
+        // Use environment-specific channel to prevent cross-environment message leakage
+        const nodeEnv = this.configService.get<string>('NODE_ENV', 'dev');
+        this.sseChannel = getSSEChannel(nodeEnv);
     }
 
     async onModuleInit() {
-        await this.redisService.subscribe(SSE_CHANNEL, (message) => {
+        await this.redisService.subscribe(this.sseChannel, (message) => {
             this.handleRedisMessage(message);
         });
     }
@@ -33,7 +44,7 @@ export class NotificationService
     private handleRedisMessage(message: any) {
         const { data, targetUserId } = message;
 
-        this.logger.log(`[Redis] Mensagem recebida para o usuário ${targetUserId}`);
+        this.logger.debug(`[Redis] Mensagem recebida para o usuário ${targetUserId}`);
 
         if (Array.isArray(targetUserId)) {
             for (const id of targetUserId) {
@@ -51,46 +62,113 @@ export class NotificationService
     private emitToLocalStream(userId: number, data: any) {
         const stream = this.notificationStreams.get(userId);
         if (stream) {
-            this.logger.log(`[SSE] Entregando evento via streaming para o usuário ${userId}`);
+            // Emit the data object - the Observable pipe will format it as MessageEvent
             stream.next({ data });
         }
     }
 
     private notificationStreams = new Map<number, Subject<any>>();
     private streamTickets = new Map<string, { userId: number; expiresAt: number }>();
+    private readonly TICKET_PREFIX = 'tasky:sse:ticket:';
 
-    createStreamTicket(userId: number): string {
+    async createStreamTicket(userId: number): Promise<string> {
         const ticket = uuidv4();
 
-        const expiresAt = Date.now() + 60 * 1000;
-        this.streamTickets.set(ticket, { userId, expiresAt });
+        // Ticket valid for 5 minutes to allow for reconnections
+        // EventSource may reconnect automatically, so we need a longer window
+        const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+        const ticketData = { userId, expiresAt };
 
-        // Cleanup expired tickets occasionally or for this specific user
-        setTimeout(() => this.streamTickets.delete(ticket), 60 * 1000);
+        // Store in local Map for fast access
+        this.streamTickets.set(ticket, ticketData);
+
+        // Also store in Redis for cross-instance access (cluster mode)
+        if (this.redisService.redisEnabled && this.redisService.connected) {
+            try {
+                const redisKey = `${this.TICKET_PREFIX}${ticket}`;
+                await this.redisService.publisher.setex(
+                    redisKey,
+                    300, // 5 minutes in seconds
+                    JSON.stringify(ticketData),
+                );
+            } catch (error) {
+                // Silent fail
+            }
+        }
+
+        // Cleanup expired tickets after expiration
+        setTimeout(() => {
+            const existingTicket = this.streamTickets.get(ticket);
+            if (existingTicket && Date.now() > existingTicket.expiresAt) {
+                this.streamTickets.delete(ticket);
+            }
+        }, 5 * 60 * 1000);
 
         return ticket;
     }
 
-    validateStreamTicket(streamTicket: string): number | null {
-        const ticketData = this.streamTickets.get(streamTicket);
+    async validateStreamTicket(streamTicket: string): Promise<number | null> {
+        // First check local Map
+        let ticketData = this.streamTickets.get(streamTicket);
 
-        if (!ticketData) return null;
+        // If not found locally and Redis is enabled, check Redis (for cross-instance access)
+        if (!ticketData && this.redisService.redisEnabled && this.redisService.connected) {
+            try {
+                const redisKey = `${this.TICKET_PREFIX}${streamTicket}`;
+                const redisData = await this.redisService.publisher.get(redisKey);
+                if (redisData) {
+                    ticketData = JSON.parse(redisData);
+                    // Cache it locally for faster future access
+                    this.streamTickets.set(streamTicket, ticketData);
+                }
+            } catch (error) {
+                // Silent fail
+            }
+        }
 
-        if (Date.now() > ticketData.expiresAt) {
-            this.streamTickets.delete(streamTicket);
+        if (!ticketData) {
             return null;
         }
 
-        // Ticket used, delete it (One-Time Token)
-        this.streamTickets.delete(streamTicket);
+        if (Date.now() > ticketData.expiresAt) {
+            this.streamTickets.delete(streamTicket);
+            // Also remove from Redis
+            if (this.redisService.redisEnabled && this.redisService.connected) {
+                try {
+                    await this.redisService.publisher.del(`${this.TICKET_PREFIX}${streamTicket}`);
+                } catch (error) {
+                    // Silent fail
+                }
+            }
+            return null;
+        }
+
+        // Ticket is valid - don't delete it immediately to allow reconnections
+        // It will be cleaned up when it expires
         return ticketData.userId;
     }
 
     getNotificationStream(userId: number): Observable<any> {
-        if (!this.notificationStreams.has(userId)) {
-            this.notificationStreams.set(userId, new Subject<any>());
+        // Check if stream already exists - if so, complete it first to clean up
+        if (this.notificationStreams.has(userId)) {
+            const oldStream = this.notificationStreams.get(userId);
+            oldStream.complete();
+            this.notificationStreams.delete(userId);
         }
-        return this.notificationStreams.get(userId).asObservable();
+
+        // Create new stream
+        const stream = new Subject<any>();
+        this.notificationStreams.set(userId, stream);
+
+        return stream.asObservable().pipe(
+            map((event: any) => ({
+                data: typeof event.data === 'string' ? event.data : JSON.stringify(event.data),
+            })),
+            finalize(() => {
+                // Cleanup when client disconnects
+                this.notificationStreams.delete(userId);
+            }),
+        );
     }
 
     async pushNotification(
@@ -128,10 +206,7 @@ export class NotificationService
         this.emitToLocalStream(notification.targetUserId, eventData);
 
         // Publish to Redis for other instances
-        this.logger.log(
-            `[Redis] Publicando notificação para o usuário ${notification.targetUserId}`,
-        );
-        await this.redisService.publish(SSE_CHANNEL, {
+        await this.redisService.publish(this.sseChannel, {
             targetUserId: notification.targetUserId,
             data: eventData,
         });
@@ -150,10 +225,7 @@ export class NotificationService
         }
 
         // Publish to Redis for other instances
-        this.logger.log(
-            `[Redis] Publicando atualização de ticket para usuários: ${uniqueUserIds.join(', ')}`,
-        );
-        await this.redisService.publish(SSE_CHANNEL, {
+        await this.redisService.publish(this.sseChannel, {
             targetUserId: uniqueUserIds,
             data: eventData,
         });
@@ -168,8 +240,7 @@ export class NotificationService
         this.emitToLocalStream(userId, eventData);
 
         // Publish to Redis for other instances
-        this.logger.log(`[Redis] Publicando contagem de não lidas para o usuário ${userId}`);
-        await this.redisService.publish(SSE_CHANNEL, {
+        await this.redisService.publish(this.sseChannel, {
             targetUserId: userId,
             data: eventData,
         });
