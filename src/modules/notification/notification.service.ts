@@ -33,7 +33,6 @@ export class NotificationService
         // Use environment-specific channel to prevent cross-environment message leakage
         const nodeEnv = this.configService.get<string>('NODE_ENV', 'dev');
         this.sseChannel = getSSEChannel(nodeEnv);
-        this.logger.log(`[Redis] Using channel: ${this.sseChannel}`);
     }
 
     async onModuleInit() {
@@ -45,7 +44,6 @@ export class NotificationService
     private handleRedisMessage(message: any) {
         const { data, targetUserId } = message;
 
-        // Log at debug level to reduce noise - this is expected behavior in cluster mode
         this.logger.debug(`[Redis] Mensagem recebida para o usuário ${targetUserId}`);
 
         if (Array.isArray(targetUserId)) {
@@ -64,16 +62,8 @@ export class NotificationService
     private emitToLocalStream(userId: number, data: any) {
         const stream = this.notificationStreams.get(userId);
         if (stream) {
-            this.logger.log(`[SSE] Entregando evento via streaming para o usuário ${userId}`);
             // Emit the data object - the Observable pipe will format it as MessageEvent
             stream.next({ data });
-        } else {
-            // This is expected behavior in cluster mode - user might be on another instance or disconnected
-            // Using warn level temporarily to debug the issue with user 46
-            const activeUserIds = Array.from(this.notificationStreams.keys());
-            this.logger.warn(
-                `[SSE] Stream não encontrado para o usuário ${userId}. Usuário pode estar conectado em outra instância ou desconectado. Total de streams ativos: ${this.notificationStreams.size}. Usuários conectados nesta instância: [${activeUserIds.join(', ')}]`,
-            );
         }
     }
 
@@ -101,18 +91,9 @@ export class NotificationService
                     300, // 5 minutes in seconds
                     JSON.stringify(ticketData),
                 );
-                this.logger.log(
-                    `[SSE] Stream ticket armazenado no Redis para o usuário ${userId}. Key: ${redisKey.substring(0, 20)}...`,
-                );
             } catch (error) {
-                this.logger.error(
-                    `[SSE] Falha ao armazenar ticket no Redis para o usuário ${userId}: ${error}`,
-                );
+                // Silent fail
             }
-        } else {
-            this.logger.warn(
-                `[SSE] Redis não disponível. Ticket armazenado apenas localmente para o usuário ${userId}. Cross-instance access não funcionará.`,
-            );
         }
 
         // Cleanup expired tickets after expiration
@@ -120,7 +101,6 @@ export class NotificationService
             const existingTicket = this.streamTickets.get(ticket);
             if (existingTicket && Date.now() > existingTicket.expiresAt) {
                 this.streamTickets.delete(ticket);
-                this.logger.debug(`[SSE] Stream ticket expirado e removido para o usuário ${userId}`);
             }
         }, 5 * 60 * 1000);
 
@@ -135,39 +115,18 @@ export class NotificationService
         if (!ticketData && this.redisService.redisEnabled && this.redisService.connected) {
             try {
                 const redisKey = `${this.TICKET_PREFIX}${streamTicket}`;
-                this.logger.log(
-                    `[SSE] Ticket não encontrado localmente. Buscando no Redis: ${redisKey.substring(0, 20)}...`,
-                );
                 const redisData = await this.redisService.publisher.get(redisKey);
                 if (redisData) {
                     ticketData = JSON.parse(redisData);
                     // Cache it locally for faster future access
                     this.streamTickets.set(streamTicket, ticketData);
-                    this.logger.log(
-                        `[SSE] Stream ticket encontrado no Redis para o usuário ${ticketData.userId}`,
-                    );
-                } else {
-                    this.logger.warn(
-                        `[SSE] Stream ticket não encontrado no Redis: ${redisKey.substring(0, 20)}...`,
-                    );
                 }
             } catch (error) {
-                this.logger.error(`[SSE] Erro ao buscar ticket no Redis: ${error}`);
-            }
-        } else if (!ticketData) {
-            if (!this.redisService.redisEnabled) {
-                this.logger.warn(
-                    `[SSE] Redis não habilitado. Ticket não encontrado localmente e Redis não disponível para busca cross-instance.`,
-                );
-            } else if (!this.redisService.connected) {
-                this.logger.warn(
-                    `[SSE] Redis não conectado. Ticket não encontrado localmente e Redis não disponível para busca cross-instance.`,
-                );
+                // Silent fail
             }
         }
 
         if (!ticketData) {
-            this.logger.debug(`[SSE] Stream ticket não encontrado: ${streamTicket.substring(0, 8)}...`);
             return null;
         }
 
@@ -181,27 +140,23 @@ export class NotificationService
                     // Silent fail
                 }
             }
-            this.logger.debug(`[SSE] Stream ticket expirado para o usuário ${ticketData.userId}`);
             return null;
         }
 
         // Ticket is valid - don't delete it immediately to allow reconnections
         // It will be cleaned up when it expires
-        this.logger.debug(`[SSE] Stream ticket válido para o usuário ${ticketData.userId}`);
         return ticketData.userId;
     }
 
     getNotificationStream(userId: number): Observable<any> {
         // Check if stream already exists - if so, complete it first to clean up
         if (this.notificationStreams.has(userId)) {
-            this.logger.log(`[SSE] Cliente desconectado anteriormente detectado. Limpando stream antigo para o usuário ${userId}`);
             const oldStream = this.notificationStreams.get(userId);
             oldStream.complete();
             this.notificationStreams.delete(userId);
         }
 
         // Create new stream
-        this.logger.log(`[SSE] Criando novo stream para o usuário ${userId}`);
         const stream = new Subject<any>();
         this.notificationStreams.set(userId, stream);
 
@@ -211,7 +166,6 @@ export class NotificationService
             })),
             finalize(() => {
                 // Cleanup when client disconnects
-                this.logger.log(`[SSE] Cliente desconectado. Removendo stream para o usuário ${userId}`);
                 this.notificationStreams.delete(userId);
             }),
         );
@@ -252,9 +206,6 @@ export class NotificationService
         this.emitToLocalStream(notification.targetUserId, eventData);
 
         // Publish to Redis for other instances
-        this.logger.log(
-            `[Redis] Publicando notificação para o usuário ${notification.targetUserId}`,
-        );
         await this.redisService.publish(this.sseChannel, {
             targetUserId: notification.targetUserId,
             data: eventData,
@@ -274,9 +225,6 @@ export class NotificationService
         }
 
         // Publish to Redis for other instances
-        this.logger.log(
-            `[Redis] Publicando atualização de ticket para usuários: ${uniqueUserIds.join(', ')}`,
-        );
         await this.redisService.publish(this.sseChannel, {
             targetUserId: uniqueUserIds,
             data: eventData,
@@ -292,7 +240,6 @@ export class NotificationService
         this.emitToLocalStream(userId, eventData);
 
         // Publish to Redis for other instances
-        this.logger.log(`[Redis] Publicando contagem de não lidas para o usuário ${userId}`);
         await this.redisService.publish(this.sseChannel, {
             targetUserId: userId,
             data: eventData,
