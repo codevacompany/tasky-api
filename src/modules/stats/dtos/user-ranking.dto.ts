@@ -11,6 +11,7 @@ export class UserRankingItemDto {
     averageAcceptanceTimeSeconds: number;
     averageResolutionTimeSeconds: number;
     sentToVerificationOverdueRate: number; // Percentage of completed tickets that were sent to verification after dueAt
+    completionOverdueRate: number; // Percentage of completed tickets that were actually completed after dueAt
     avatarUrl?: string;
     isActive: boolean;
 }
