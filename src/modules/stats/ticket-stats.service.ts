@@ -423,6 +423,7 @@ export class TicketStatsService {
         // Sum up metrics for the whole tenant/selection
         let sentToVerificationOnTime = 0;
         let totalCompleted = 0;
+        let completionOnTime = 0;
         let onTimeVerified = 0;
         let totalVerified = 0;
         let rejectedCount = 0;
@@ -437,6 +438,9 @@ export class TicketStatsService {
 
             if (lc.isResolved) {
                 totalCompleted++;
+                if (lc.completionOnTime) {
+                    completionOnTime++;
+                }
                 if (lc.wasReturned) returnedCount++;
             }
 
@@ -480,9 +484,42 @@ export class TicketStatsService {
             totalEntries,
         );
 
+        // Calculate overdue rate including open overdue tickets
+        // Count open overdue tickets (Case 1: open tickets that are overdue)
+        let openOverdueCount = 0;
+        this.processOpenOverdueTickets(itemsWithWeekendExclusion, () => {
+            openOverdueCount++;
+        });
+
+        // Count verification overdue tickets (Case 2: tickets in verification sent after dueAt)
+        let verificationOverdueCount = 0;
+        await this.processVerificationOverdueTickets(
+            itemsWithWeekendExclusion,
+            accessProfile,
+            () => {
+                verificationOverdueCount++;
+            },
+        );
+
+        // Total tickets for overdue rate calculation: closed tickets + open overdue tickets
+        const totalTicketsForOverdueRate = totalClosed + openOverdueCount + verificationOverdueCount;
+
+        // Overdue count: closed tickets sent late + open overdue tickets
+        const closedOverdueCount = totalClosed - sentToVerificationOnTime;
+        const totalOverdueCount = closedOverdueCount + openOverdueCount + verificationOverdueCount;
+
         const sentToVerificationOverdueRate =
-            totalClosed > 0
-                ? ((totalClosed - sentToVerificationOnTime) / totalClosed) * 100
+            totalTicketsForOverdueRate > 0
+                ? (totalOverdueCount / totalTicketsForOverdueRate) * 100
+                : 0;
+
+        // Calculate completion overdue rate (tickets completed after due date)
+        // Include open overdue tickets as tickets that will be completed after due date
+        const totalTicketsForCompletionRate = totalCompleted + openOverdueCount;
+        const completionOverdueCount = (totalCompleted - completionOnTime) + openOverdueCount;
+        const completionOverdueRate =
+            totalTicketsForCompletionRate > 0
+                ? (completionOverdueCount / totalTicketsForCompletionRate) * 100
                 : 0;
 
         return {
@@ -495,6 +532,7 @@ export class TicketStatsService {
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
             efficiencyScore: parseFloat(efficiencyScore.toFixed(2)),
             sentToVerificationOverdueRate: parseFloat(sentToVerificationOverdueRate.toFixed(2)),
+            completionOverdueRate: parseFloat(completionOverdueRate.toFixed(2)),
         };
     }
 
@@ -640,20 +678,40 @@ export class TicketStatsService {
                         );
                     }
 
-                    // Calculate sent to verification overdue rate (tickets sent to verification after due date)
+                    // Calculate sent to verification overdue rate including open overdue tickets
+                    // Count open overdue tickets for this department
+                    let deptOpenOverdueCount = 0;
+                    this.processOpenOverdueTickets(deptTicketStats, () => {
+                        deptOpenOverdueCount++;
+                    });
+
+                    // Count verification overdue tickets for this department
+                    let deptVerificationOverdueCount = 0;
+                    await this.processVerificationOverdueTickets(
+                        deptTicketStats,
+                        accessProfile,
+                        () => {
+                            deptVerificationOverdueCount++;
+                        },
+                    );
+
                     const totalClosed = metrics.totalCompleted + metrics.rejectedCount;
+                    const totalTicketsForOverdueRate = totalClosed + deptOpenOverdueCount + deptVerificationOverdueCount;
+                    const closedOverdueCount = totalClosed - metrics.sentToVerificationOnTime;
+                    const totalOverdueCount = closedOverdueCount + deptOpenOverdueCount + deptVerificationOverdueCount;
+
                     sentToVerificationOverdueRate =
-                        totalClosed > 0
-                            ? ((totalClosed - metrics.sentToVerificationOnTime) / totalClosed) *
-                              100
+                        totalTicketsForOverdueRate > 0
+                            ? (totalOverdueCount / totalTicketsForOverdueRate) * 100
                             : 0;
 
                     // Calculate completion overdue rate (tickets completed after due date)
+                    // Include open overdue tickets as tickets that will be completed after due date
+                    const totalTicketsForCompletionRate = metrics.totalCompleted + deptOpenOverdueCount;
+                    const completionOverdueCount = (metrics.totalCompleted - metrics.completionOnTime) + deptOpenOverdueCount;
                     completionOverdueRate =
-                        metrics.totalCompleted > 0
-                            ? ((metrics.totalCompleted - metrics.completionOnTime) /
-                                  metrics.totalCompleted) *
-                              100
+                        totalTicketsForCompletionRate > 0
+                            ? (completionOverdueCount / totalTicketsForCompletionRate) * 100
                             : 0;
 
                     deptStats.resolutionRate = parseFloat(resolutionRate.toFixed(2));
@@ -1663,13 +1721,40 @@ export class TicketStatsService {
             );
         }
 
-        // Calculate totalClosed (completed + rejected) for overdue rate
+        // Calculate overdue rate including open overdue tickets
+        // Count open overdue tickets (Case 1: open tickets that are overdue)
+        let openOverdueCount = 0;
+        this.processOpenOverdueTickets(statsItemsWithWeekendExclusion, () => {
+            openOverdueCount++;
+        });
+
+        // Count verification overdue tickets (Case 2: tickets in verification sent after dueAt)
+        let verificationOverdueCount = 0;
+        await this.processVerificationOverdueTickets(
+            statsItemsWithWeekendExclusion,
+            accessProfile,
+            () => {
+                verificationOverdueCount++;
+            },
+        );
+
+        // Total tickets for overdue rate calculation: closed tickets + open overdue tickets
         const totalClosedForOverdueRate = userMetrics.totalCompleted + userMetrics.rejectedCount;
+        const totalTicketsForOverdueRate = totalClosedForOverdueRate + openOverdueCount + verificationOverdueCount;
+
+        // Overdue count: closed tickets sent late + open overdue tickets
+        const closedOverdueCount = totalClosedForOverdueRate - userMetrics.sentToVerificationOnTime;
+        const totalOverdueCount = closedOverdueCount + openOverdueCount + verificationOverdueCount;
+
         const sentToVerificationOverdueRate =
-            totalClosedForOverdueRate > 0
-                ? ((totalClosedForOverdueRate - userMetrics.sentToVerificationOnTime) /
-                      totalClosedForOverdueRate) *
-                  100
+            totalTicketsForOverdueRate > 0
+                ? (totalOverdueCount / totalTicketsForOverdueRate) * 100
+                : 0;
+
+        // Calculate completion overdue rate (tickets completed after due date)
+        const completionOverdueRate =
+            userMetrics.totalCompleted > 0
+                ? ((userMetrics.totalCompleted - userMetrics.completionOnTime) / userMetrics.totalCompleted) * 100
                 : 0;
 
         // Only include efficiency score if user has at least 10 tickets
@@ -1682,6 +1767,7 @@ export class TicketStatsService {
             averageAcceptanceTimeSeconds: avgAcceptanceTimeSeconds,
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
             sentToVerificationOverdueRate: parseFloat(sentToVerificationOverdueRate.toFixed(2)),
+            completionOverdueRate: parseFloat(completionOverdueRate.toFixed(2)),
             detailedMetrics: {
                 sentToVerificationOnTime: userMetrics.sentToVerificationOnTime ?? 0,
                 totalCompleted: userMetrics.totalCompleted ?? 0,
@@ -2321,6 +2407,10 @@ export class TicketStatsService {
             userCompletionIndexTotals.set(userId, metrics.totalClosed);
         });
 
+        // Track open overdue counts per user for overdue rate calculation
+        const userOpenOverdueCounts = new Map<number, number>();
+        const userVerificationOverdueCounts = new Map<number, number>();
+
         // Include open overdue tickets in completion index calculation
         // Case 1: Open tickets (not awaiting/under verification) that are overdue
         this.processOpenOverdueTickets(filteredStats, (stat) => {
@@ -2332,6 +2422,10 @@ export class TicketStatsService {
             assignees.forEach((userId) => {
                 const currentTotal = userCompletionIndexTotals.get(userId) || 0;
                 userCompletionIndexTotals.set(userId, currentTotal + 1);
+                
+                // Also track for overdue rate calculation
+                const currentOverdueCount = userOpenOverdueCounts.get(userId) || 0;
+                userOpenOverdueCounts.set(userId, currentOverdueCount + 1);
             });
         });
 
@@ -2345,6 +2439,10 @@ export class TicketStatsService {
             assignees.forEach((userId) => {
                 const currentTotal = userCompletionIndexTotals.get(userId) || 0;
                 userCompletionIndexTotals.set(userId, currentTotal + 1);
+                
+                // Also track for overdue rate calculation
+                const currentVerificationOverdueCount = userVerificationOverdueCounts.get(userId) || 0;
+                userVerificationOverdueCounts.set(userId, currentVerificationOverdueCount + 1);
             });
         });
 
@@ -2380,6 +2478,7 @@ export class TicketStatsService {
                 averageAcceptanceTimeSeconds: 0,
                 averageResolutionTimeSeconds: 0,
                 sentToVerificationOverdueRate: 0,
+                completionOverdueRate: 0,
                 avatarUrl: null,
                 isActive: user.isActive,
             });
@@ -2432,15 +2531,25 @@ export class TicketStatsService {
                         );
                     }
 
+                    // Calculate overdue rate including open overdue tickets for this user
+                    const userOpenOverdueCount = userOpenOverdueCounts.get(user.userId) || 0;
+                    const userVerificationOverdueCount = userVerificationOverdueCounts.get(user.userId) || 0;
+
                     const totalClosedForOverdueRate = m.totalCompleted + m.rejectedCount;
+                    const totalTicketsForOverdueRate = totalClosedForOverdueRate + userOpenOverdueCount + userVerificationOverdueCount;
+                    const closedOverdueCount = totalClosedForOverdueRate - m.sentToVerificationOnTime;
+                    const totalOverdueCount = closedOverdueCount + userOpenOverdueCount + userVerificationOverdueCount;
+
                     user.sentToVerificationOverdueRate =
-                        totalClosedForOverdueRate > 0
+                        totalTicketsForOverdueRate > 0
+                            ? parseFloat(((totalOverdueCount / totalTicketsForOverdueRate) * 100).toFixed(2))
+                            : 0;
+
+                    // Calculate completion overdue rate (tickets completed after due date)
+                    user.completionOverdueRate =
+                        m.totalCompleted > 0
                             ? parseFloat(
-                                  (
-                                      ((totalClosedForOverdueRate - m.sentToVerificationOnTime) /
-                                          totalClosedForOverdueRate) *
-                                      100
-                                  ).toFixed(2),
+                                  (((m.totalCompleted - m.completionOnTime) / m.totalCompleted) * 100).toFixed(2),
                               )
                             : 0;
                 }

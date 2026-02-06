@@ -38,5 +38,6 @@ export class TicketStatsResponseDto {
     resolutionRate: number;
     efficiencyScore?: number;
     sentToVerificationOverdueRate: number; // Percentage of completed tickets that were sent to verification after dueAt
+    completionOverdueRate: number; // Percentage of completed tickets that were actually completed after dueAt
     detailedMetrics?: DetailedMetricsDto; // Optional detailed metrics for user stats explanation
 }
