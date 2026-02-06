@@ -68,10 +68,10 @@ interface TicketLifeCycleInfo {
 }
 
 interface DetailedMetrics {
-    onTimeCompleted: number; // Sent to verification on time (legacy alias for sentToVerificationOnTime)
     sentToVerificationOnTime: number; // Count of tickets sent to verification before due date
     completionOnTime: number; // Count of tickets completed before due date
     totalCompleted: number;
+    completionIndexTicketsTotal: number;
     onTimeVerified: number;
     totalVerified: number;
     totalClosed: number;
@@ -421,8 +421,9 @@ export class TicketStatsService {
         });
 
         // Sum up metrics for the whole tenant/selection
-        let onTimeCompleted = 0;
+        let sentToVerificationOnTime = 0;
         let totalCompleted = 0;
+        let completionOnTime = 0;
         let onTimeVerified = 0;
         let totalVerified = 0;
         let rejectedCount = 0;
@@ -430,9 +431,16 @@ export class TicketStatsService {
         const totalEntries = finishedItems.length;
 
         lifeCycleMap.forEach((lc) => {
+            // Count tickets sent to verification on time (both resolved and rejected)
+            if (lc.isClosed && lc.sentToVerificationOnTime) {
+                sentToVerificationOnTime++;
+            }
+
             if (lc.isResolved) {
                 totalCompleted++;
-                if (lc.sentToVerificationOnTime) onTimeCompleted++;
+                if (lc.completionOnTime) {
+                    completionOnTime++;
+                }
                 if (lc.wasReturned) returnedCount++;
             }
 
@@ -444,18 +452,75 @@ export class TicketStatsService {
             });
         });
 
+        // Calculate totalClosed (completed + rejected) - keep real values
+        const totalClosed = totalCompleted + rejectedCount;
+
+        // Create separate variable for completion index calculation that includes overdue tickets
+        let completionIndexTicketsTotal = totalClosed;
+
+        // Include open overdue tickets in completion index calculation
+        // Case 1: Open tickets (not awaiting/under verification) that are overdue
+        this.processOpenOverdueTickets(itemsWithWeekendExclusion, () => {
+            completionIndexTicketsTotal++;
+        });
+
+        // Case 2: Tickets in AwaitingVerification or UnderVerification that were sent after dueAt
+        await this.processVerificationOverdueTickets(
+            itemsWithWeekendExclusion,
+            accessProfile,
+            () => {
+                completionIndexTicketsTotal++;
+            },
+        );
+
         const efficiencyScore = this.calculateComprehensiveScore(
-            onTimeCompleted,
-            totalCompleted,
+            sentToVerificationOnTime,
+            completionIndexTicketsTotal,
             onTimeVerified,
             totalVerified,
             rejectedCount,
             returnedCount,
+            totalCompleted,
             totalEntries,
         );
 
+        // Calculate overdue rate including open overdue tickets
+        // Count open overdue tickets (Case 1: open tickets that are overdue)
+        let openOverdueCount = 0;
+        this.processOpenOverdueTickets(itemsWithWeekendExclusion, () => {
+            openOverdueCount++;
+        });
+
+        // Count verification overdue tickets (Case 2: tickets in verification sent after dueAt)
+        let verificationOverdueCount = 0;
+        await this.processVerificationOverdueTickets(
+            itemsWithWeekendExclusion,
+            accessProfile,
+            () => {
+                verificationOverdueCount++;
+            },
+        );
+
+        // Total tickets for overdue rate calculation: closed tickets + open overdue tickets
+        const totalTicketsForOverdueRate = totalClosed + openOverdueCount + verificationOverdueCount;
+
+        // Overdue count: closed tickets sent late + open overdue tickets
+        const closedOverdueCount = totalClosed - sentToVerificationOnTime;
+        const totalOverdueCount = closedOverdueCount + openOverdueCount + verificationOverdueCount;
+
         const sentToVerificationOverdueRate =
-            totalCompleted > 0 ? ((totalCompleted - onTimeCompleted) / totalCompleted) * 100 : 0;
+            totalTicketsForOverdueRate > 0
+                ? (totalOverdueCount / totalTicketsForOverdueRate) * 100
+                : 0;
+
+        // Calculate completion overdue rate (tickets completed after due date)
+        // Include open overdue tickets as tickets that will be completed after due date
+        const totalTicketsForCompletionRate = totalCompleted + openOverdueCount;
+        const completionOverdueCount = (totalCompleted - completionOnTime) + openOverdueCount;
+        const completionOverdueRate =
+            totalTicketsForCompletionRate > 0
+                ? (completionOverdueCount / totalTicketsForCompletionRate) * 100
+                : 0;
 
         return {
             totalTickets,
@@ -467,6 +532,7 @@ export class TicketStatsService {
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
             efficiencyScore: parseFloat(efficiencyScore.toFixed(2)),
             sentToVerificationOverdueRate: parseFloat(sentToVerificationOverdueRate.toFixed(2)),
+            completionOverdueRate: parseFloat(completionOverdueRate.toFixed(2)),
         };
     }
 
@@ -516,6 +582,33 @@ export class TicketStatsService {
             finishedStatsItems,
             lifeCycleMap,
         );
+
+        // Track completionIndexTicketsTotal per department (separate from totalCompleted/totalClosed)
+        const deptCompletionIndexTotals = new Map<number, number>();
+        deptDetailedMetrics.forEach((metrics, deptId) => {
+            deptCompletionIndexTotals.set(deptId, metrics.totalClosed);
+        });
+
+        // Include open overdue tickets in completion index calculation
+        // Case 1: Open tickets (not awaiting/under verification) that are overdue
+        this.processOpenOverdueTickets(filteredStatsItems, (stat) => {
+            if (stat.departmentIds) {
+                stat.departmentIds.forEach((deptId) => {
+                    const currentTotal = deptCompletionIndexTotals.get(deptId) || 0;
+                    deptCompletionIndexTotals.set(deptId, currentTotal + 1);
+                });
+            }
+        });
+
+        // Case 2: Tickets in AwaitingVerification or UnderVerification that were sent after dueAt
+        await this.processVerificationOverdueTickets(filteredStatsItems, accessProfile, (stat) => {
+            if (stat.departmentIds) {
+                stat.departmentIds.forEach((deptId) => {
+                    const currentTotal = deptCompletionIndexTotals.get(deptId) || 0;
+                    deptCompletionIndexTotals.set(deptId, currentTotal + 1);
+                });
+            }
+        });
 
         // 3. Apply Legacy Adjustments (Weekend Exclusion)
         const statsItemsWithExclusion = await this.applyWeekendExclusion(filteredStatsItems);
@@ -572,31 +665,53 @@ export class TicketStatsService {
 
                     // Only calculate efficiency score if department has at least 5 tickets
                     if (totalTickets >= 5) {
+                        const completionIndexTicketsTotal = deptCompletionIndexTotals.get(dept.id) || metrics.totalClosed;
                         deptStats.efficiencyScore = this.calculateComprehensiveScore(
-                            metrics.onTimeCompleted,
-                            metrics.totalCompleted,
+                            metrics.sentToVerificationOnTime,
+                            completionIndexTicketsTotal,
                             metrics.onTimeVerified,
                             metrics.totalVerified,
                             metrics.rejectedCount,
                             metrics.returnedCount,
+                            metrics.totalCompleted,
                             metrics.totalEntries,
                         );
                     }
 
-                    // Calculate sent to verification overdue rate (tickets sent to verification after due date)
+                    // Calculate sent to verification overdue rate including open overdue tickets
+                    // Count open overdue tickets for this department
+                    let deptOpenOverdueCount = 0;
+                    this.processOpenOverdueTickets(deptTicketStats, () => {
+                        deptOpenOverdueCount++;
+                    });
+
+                    // Count verification overdue tickets for this department
+                    let deptVerificationOverdueCount = 0;
+                    await this.processVerificationOverdueTickets(
+                        deptTicketStats,
+                        accessProfile,
+                        () => {
+                            deptVerificationOverdueCount++;
+                        },
+                    );
+
+                    const totalClosed = metrics.totalCompleted + metrics.rejectedCount;
+                    const totalTicketsForOverdueRate = totalClosed + deptOpenOverdueCount + deptVerificationOverdueCount;
+                    const closedOverdueCount = totalClosed - metrics.sentToVerificationOnTime;
+                    const totalOverdueCount = closedOverdueCount + deptOpenOverdueCount + deptVerificationOverdueCount;
+
                     sentToVerificationOverdueRate =
-                        metrics.totalCompleted > 0
-                            ? ((metrics.totalCompleted - metrics.sentToVerificationOnTime) /
-                                  metrics.totalCompleted) *
-                              100
+                        totalTicketsForOverdueRate > 0
+                            ? (totalOverdueCount / totalTicketsForOverdueRate) * 100
                             : 0;
 
                     // Calculate completion overdue rate (tickets completed after due date)
+                    // Include open overdue tickets as tickets that will be completed after due date
+                    const totalTicketsForCompletionRate = metrics.totalCompleted + deptOpenOverdueCount;
+                    const completionOverdueCount = (metrics.totalCompleted - metrics.completionOnTime) + deptOpenOverdueCount;
                     completionOverdueRate =
-                        metrics.totalCompleted > 0
-                            ? ((metrics.totalCompleted - metrics.completionOnTime) /
-                                  metrics.totalCompleted) *
-                              100
+                        totalTicketsForCompletionRate > 0
+                            ? (completionOverdueCount / totalTicketsForCompletionRate) * 100
                             : 0;
 
                     deptStats.resolutionRate = parseFloat(resolutionRate.toFixed(2));
@@ -1477,11 +1592,14 @@ export class TicketStatsService {
         });
 
         const userDetailedMetricsMap = this.aggregateMetricsByUser(finishedItems, lifeCycleMap);
-        const userMetrics = userDetailedMetricsMap.get(userId) || {
-            onTimeCompleted: 0,
+        const userMetrics: DetailedMetrics = userDetailedMetricsMap.get(userId) || {
+            sentToVerificationOnTime: 0,
+            completionOnTime: 0,
             totalCompleted: 0,
+            completionIndexTicketsTotal: 0,
             onTimeVerified: 0,
             totalVerified: 0,
+            totalClosed: 0,
             rejectedCount: 0,
             returnedCount: 0,
             totalEntries: 0,
@@ -1557,51 +1675,86 @@ export class TicketStatsService {
             }
         }
 
-        // Calculate indices after merging all metrics
-        const completionIndex = this.calculateWilsonScore(
-            userMetrics.onTimeCompleted,
-            userMetrics.totalCompleted,
-        );
-        const verificationIndex =
-            userMetrics.totalVerified > 0
-                ? Math.max(0, userMetrics.onTimeVerified / userMetrics.totalVerified)
-                : 1;
-        let rejectionIndex = 1;
-        if (userMetrics.totalEntries > 0) {
-            rejectionIndex =
-                userMetrics.totalCompleted > 0
-                    ? Math.max(0, 1 - userMetrics.rejectedCount / userMetrics.totalCompleted)
-                    : 0;
-        }
+        let completionIndexTicketsTotal = userMetrics.totalClosed;
 
-        let returnIndex = 1;
-        if (userMetrics.totalEntries > 0) {
-            returnIndex =
-                userMetrics.totalCompleted > 0
-                    ? Math.max(0, 1 - userMetrics.returnedCount / userMetrics.totalCompleted)
-                    : 0;
-        }
+        // Include open overdue tickets in completion index calculation
+        // Case 1: Open tickets (not awaiting/under verification) that are overdue
+        this.processOpenOverdueTickets(statsItemsWithWeekendExclusion, () => {
+            completionIndexTicketsTotal++;
+        });
+
+        // Case 2: Tickets in AwaitingVerification or UnderVerification that were sent after dueAt
+        await this.processVerificationOverdueTickets(
+            statsItemsWithWeekendExclusion,
+            accessProfile,
+            () => {
+                completionIndexTicketsTotal++;
+            },
+        );
+
+        // Calculate indices after merging all metrics
+        const indices = this.calculatePerformanceIndices(
+            userMetrics.sentToVerificationOnTime,
+            completionIndexTicketsTotal,
+            userMetrics.onTimeVerified,
+            userMetrics.totalVerified,
+            userMetrics.rejectedCount,
+            userMetrics.returnedCount,
+            userMetrics.totalCompleted,
+            userMetrics.totalEntries,
+        );
+        const { completionIndex, verificationIndex, rejectionIndex, returnIndex } = indices;
 
         let efficiencyScore: number | undefined = undefined;
 
         // Only calculate efficiency score if user has at least 5 finished tickets
         if (userMetrics.totalEntries >= 5) {
             efficiencyScore = this.calculateComprehensiveScore(
-                userMetrics.onTimeCompleted,
-                userMetrics.totalCompleted,
+                userMetrics.sentToVerificationOnTime,
+                completionIndexTicketsTotal,
                 userMetrics.onTimeVerified,
                 userMetrics.totalVerified,
                 userMetrics.rejectedCount,
                 userMetrics.returnedCount,
+                userMetrics.totalCompleted,
                 userMetrics.totalEntries,
             );
         }
 
+        // Calculate overdue rate including open overdue tickets
+        // Count open overdue tickets (Case 1: open tickets that are overdue)
+        let openOverdueCount = 0;
+        this.processOpenOverdueTickets(statsItemsWithWeekendExclusion, () => {
+            openOverdueCount++;
+        });
+
+        // Count verification overdue tickets (Case 2: tickets in verification sent after dueAt)
+        let verificationOverdueCount = 0;
+        await this.processVerificationOverdueTickets(
+            statsItemsWithWeekendExclusion,
+            accessProfile,
+            () => {
+                verificationOverdueCount++;
+            },
+        );
+
+        // Total tickets for overdue rate calculation: closed tickets + open overdue tickets
+        const totalClosedForOverdueRate = userMetrics.totalCompleted + userMetrics.rejectedCount;
+        const totalTicketsForOverdueRate = totalClosedForOverdueRate + openOverdueCount + verificationOverdueCount;
+
+        // Overdue count: closed tickets sent late + open overdue tickets
+        const closedOverdueCount = totalClosedForOverdueRate - userMetrics.sentToVerificationOnTime;
+        const totalOverdueCount = closedOverdueCount + openOverdueCount + verificationOverdueCount;
+
         const sentToVerificationOverdueRate =
+            totalTicketsForOverdueRate > 0
+                ? (totalOverdueCount / totalTicketsForOverdueRate) * 100
+                : 0;
+
+        // Calculate completion overdue rate (tickets completed after due date)
+        const completionOverdueRate =
             userMetrics.totalCompleted > 0
-                ? ((userMetrics.totalCompleted - userMetrics.onTimeCompleted) /
-                      userMetrics.totalCompleted) *
-                  100
+                ? ((userMetrics.totalCompleted - userMetrics.completionOnTime) / userMetrics.totalCompleted) * 100
                 : 0;
 
         // Only include efficiency score if user has at least 10 tickets
@@ -1614,14 +1767,17 @@ export class TicketStatsService {
             averageAcceptanceTimeSeconds: avgAcceptanceTimeSeconds,
             resolutionRate: parseFloat(resolutionRate.toFixed(2)),
             sentToVerificationOverdueRate: parseFloat(sentToVerificationOverdueRate.toFixed(2)),
+            completionOverdueRate: parseFloat(completionOverdueRate.toFixed(2)),
             detailedMetrics: {
-                onTimeCompleted: userMetrics.onTimeCompleted,
-                totalCompleted: userMetrics.totalCompleted,
-                onTimeVerified: userMetrics.onTimeVerified,
-                totalVerified: userMetrics.totalVerified,
-                rejectedCount: userMetrics.rejectedCount,
-                returnedCount: userMetrics.returnedCount,
-                totalEntries: userMetrics.totalEntries,
+                sentToVerificationOnTime: userMetrics.sentToVerificationOnTime ?? 0,
+                totalCompleted: userMetrics.totalCompleted ?? 0,
+                totalClosed: userMetrics.totalClosed ?? 0,
+                completionIndexTicketsTotal: completionIndexTicketsTotal ?? 0,
+                onTimeVerified: userMetrics.onTimeVerified ?? 0,
+                totalVerified: userMetrics.totalVerified ?? 0,
+                rejectedCount: userMetrics.rejectedCount ?? 0,
+                returnedCount: userMetrics.returnedCount ?? 0,
+                totalEntries: userMetrics.totalEntries ?? 0,
                 completionIndex: parseFloat(completionIndex.toFixed(2)),
                 verificationIndex: parseFloat(verificationIndex.toFixed(2)),
                 rejectionIndex: parseFloat(rejectionIndex.toFixed(2)),
@@ -2230,13 +2386,13 @@ export class TicketStatsService {
                 } else {
                     // User only has verification activity, no target activity
                     userDetailedMetrics.set(userId, {
-                        onTimeCompleted: 0,
                         sentToVerificationOnTime: 0,
                         completionOnTime: 0,
                         totalCompleted: 0,
                         onTimeVerified: metrics.onTimeVerified,
                         totalVerified: metrics.totalVerified,
                         totalClosed: 0,
+                        completionIndexTicketsTotal: 0,
                         rejectedCount: 0,
                         returnedCount: 0,
                         totalEntries: 0,
@@ -2244,6 +2400,51 @@ export class TicketStatsService {
                 }
             });
         }
+
+        // Track completionIndexTicketsTotal per user (separate from totalCompleted/totalClosed)
+        const userCompletionIndexTotals = new Map<number, number>();
+        userDetailedMetrics.forEach((metrics, userId) => {
+            userCompletionIndexTotals.set(userId, metrics.totalClosed);
+        });
+
+        // Track open overdue counts per user for overdue rate calculation
+        const userOpenOverdueCounts = new Map<number, number>();
+        const userVerificationOverdueCounts = new Map<number, number>();
+
+        // Include open overdue tickets in completion index calculation
+        // Case 1: Open tickets (not awaiting/under verification) that are overdue
+        this.processOpenOverdueTickets(filteredStats, (stat) => {
+            // Count open overdue tickets for completion index calculation for all assignees
+            const assignees = new Set<number>();
+            if (stat.currentTargetUserId) assignees.add(stat.currentTargetUserId);
+            stat.targetUserIds?.forEach((userId) => assignees.add(userId));
+
+            assignees.forEach((userId) => {
+                const currentTotal = userCompletionIndexTotals.get(userId) || 0;
+                userCompletionIndexTotals.set(userId, currentTotal + 1);
+                
+                // Also track for overdue rate calculation
+                const currentOverdueCount = userOpenOverdueCounts.get(userId) || 0;
+                userOpenOverdueCounts.set(userId, currentOverdueCount + 1);
+            });
+        });
+
+        // Case 2: Tickets in AwaitingVerification or UnderVerification that were sent after dueAt
+        await this.processVerificationOverdueTickets(filteredStats, accessProfile, (stat) => {
+            // Count as overdue for completion index calculation for all assignees
+            const assignees = new Set<number>();
+            if (stat.currentTargetUserId) assignees.add(stat.currentTargetUserId);
+            stat.targetUserIds?.forEach((userId) => assignees.add(userId));
+
+            assignees.forEach((userId) => {
+                const currentTotal = userCompletionIndexTotals.get(userId) || 0;
+                userCompletionIndexTotals.set(userId, currentTotal + 1);
+                
+                // Also track for overdue rate calculation
+                const currentVerificationOverdueCount = userVerificationOverdueCounts.get(userId) || 0;
+                userVerificationOverdueCounts.set(userId, currentVerificationOverdueCount + 1);
+            });
+        });
 
         // Handle case where filteredStats is empty but we may have reviewer-only activity
         if (filteredStats.length === 0 && filteredReviewerStats.length === 0) {
@@ -2277,6 +2478,7 @@ export class TicketStatsService {
                 averageAcceptanceTimeSeconds: 0,
                 averageResolutionTimeSeconds: 0,
                 sentToVerificationOverdueRate: 0,
+                completionOverdueRate: 0,
                 avatarUrl: null,
                 isActive: user.isActive,
             });
@@ -2316,24 +2518,38 @@ export class TicketStatsService {
 
                     // Only calculate efficiency score if user has at least 5 finished tickets
                     if (m.totalEntries >= 5) {
+                        const completionIndexTicketsTotal = userCompletionIndexTotals.get(user.userId) || m.totalClosed;
                         user.efficiencyScore = this.calculateComprehensiveScore(
-                            m.onTimeCompleted,
-                            m.totalCompleted,
+                            m.sentToVerificationOnTime,
+                            completionIndexTicketsTotal,
                             m.onTimeVerified,
                             m.totalVerified,
                             m.rejectedCount,
                             m.returnedCount,
+                            m.totalCompleted,
                             m.totalEntries,
                         );
                     }
 
+                    // Calculate overdue rate including open overdue tickets for this user
+                    const userOpenOverdueCount = userOpenOverdueCounts.get(user.userId) || 0;
+                    const userVerificationOverdueCount = userVerificationOverdueCounts.get(user.userId) || 0;
+
+                    const totalClosedForOverdueRate = m.totalCompleted + m.rejectedCount;
+                    const totalTicketsForOverdueRate = totalClosedForOverdueRate + userOpenOverdueCount + userVerificationOverdueCount;
+                    const closedOverdueCount = totalClosedForOverdueRate - m.sentToVerificationOnTime;
+                    const totalOverdueCount = closedOverdueCount + userOpenOverdueCount + userVerificationOverdueCount;
+
                     user.sentToVerificationOverdueRate =
+                        totalTicketsForOverdueRate > 0
+                            ? parseFloat(((totalOverdueCount / totalTicketsForOverdueRate) * 100).toFixed(2))
+                            : 0;
+
+                    // Calculate completion overdue rate (tickets completed after due date)
+                    user.completionOverdueRate =
                         m.totalCompleted > 0
                             ? parseFloat(
-                                  (
-                                      ((m.totalCompleted - m.onTimeCompleted) / m.totalCompleted) *
-                                      100
-                                  ).toFixed(2),
+                                  (((m.totalCompleted - m.completionOnTime) / m.totalCompleted) * 100).toFixed(2),
                               )
                             : 0;
                 }
@@ -2543,22 +2759,25 @@ export class TicketStatsService {
     }
 
     /**
-     * Calculates a comprehensive performance score based on weighted indices:
-     * 1. On-time completion (35%) - Wilson corrected
-     * 2. On-time verification (30%) - Wilson corrected
-     * 3. Quality / Rejection rate (25%)
-     * 4. Quality / Return rate (10%)
+     * Calculates performance indices from metrics
+     * @returns Object containing all calculated indices
      */
-    private calculateComprehensiveScore(
-        onTimeCompleted: number,
-        totalCompleted: number,
+    private calculatePerformanceIndices(
+        sentToVerificationOnTime: number,
+        completionIndexTicketsTotal: number,
         onTimeVerified: number,
         totalVerified: number,
         rejectedCount: number,
-        returnedTickets: number,
+        returnedCount: number,
+        totalCompleted: number,
         totalEntries: number,
-    ): number {
-        const completionIndex = this.calculateWilsonScore(onTimeCompleted, totalCompleted);
+    ): {
+        completionIndex: number;
+        verificationIndex: number;
+        rejectionIndex: number;
+        returnIndex: number;
+    } {
+        const completionIndex = this.calculateWilsonScore(sentToVerificationOnTime, completionIndexTicketsTotal);
         const verificationIndex =
             totalVerified > 0 ? Math.max(0, onTimeVerified / totalVerified) : 1;
         let rejectionIndex = 1;
@@ -2569,15 +2788,50 @@ export class TicketStatsService {
 
         let returnIndex = 1;
         if (totalEntries > 0) {
-            returnIndex =
-                totalCompleted > 0 ? Math.max(0, 1 - returnedTickets / totalCompleted) : 0;
+            returnIndex = totalCompleted > 0 ? Math.max(0, 1 - returnedCount / totalCompleted) : 0;
         }
 
+        return {
+            completionIndex,
+            verificationIndex,
+            rejectionIndex,
+            returnIndex,
+        };
+    }
+
+    /**
+     * Calculates a comprehensive performance score based on weighted indices:
+     * 1. On-time completion (40%) - Wilson corrected
+     * 2. Quality / Return rate (30%)
+     * 3. On-time verification (15%)
+     * 4. Quality / Rejection rate (15%)
+     */
+    private calculateComprehensiveScore(
+        sentToVerificationOnTime: number,
+        completionIndexTicketsTotal: number,
+        onTimeVerified: number,
+        totalVerified: number,
+        rejectedCount: number,
+        returnedTickets: number,
+        totalCompleted: number,
+        totalEntries: number,
+    ): number {
+        const indices = this.calculatePerformanceIndices(
+            sentToVerificationOnTime,
+            completionIndexTicketsTotal,
+            onTimeVerified,
+            totalVerified,
+            rejectedCount,
+            returnedTickets,
+            totalCompleted,
+            totalEntries,
+        );
+
         const score =
-            completionIndex * 0.4 +
-            returnIndex * 0.3 +
-            verificationIndex * 0.15 +
-            rejectionIndex * 0.15;
+            indices.completionIndex * 0.4 +
+            indices.returnIndex * 0.3 +
+            indices.verificationIndex * 0.15 +
+            indices.rejectionIndex * 0.15;
 
         return Math.max(0, Math.min(1, score));
     }
@@ -2735,6 +2989,113 @@ export class TicketStatsService {
         return items.filter((s) => s.isResolved || s.isRejected).map((s) => s.ticketId);
     }
 
+    /**
+     * Processes open overdue tickets (Case 1: tickets not in verification that are overdue)
+     * @param stats - Array of ticket stats to process
+     * @param onOverdueTicket - Callback function called for each overdue ticket with the ticket stat
+     * @returns Number of overdue tickets found
+     */
+    private processOpenOverdueTickets(
+        stats: TicketStats[],
+        onOverdueTicket: (stat: TicketStats) => void,
+    ): number {
+        const openTicketStats = stats.filter(
+            (stat) =>
+                !stat.isResolved &&
+                !stat.isRejected &&
+                stat.statusKey !== TicketStatus.AwaitingVerification &&
+                stat.statusKey !== TicketStatus.UnderVerification,
+        );
+        const now = new Date();
+        let overdueCount = 0;
+
+        for (const stat of openTicketStats) {
+            if (stat.dueAt && isBefore(stat.dueAt, now)) {
+                onOverdueTicket(stat);
+                overdueCount++;
+            }
+        }
+
+        return overdueCount;
+    }
+
+    /**
+     * Processes tickets in verification that were sent after dueAt (Case 2)
+     * @param stats - Array of ticket stats to process
+     * @param accessProfile - Access profile for fetching updates
+     * @param onOverdueTicket - Callback function called for each overdue ticket with the ticket stat
+     * @returns Number of overdue tickets found
+     */
+    private async processVerificationOverdueTickets(
+        stats: TicketStats[],
+        accessProfile: AccessProfile,
+        onOverdueTicket: (stat: TicketStats) => void,
+    ): Promise<number> {
+        const verificationTicketStats = stats.filter(
+            (stat) =>
+                !stat.isResolved &&
+                !stat.isRejected &&
+                (stat.statusKey === TicketStatus.AwaitingVerification ||
+                    stat.statusKey === TicketStatus.UnderVerification),
+        );
+
+        if (verificationTicketStats.length === 0) {
+            return 0;
+        }
+
+        const verificationTicketIds = verificationTicketStats.map((s) => s.ticketId);
+        const verificationUpdates = await this.getTicketUpdates(
+            accessProfile,
+            verificationTicketIds,
+        );
+
+        const verificationUpdatesByTicket = new Map<number, TicketUpdate[]>();
+        verificationUpdates.forEach((u) => {
+            if (!verificationUpdatesByTicket.has(u.ticketId))
+                verificationUpdatesByTicket.set(u.ticketId, []);
+            verificationUpdatesByTicket.get(u.ticketId).push(u);
+        });
+
+        let overdueCount = 0;
+
+        for (const stat of verificationTicketStats) {
+            if (!stat.dueAt) continue;
+
+            const updates = verificationUpdatesByTicket.get(stat.ticketId) || [];
+            // Find when ticket was first sent to verification
+            let firstAwaitingVerificationAt: Date | null = null;
+
+            for (const update of updates) {
+                // Reset if ticket was retracted from verification back to in progress
+                if (
+                    update.fromStatus === TicketStatus.AwaitingVerification &&
+                    update.toStatus === TicketStatus.InProgress
+                ) {
+                    firstAwaitingVerificationAt = null;
+                }
+
+                // Track first submission to verification
+                if (update.toStatus === TicketStatus.AwaitingVerification) {
+                    if (!firstAwaitingVerificationAt) {
+                        firstAwaitingVerificationAt = update.createdAt;
+                    }
+                }
+            }
+
+            // If ticket was sent to verification after dueAt, count as overdue
+            if (
+                firstAwaitingVerificationAt &&
+                stat.dueAt &&
+                isBefore(stat.dueAt, firstAwaitingVerificationAt)
+            ) {
+                onOverdueTicket(stat);
+                overdueCount++;
+            }
+        }
+
+        return overdueCount;
+    }
+
     private async getTicketUpdates(
         accessProfile: AccessProfile,
         ticketIds: number[],
@@ -2860,13 +3221,13 @@ export class TicketStatsService {
         const getM = (userId: number) => {
             if (!userMetrics.has(userId)) {
                 userMetrics.set(userId, {
-                    onTimeCompleted: 0,
                     sentToVerificationOnTime: 0,
                     completionOnTime: 0,
                     totalCompleted: 0,
                     onTimeVerified: 0,
                     totalVerified: 0,
                     totalClosed: 0,
+                    completionIndexTicketsTotal: 0,
                     rejectedCount: 0,
                     returnedCount: 0,
                     totalEntries: 0,
@@ -2891,12 +3252,13 @@ export class TicketStatsService {
                     m.totalClosed++;
                 }
 
+                // Count tickets sent to verification on time (both resolved and rejected)
+                if (lifeCycle.isClosed && lifeCycle.sentToVerificationOnTime) {
+                    m.sentToVerificationOnTime++;
+                }
+
                 if (lifeCycle.isResolved) {
                     m.totalCompleted++;
-                    if (lifeCycle.sentToVerificationOnTime) {
-                        m.onTimeCompleted++;
-                        m.sentToVerificationOnTime++;
-                    }
                     if (lifeCycle.completionOnTime) {
                         m.completionOnTime++;
                     }
@@ -2939,13 +3301,13 @@ export class TicketStatsService {
         const getM = (deptId: number) => {
             if (!deptMetrics.has(deptId)) {
                 deptMetrics.set(deptId, {
-                    onTimeCompleted: 0,
                     sentToVerificationOnTime: 0,
                     completionOnTime: 0,
                     totalCompleted: 0,
                     onTimeVerified: 0,
                     totalVerified: 0,
                     totalClosed: 0,
+                    completionIndexTicketsTotal: 0,
                     rejectedCount: 0,
                     returnedCount: 0,
                     totalEntries: 0,
@@ -2966,6 +3328,11 @@ export class TicketStatsService {
                     m.totalClosed++;
                 }
 
+                // Count tickets sent to verification on time (both resolved and rejected)
+                if (lifeCycle.isClosed && lifeCycle.sentToVerificationOnTime) {
+                    m.sentToVerificationOnTime++;
+                }
+
                 if (lifeCycle.isResolved) {
                     m.totalCompleted++;
                     if (lifeCycle.wasReturned) {
@@ -2979,10 +3346,6 @@ export class TicketStatsService {
                         if (stat.departmentIds.length === 1) {
                             m.returnedCount++;
                         }
-                    }
-                    if (lifeCycle.sentToVerificationOnTime) {
-                        m.onTimeCompleted++;
-                        m.sentToVerificationOnTime++;
                     }
                     if (lifeCycle.completionOnTime) {
                         m.completionOnTime++;

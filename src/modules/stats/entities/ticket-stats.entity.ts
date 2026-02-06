@@ -2,6 +2,7 @@ import { DataSource, ViewColumn, ViewEntity } from 'typeorm';
 import { Ticket } from '../../ticket/entities/ticket.entity';
 import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-target-user.entity';
 import { User } from '../../user/entities/user.entity';
+import { TicketStatus } from '../../ticket-status/entities/ticket-status.entity';
 
 @ViewEntity({
     expression: (dataSource: DataSource) =>
@@ -23,6 +24,7 @@ import { User } from '../../user/entities/user.entity';
             .addSelect('ticket.dueAt', 'dueAt')
             .addSelect('ticket.reviewerId', 'reviewerId')
             .addSelect('reviewer.departmentId', 'reviewerDepartmentId')
+            .addSelect('ticketStatus.key', 'statusKey')
             .addSelect(
                 'CASE WHEN ticket.completedAt IS NOT NULL THEN true ELSE false END',
                 'isResolved',
@@ -47,6 +49,7 @@ import { User } from '../../user/entities/user.entity';
             .leftJoin(TicketTargetUser, 'tu', 'tu.ticketId = ticket.id')
             .leftJoin(User, 'targetUser', 'targetUser.id = tu.userId')
             .leftJoin(User, 'reviewer', 'reviewer.id = ticket.reviewerId')
+            .leftJoin(TicketStatus, 'ticketStatus', 'ticketStatus.id = ticket.statusId')
             .groupBy('ticket.id')
             .groupBy('ticket.createdAt')
             .groupBy('ticket.updatedAt')
@@ -59,6 +62,7 @@ import { User } from '../../user/entities/user.entity';
             .groupBy('ticket.dueAt')
             .groupBy('ticket.reviewerId')
             .groupBy('reviewer.departmentId')
+            .groupBy('ticketStatus.key')
             .from(Ticket, 'ticket'),
 })
 export class TicketStats {
@@ -112,6 +116,9 @@ export class TicketStats {
 
     @ViewColumn()
     reviewerDepartmentId: number | null;
+
+    @ViewColumn()
+    statusKey: string;
 
     @ViewColumn()
     totalTimeSeconds: number;
