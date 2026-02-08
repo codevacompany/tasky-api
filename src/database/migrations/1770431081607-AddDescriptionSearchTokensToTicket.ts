@@ -54,28 +54,44 @@ export class AddDescriptionSearchTokensToTicket1770431081607 implements Migratio
         await queryRunner.query(`CREATE INDEX "IDX_ticket_descriptionSearchTokens" ON "ticket" USING GIN ("descriptionSearchTokens")`);
 
         // Regenerate tokens for all existing tickets to include single-character prefixes
+        // Process in batches to avoid timeout on large datasets
         const encryptionService = new EncryptionService();
         const tickets = await queryRunner.query(`SELECT id, name, description FROM ticket`);
+        const BATCH_SIZE = 50;
 
-        for (const ticket of tickets) {
-            try {
-                // Decrypt name and description
-                const decryptedName = encryptionService.decrypt(ticket.name);
-                const decryptedDescription = encryptionService.decrypt(ticket.description);
+        for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
+            const batch = tickets.slice(i, i + BATCH_SIZE);
+            const updates: { id: number; nameTokens: string[]; descriptionTokens: string[] }[] = [];
 
-                // Regenerate tokens with new logic (includes single-char prefixes)
-                const nameTokens = this.createSearchTokens(decryptedName);
-                const descriptionTokens = this.createSearchTokens(decryptedDescription);
-
-                // Update the ticket with new tokens
-                await queryRunner.query(
-                    `UPDATE ticket SET "nameSearchTokens" = $1, "descriptionSearchTokens" = $2 WHERE id = $3`,
-                    [nameTokens, descriptionTokens, ticket.id]
-                );
-            } catch (error) {
-                console.error(`Error updating tokens for ticket ${ticket.id}:`, error);
-                // Continue with other tickets even if one fails
+            for (const ticket of batch) {
+                try {
+                    const decryptedName = encryptionService.decrypt(ticket.name);
+                    const decryptedDescription = encryptionService.decrypt(ticket.description);
+                    const nameTokens = this.createSearchTokens(decryptedName);
+                    const descriptionTokens = this.createSearchTokens(decryptedDescription);
+                    updates.push({ id: ticket.id, nameTokens, descriptionTokens });
+                } catch (error) {
+                    console.error(`Error processing ticket ${ticket.id}:`, error);
+                }
             }
+
+            if (updates.length === 0) continue;
+
+            // Batch update using PostgreSQL VALUES + JOIN
+            const placeholders = updates
+                .map(
+                    (_, idx) =>
+                        `($${idx * 3 + 1}::int, $${idx * 3 + 2}::text[], $${idx * 3 + 3}::text[])`
+                )
+                .join(', ');
+            const params = updates.flatMap((u) => [u.id, u.nameTokens, u.descriptionTokens]);
+
+            await queryRunner.query(
+                `UPDATE ticket SET "nameSearchTokens" = v."nameSearchTokens", "descriptionSearchTokens" = v."descriptionSearchTokens" ` +
+                    `FROM (VALUES ${placeholders}) AS v(id, "nameSearchTokens", "descriptionSearchTokens") ` +
+                    `WHERE ticket.id = v.id`,
+                params
+            );
         }
     }
 
