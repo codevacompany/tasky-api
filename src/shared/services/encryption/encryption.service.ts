@@ -203,6 +203,11 @@ export class EncryptionService {
         for (const word of words) {
             tokens.add(crypto.createHash('sha256').update(word).digest('hex'));
 
+            // Always include single-character prefix for first character to support single-char searches
+            if (word.length > 0) {
+                tokens.add(crypto.createHash('sha256').update(word[0]).digest('hex'));
+            }
+
             for (let i = 0; i < word.length; i++) {
                 for (let j = i + minSubstringLength; j <= word.length; j++) {
                     const substring = word.substring(i, j);
@@ -212,5 +217,33 @@ export class EncryptionService {
         }
 
         return Array.from(tokens);
+    }
+
+    /**
+     * Returns hashes of full words only from the search query.
+     * Used to require that at least one search word appears as a complete word in the ticket,
+     * preventing overly permissive matches (e.g. "Faça" matching "Nova tarefa" via shared substring "fa").
+     *
+     * @param text The search query
+     * @param minWordLength Minimum word length (default: 2, use 1 for single-char search)
+     * @returns Array of hashed full words
+     */
+    getSearchWordHashes(
+        text: string | null | undefined,
+        minWordLength: number = 2,
+    ): string[] {
+        if (!text) {
+            return [];
+        }
+
+        const normalized = text
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^\w\s]/g, ' ')
+            .trim();
+
+        const words = normalized.split(/\s+/).filter((word) => word.length >= minWordLength);
+        return words.map((word) => crypto.createHash('sha256').update(word).digest('hex'));
     }
 }
