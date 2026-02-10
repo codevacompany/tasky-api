@@ -650,38 +650,21 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             const nameValue = typeof where.name === 'string' ? where.name : null;
 
             if (nameValue) {
-                // Search using tokens for encrypted name and description fields
-                // For single-character searches, use minWordLength=1 to generate tokens
-                const trimmedSearch = nameValue.trim();
-                const isSingleChar = trimmedSearch.length === 1 && !trimmedSearch.includes(' ');
-                const searchTokens = isSingleChar
-                    ? this.encryptionService.createSearchTokens(nameValue, 1, 1)
-                    : this.encryptionService.createSearchTokens(nameValue);
-                const searchWordHashes = isSingleChar
-                    ? this.encryptionService.getSearchWordHashes(nameValue, 1)
-                    : this.encryptionService.getSearchWordHashes(nameValue);
+                // Prefix-only search: match words that START with the search terms.
+                const searchTokens = this.encryptionService.getSearchWordHashes(nameValue, 1);
 
                 if (searchTokens.length > 0) {
-                    // Use PostgreSQL array overlap (&&) with GIN indexes.
-                    // Require: (token overlap in name OR description) AND (full word match OR customId match)
+                    // Ticket must contain every search token in name OR in description (COALESCE for NULL arrays)
                     const tokenMatch =
-                        `(ticket."nameSearchTokens" && :searchTokens::text[] OR ticket."descriptionSearchTokens" && :searchTokens::text[])`;
-                    const fullWordMatch =
-                        searchWordHashes.length > 0
-                            ? `(ticket."nameSearchTokens" && :searchWordHashes::text[] OR ticket."descriptionSearchTokens" && :searchWordHashes::text[])`
-                            : 'true';
+                        `(COALESCE(ticket."nameSearchTokens", ARRAY[]::text[]) @> :searchTokens::text[] OR COALESCE(ticket."descriptionSearchTokens", ARRAY[]::text[]) @> :searchTokens::text[])`;
                     const whereClause = `(
                         ticket.customId ILIKE :name
-                        OR (${tokenMatch} AND ${fullWordMatch})
+                        OR ${tokenMatch}
                     )`;
                     qb.andWhere(whereClause);
                     qb.setParameter('searchTokens', searchTokens);
-                    if (searchWordHashes.length > 0) {
-                        qb.setParameter('searchWordHashes', searchWordHashes);
-                    }
                     qb.setParameter('name', `%${nameValue}%`);
                 } else {
-                    // Fallback to customId search if no valid tokens
                     qb.andWhere('ticket.customId ILIKE :name', {
                         name: `%${nameValue}%`,
                     });
