@@ -69,6 +69,7 @@ interface TicketLifeCycleInfo {
 
 interface DetailedMetrics {
     sentToVerificationOnTime: number; // Count of tickets sent to verification before due date
+    sentToVerificationOnTimeTicketIds: number[]; // Ticket IDs for tooltip
     completionOnTime: number; // Count of tickets completed before due date
     totalCompleted: number;
     completionIndexTicketsTotal: number;
@@ -1594,6 +1595,7 @@ export class TicketStatsService {
         const userDetailedMetricsMap = this.aggregateMetricsByUser(finishedItems, lifeCycleMap);
         const userMetrics: DetailedMetrics = userDetailedMetricsMap.get(userId) || {
             sentToVerificationOnTime: 0,
+            sentToVerificationOnTimeTicketIds: [],
             completionOnTime: 0,
             totalCompleted: 0,
             completionIndexTicketsTotal: 0,
@@ -1676,19 +1678,22 @@ export class TicketStatsService {
         }
 
         let completionIndexTicketsTotal = userMetrics.totalClosed;
+        const completionIndexTicketIds = finishedItems.map((s) => s.ticketId);
 
         // Include open overdue tickets in completion index calculation
         // Case 1: Open tickets (not awaiting/under verification) that are overdue
-        this.processOpenOverdueTickets(statsItemsWithWeekendExclusion, () => {
+        this.processOpenOverdueTickets(statsItemsWithWeekendExclusion, (stat) => {
             completionIndexTicketsTotal++;
+            completionIndexTicketIds.push(stat.ticketId);
         });
 
         // Case 2: Tickets in AwaitingVerification or UnderVerification that were sent after dueAt
         await this.processVerificationOverdueTickets(
             statsItemsWithWeekendExclusion,
             accessProfile,
-            () => {
+            (stat) => {
                 completionIndexTicketsTotal++;
+                completionIndexTicketIds.push(stat.ticketId);
             },
         );
 
@@ -1788,6 +1793,29 @@ export class TicketStatsService {
         // Only add efficiency score if calculated
         if (efficiencyScore !== undefined) {
             response.efficiencyScore = parseFloat(efficiencyScore.toFixed(2));
+        }
+
+        // Resolve ticket IDs to customIds for tooltips
+        const allTicketIdsForTooltips = [
+            ...(userMetrics.sentToVerificationOnTimeTicketIds ?? []),
+            ...completionIndexTicketIds,
+        ];
+        const uniqueTicketIds = [...new Set(allTicketIdsForTooltips)];
+        if (uniqueTicketIds.length > 0) {
+            const tickets = await this.ticketRepository.find({
+                where: { id: In(uniqueTicketIds), tenantId: accessProfile.tenantId },
+                select: ['id', 'customId'],
+            });
+            const idToCustomId = new Map(tickets.map((t) => [t.id, t.customId]));
+
+            const onTimeTicketIds = userMetrics.sentToVerificationOnTimeTicketIds ?? [];
+            response.detailedMetrics.sentToVerificationOnTimeTicketCustomIds = onTimeTicketIds
+                .map((id) => idToCustomId.get(id))
+                .filter((c): c is string => c != null);
+
+            response.detailedMetrics.completionIndexTicketCustomIds = completionIndexTicketIds
+                .map((id) => idToCustomId.get(id))
+                .filter((c): c is string => c != null);
         }
 
         return response;
@@ -2387,6 +2415,7 @@ export class TicketStatsService {
                     // User only has verification activity, no target activity
                     userDetailedMetrics.set(userId, {
                         sentToVerificationOnTime: 0,
+                        sentToVerificationOnTimeTicketIds: [],
                         completionOnTime: 0,
                         totalCompleted: 0,
                         onTimeVerified: metrics.onTimeVerified,
@@ -3222,6 +3251,7 @@ export class TicketStatsService {
             if (!userMetrics.has(userId)) {
                 userMetrics.set(userId, {
                     sentToVerificationOnTime: 0,
+                    sentToVerificationOnTimeTicketIds: [],
                     completionOnTime: 0,
                     totalCompleted: 0,
                     onTimeVerified: 0,
@@ -3255,6 +3285,7 @@ export class TicketStatsService {
                 // Count tickets sent to verification on time (both resolved and rejected)
                 if (lifeCycle.isClosed && lifeCycle.sentToVerificationOnTime) {
                     m.sentToVerificationOnTime++;
+                    m.sentToVerificationOnTimeTicketIds.push(stat.ticketId);
                 }
 
                 if (lifeCycle.isResolved) {
@@ -3302,6 +3333,7 @@ export class TicketStatsService {
             if (!deptMetrics.has(deptId)) {
                 deptMetrics.set(deptId, {
                     sentToVerificationOnTime: 0,
+                    sentToVerificationOnTimeTicketIds: [],
                     completionOnTime: 0,
                     totalCompleted: 0,
                     onTimeVerified: 0,
@@ -3331,6 +3363,7 @@ export class TicketStatsService {
                 // Count tickets sent to verification on time (both resolved and rejected)
                 if (lifeCycle.isClosed && lifeCycle.sentToVerificationOnTime) {
                     m.sentToVerificationOnTime++;
+                    m.sentToVerificationOnTimeTicketIds.push(stat.ticketId);
                 }
 
                 if (lifeCycle.isResolved) {
