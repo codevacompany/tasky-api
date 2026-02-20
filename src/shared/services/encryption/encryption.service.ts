@@ -165,24 +165,16 @@ export class EncryptionService {
     }
 
     /**
-     * Creates search tokens from text for partial search on encrypted fields
-     * Generates tokens from full words and all possible substrings for flexible partial matching
+     * Creates search tokens for prefix-only matching on encrypted fields.
+     * Only generates tokens for word starts (prefixes), not substrings in the middle/end.
+     * E.g. "Nova Tarefa" -> hashes for "n","no","nov","nova","t","ta","tar","tare","taref","tarefa"
+     * This keeps the index small and makes search orders of magnitude faster.
      *
      * @param text The text to tokenize
-     * @param minWordLength Minimum word length to include (default: 2)
-     * @param minSubstringLength Minimum substring length to generate (default: 2)
-     * @returns Array of hashed tokens
-     *
-     * @example
-     * // "bug" -> ["hash_bug", "hash_bu", "hash_ug"]
-     * // "crítico" -> ["hash_critico", "hash_cr", "hash_cri", "hash_crit", ..., "hash_tico", "hash_ico", "hash_co"]
-     * const tokens = encryptionService.createSearchTokens("bug crítico");
+     * @param minWordLength Minimum word length to include (default: 1)
+     * @returns Array of hashed prefix tokens
      */
-    createSearchTokens(
-        text: string | null | undefined,
-        minWordLength: number = 2,
-        minSubstringLength: number = 2,
-    ): string[] {
+    createSearchTokens(text: string | null | undefined, minWordLength: number = 1): string[] {
         if (!text) {
             return [];
         }
@@ -197,20 +189,43 @@ export class EncryptionService {
 
         const tokens = new Set<string>();
 
-        // Split into words and generate tokens for each word
         const words = normalized.split(/\s+/).filter((word) => word.length >= minWordLength);
 
         for (const word of words) {
             tokens.add(crypto.createHash('sha256').update(word).digest('hex'));
-
-            for (let i = 0; i < word.length; i++) {
-                for (let j = i + minSubstringLength; j <= word.length; j++) {
-                    const substring = word.substring(i, j);
-                    tokens.add(crypto.createHash('sha256').update(substring).digest('hex'));
-                }
+            // All prefixes: first char, first 2 chars, ..., first n-1 chars
+            for (let len = 1; len < word.length; len++) {
+                tokens.add(
+                    crypto.createHash('sha256').update(word.substring(0, len)).digest('hex'),
+                );
             }
         }
 
         return Array.from(tokens);
+    }
+
+    /**
+     * Returns hashes of full words only from the search query.
+     * Used to require that at least one search word appears as a complete word in the ticket,
+     * preventing overly permissive matches (e.g. "Faça" matching "Nova tarefa" via shared substring "fa").
+     *
+     * @param text The search query
+     * @param minWordLength Minimum word length (default: 2, use 1 for single-char search)
+     * @returns Array of hashed full words
+     */
+    getSearchWordHashes(text: string | null | undefined, minWordLength: number = 2): string[] {
+        if (!text) {
+            return [];
+        }
+
+        const normalized = text
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^\w\s]/g, ' ')
+            .trim();
+
+        const words = normalized.split(/\s+/).filter((word) => word.length >= minWordLength);
+        return words.map((word) => crypto.createHash('sha256').update(word).digest('hex'));
     }
 }
