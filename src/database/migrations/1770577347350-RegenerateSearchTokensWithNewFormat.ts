@@ -6,11 +6,26 @@ export class RegenerateSearchTokensWithNewFormat1770577347350 implements Migrati
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         const encryptionService = new EncryptionService();
-        const tickets = await queryRunner.query(`SELECT id, name, description FROM ticket`);
-        const BATCH_SIZE = 50;
+        const BATCH_SIZE = 100;
+        let lastProcessedId = 0;
+        let hasMoreTickets = true;
 
-        for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
-            const batch = tickets.slice(i, i + BATCH_SIZE);
+        while (hasMoreTickets) {
+            const batch: Array<{ id: number; name: string; description: string | null }> =
+                await queryRunner.query(
+                    `SELECT id, name, description
+                     FROM ticket
+                     WHERE id > $1
+                     ORDER BY id ASC
+                     LIMIT $2`,
+                    [lastProcessedId, BATCH_SIZE],
+                );
+
+            if (batch.length === 0) {
+                hasMoreTickets = false;
+                continue;
+            }
+
             const updates: { id: number; nameTokens: string[]; descriptionTokens: string[] }[] = [];
 
             for (const ticket of batch) {
@@ -42,6 +57,8 @@ export class RegenerateSearchTokensWithNewFormat1770577347350 implements Migrati
                     `WHERE ticket.id = v.id`,
                 params,
             );
+
+            lastProcessedId = batch[batch.length - 1].id;
         }
     }
 
