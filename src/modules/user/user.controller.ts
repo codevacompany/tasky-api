@@ -44,6 +44,12 @@ export class UserController {
         return this.userService.acceptTerms(accessProfile.userId, acceptTermsDto);
     }
 
+    @Post('complete-onboarding')
+    @UseGuards(AuthGuard('jwt'))
+    async completeOnboarding(@GetAccessProfile() accessProfile: AccessProfile) {
+        return this.userService.completeOnboarding(accessProfile.userId);
+    }
+
     @Get('all')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {
