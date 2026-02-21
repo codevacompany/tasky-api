@@ -457,6 +457,20 @@ export class UserService extends TenantBoundBaseService<User> {
         return this.userRepository.findOne({ where: { id: userId } }) as Promise<User>;
     }
 
+    async completeOnboarding(userId: number): Promise<User> {
+        const user = await this.userRepository.findOne({ where: { id: userId } });
+
+        if (!user) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        await this.userRepository.update(userId, { completedOnboarding: true });
+        return this.userRepository.findOne({ where: { id: userId } }) as Promise<User>;
+    }
+
     /**
      * Sync metered usage to Stripe (fire and forget)
      * This runs asynchronously to avoid blocking user operations
