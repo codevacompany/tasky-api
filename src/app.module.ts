@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
+import { GlobalExceptionFilter } from './shared/filters/global-exception.filter';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { DatabaseModule } from './database/database.module';
@@ -67,5 +69,11 @@ import { RedisModule } from './shared/redis/redis.module';
         TenantSubscriptionModule,
     ],
     controllers: [AppController],
+    providers: [
+        {
+            provide: APP_FILTER,
+            useClass: GlobalExceptionFilter,
+        },
+    ],
 })
 export class AppModule {}
