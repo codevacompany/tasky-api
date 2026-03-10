@@ -2334,6 +2334,15 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     ) {
         const ticket = await this.findById(accessProfile, customId);
 
+        const currentStatus = ticket.ticketStatus?.key || '';
+        const allowedStatuses = [TicketStatus.Pending, TicketStatus.InProgress];
+        if (!allowedStatuses.includes(currentStatus as TicketStatus)) {
+            throw new CustomForbiddenException({
+                message: 'Can only update assignee when ticket is pending or in progress',
+                code: 'ticket-not-pending-or-in-progress',
+            });
+        }
+
         const newTargetUser = await this.userRepository.findOne({
             where: {
                 id: newTargetUserId,
@@ -2386,13 +2395,27 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             { userId: newTargetUserId },
         );
 
-        if (ticket.currentTargetUserId === targetUserToReplace.userId) {
-            await this.repository.update(ticket.id, {
-                currentTargetUserId: newTargetUserId,
+        const pendingStatus = await this.ticketStatusRepository.findOne({
+            where: { key: TicketStatus.Pending, tenantId: accessProfile.tenantId },
+        });
+
+        if (!pendingStatus) {
+            throw new CustomNotFoundException({
+                message: `Status '${TicketStatus.Pending}' not found.`,
+                code: 'status-not-found',
             });
         }
 
-        //Is only possible to update the assignee if the ticket is pending
+        const newCurrentTargetUserId =
+            ticket.currentTargetUserId === targetUserToReplace.userId
+                ? newTargetUserId
+                : ticket.currentTargetUserId;
+
+        await this.repository.update(ticket.id, {
+            statusId: pendingStatus.id,
+            currentTargetUserId: newCurrentTargetUserId,
+        });
+
         const fromDepartmentId = await this.getDepartmentIdFromUserId(
             targetUserToReplace.userId,
             accessProfile.tenantId,
@@ -2410,7 +2433,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             createdById: accessProfile.userId,
             updatedById: accessProfile.userId,
             action: TicketActionType.AssigneeChange,
-            fromStatus: TicketStatus.Pending,
+            fromStatus: currentStatus,
             toStatus: TicketStatus.Pending,
             fromUserId: targetUserToReplace.userId,
             toUserId: newTargetUserId,
@@ -2443,8 +2466,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         });
         await this.notificationService.emitFromEntity(notificationOut);
 
-        await this.notifyTicketUpdate(accessProfile, ticket.id);
-        return ticket;
+        const updatedTicket = await this.findById(accessProfile, customId);
+        await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
+        return updatedTicket;
     }
 
     async addAssignee(
@@ -2589,12 +2613,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        // Check if ticket is pending
+        // Check if ticket is pending or in progress (only those allow removing target users)
         const currentStatus = ticket.ticketStatus?.key || '';
-        if (currentStatus !== TicketStatus.Pending) {
+        const allowedStatuses = [TicketStatus.Pending, TicketStatus.InProgress];
+        if (!allowedStatuses.includes(currentStatus as TicketStatus)) {
             throw new CustomForbiddenException({
-                message: 'Can only remove target users when ticket is pending',
-                code: 'ticket-not-pending',
+                message: 'Can only remove target users when ticket is pending or in progress',
+                code: 'ticket-not-pending-or-in-progress',
             });
         }
 
