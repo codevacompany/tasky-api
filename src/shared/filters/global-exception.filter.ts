@@ -32,18 +32,13 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
             statusCode: status,
         };
 
-        if (status >= 500 || !(exception instanceof HttpException)) {
-            this.logger.error(
-                `Unhandled exception: ${message}`,
-                stack,
-                JSON.stringify(logContext),
-            );
-        } else {
-            this.logger.warn(
-                `HTTP exception: ${message} - ${request.method} ${request.url}`,
-                JSON.stringify(logContext),
-            );
-        }
+        this.logger.error(
+            exception instanceof HttpException
+                ? `HTTP exception (${status}): ${message} - ${request.method} ${request.url}`
+                : `Unhandled exception: ${message}`,
+            stack,
+            JSON.stringify(logContext),
+        );
 
         super.catch(exception, host);
     }
