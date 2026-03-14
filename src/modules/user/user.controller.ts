@@ -1,8 +1,10 @@
 import {
     Body,
     Controller,
+    DefaultValuePipe,
     Get,
     Param,
+    ParseBoolPipe,
     ParseIntPipe,
     Patch,
     Post,
@@ -62,6 +64,12 @@ export class UserController {
         return this.userService.getTenantAdmins(accessProfile.tenantId);
     }
 
+    @Get('stats')
+    @UseGuards(AuthGuard('jwt'))
+    async getTenantUserStats(@GetAccessProfile() accessProfile: AccessProfile) {
+        return this.userService.getTenantUserStats(accessProfile);
+    }
+
     /**
      * Get user by UUID (public-facing endpoint)
      * Use UUID for security and privacy
@@ -80,6 +88,8 @@ export class UserController {
     async findMany(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Query('name') name?: string,
+        @Query('includeInactiveUsers', new DefaultValuePipe(false), ParseBoolPipe)
+        includeInactiveUsers?: boolean,
         @GetQueryOptions() options?: QueryOptions<User>,
     ) {
         const queryOptions: QueryOptions<User> = {
@@ -93,6 +103,7 @@ export class UserController {
                 name,
             },
             queryOptions,
+            includeInactiveUsers,
         );
     }
 
