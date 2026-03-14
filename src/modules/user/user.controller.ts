@@ -1,8 +1,10 @@
 import {
     Body,
     Controller,
+    DefaultValuePipe,
     Get,
     Param,
+    ParseBoolPipe,
     ParseIntPipe,
     Patch,
     Post,
@@ -44,6 +46,12 @@ export class UserController {
         return this.userService.acceptTerms(accessProfile.userId, acceptTermsDto);
     }
 
+    @Post('complete-onboarding')
+    @UseGuards(AuthGuard('jwt'))
+    async completeOnboarding(@GetAccessProfile() accessProfile: AccessProfile) {
+        return this.userService.completeOnboarding(accessProfile.userId);
+    }
+
     @Get('all')
     @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
     async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {
@@ -54,6 +62,12 @@ export class UserController {
     @UseGuards(AuthGuard('jwt'))
     async getTenantAdmins(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.userService.getTenantAdmins(accessProfile.tenantId);
+    }
+
+    @Get('stats')
+    @UseGuards(AuthGuard('jwt'))
+    async getTenantUserStats(@GetAccessProfile() accessProfile: AccessProfile) {
+        return this.userService.getTenantUserStats(accessProfile);
     }
 
     /**
@@ -74,6 +88,8 @@ export class UserController {
     async findMany(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Query('name') name?: string,
+        @Query('includeInactiveUsers', new DefaultValuePipe(false), ParseBoolPipe)
+        includeInactiveUsers?: boolean,
         @GetQueryOptions() options?: QueryOptions<User>,
     ) {
         const queryOptions: QueryOptions<User> = {
@@ -87,6 +103,7 @@ export class UserController {
                 name,
             },
             queryOptions,
+            includeInactiveUsers,
         );
     }
 
