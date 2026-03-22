@@ -326,10 +326,16 @@ export class TenantSubscriptionService {
             ? stripeSubscription.items.data.find((item) => item.price.id === perUserPriceId)
             : undefined;
 
+        // Use current_period_start for startDate (represents current billing period)
+        // For new subscriptions, this equals start_date, but for renewals it updates
+        const startDate = stripeSubscription.current_period_start
+            ? new Date(stripeSubscription.current_period_start * 1000)
+            : new Date(stripeSubscription.start_date * 1000);
+
         const subscription = this.tenantSubscriptionRepository.create({
             tenantId,
             subscriptionPlanId: plan.id,
-            startDate: new Date(stripeSubscription.start_date * 1000),
+            startDate,
             status: this.mapStripeStatus(stripeSubscription.status),
             stripeSubscriptionId: stripeSubscription.id,
             stripeSubscriptionItemIdBase: baseItem?.id,
@@ -493,10 +499,16 @@ export class TenantSubscriptionService {
               ? new Date(stripeSubscription.current_period_end * 1000)
               : null;
 
+        // Use current_period_start for startDate (updates on renewal)
+        // This represents the current billing period start, not the original subscription start
+        const startDate = stripeSubscription.current_period_start
+            ? new Date(stripeSubscription.current_period_start * 1000)
+            : new Date(stripeSubscription.start_date * 1000);
+
         const subscriptionData = {
             tenantId,
             subscriptionPlanId: plan.id,
-            startDate: new Date(stripeSubscription.start_date * 1000),
+            startDate,
             endDate,
             // Note: trialEndDate is not synced from Stripe - we control trials internally
             cancelledAt: stripeSubscription.canceled_at

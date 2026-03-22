@@ -555,7 +555,38 @@ export class TicketStatsService {
                 ? statsItems.filter((s) => s.departmentIds?.includes(supervisorDeptId))
                 : statsItems;
 
-        if (filteredStatsItems.length === 0) return [];
+        // When no tickets in period, still return all departments with zeroed stats
+        if (filteredStatsItems.length === 0) {
+            const departmentsRes = await this.departmentService.findMany(accessProfile, {
+                paginated: false,
+            });
+            const deptsToProcess =
+                supervisorDeptId !== null
+                    ? departmentsRes.items.filter((d) => d.id === supervisorDeptId)
+                    : departmentsRes.items;
+
+            const zeroedResults = await Promise.all(
+                deptsToProcess.map(async (dept) => ({
+                    departmentId: dept.id,
+                    departmentName: dept.name,
+                    totalTickets: 0,
+                    resolvedTickets: 0,
+                    averageResolutionTimeSeconds: 0,
+                    averageAcceptanceTimeSeconds: 0,
+                    resolutionRate: 0,
+                    sentToVerificationOverdueRate: 0,
+                    completionOverdueRate: 0,
+                    userCount: await this.userRepository.count({
+                        where: {
+                            tenantId: accessProfile.tenantId,
+                            departmentId: dept.id,
+                            isActive: true,
+                        },
+                    }),
+                })),
+            );
+            return zeroedResults;
+        }
 
         // 2. Fetch Core Data and Analyze Lifecycle
         const finishedTicketIds = this.getFinishedTicketIds(filteredStatsItems);
@@ -659,10 +690,11 @@ export class TicketStatsService {
                 };
 
                 if (metrics) {
+                    const totalClosed = metrics.totalCompleted + metrics.rejectedCount;
+                    deptStats.closedTickets = totalClosed;
+                    // Resolution rate among closed tickets (resolved / closed)
                     resolutionRate =
-                        metrics.totalEntries > 0
-                            ? metrics.totalCompleted / metrics.totalEntries
-                            : 0;
+                        totalClosed > 0 ? metrics.totalCompleted / totalClosed : 0;
 
                     // Only calculate efficiency score if department has at least 5 tickets
                     if (totalTickets >= 5) {
@@ -696,7 +728,6 @@ export class TicketStatsService {
                         },
                     );
 
-                    const totalClosed = metrics.totalCompleted + metrics.rejectedCount;
                     const totalTicketsForOverdueRate = totalClosed + deptOpenOverdueCount + deptVerificationOverdueCount;
                     const closedOverdueCount = totalClosed - metrics.sentToVerificationOnTime;
                     const totalOverdueCount = closedOverdueCount + deptOpenOverdueCount + deptVerificationOverdueCount;
