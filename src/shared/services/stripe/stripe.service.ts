@@ -192,12 +192,6 @@ export class StripeService {
             cancel_url: options.cancelUrl,
             payment_method_types: ['card'],
             billing_address_collection: 'required',
-            tax_id_collection: {
-                enabled: true,
-            },
-            automatic_tax: {
-                enabled: true,
-            },
             metadata: {
                 tenantId: options.tenantId.toString(),
                 planSlug: options.planSlug,
