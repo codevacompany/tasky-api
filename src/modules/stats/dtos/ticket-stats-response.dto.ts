@@ -33,6 +33,9 @@ export class DetailedMetricsDto {
 }
 
 export class TicketStatsResponseDto {
+    userFirstName?: string;
+    userLastName?: string;
+    userDepartmentName?: string;
     totalTickets: number;
     openTickets: number;
     closedTickets: number;

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
     endOfDay,
@@ -112,6 +112,54 @@ export class TicketStatsService {
         if (!role || role.name !== RoleName.Supervisor) return null;
 
         return user.departmentId;
+    }
+
+    /**
+     * Ensures the requesting user may view stats for targetUserId (same tenant).
+     * TenantAdmin: any user in tenant. Supervisor: user must be in supervisor's department.
+     * Otherwise: only own stats.
+     */
+    async assertCanViewUserStats(accessProfile: AccessProfile, targetUserId: number): Promise<void> {
+        if (targetUserId === accessProfile.userId) {
+            return;
+        }
+
+        const targetUser = await this.userRepository.findOne({
+            where: { id: targetUserId, tenantId: accessProfile.tenantId },
+        });
+        if (!targetUser) {
+            throw new NotFoundException('User not found');
+        }
+
+        const viewer = await this.userRepository.findOne({
+            where: { id: accessProfile.userId, tenantId: accessProfile.tenantId },
+        });
+        if (!viewer) {
+            throw new ForbiddenException('Access denied');
+        }
+
+        const viewerRole = await this.roleService.findById(viewer.roleId);
+        if (!viewerRole) {
+            throw new ForbiddenException('Access denied');
+        }
+
+        if (viewerRole.name === RoleName.TenantAdmin) {
+            return;
+        }
+
+        if (viewerRole.name === RoleName.Supervisor) {
+            const supervisorDeptId = viewer.departmentId;
+            if (
+                supervisorDeptId != null &&
+                targetUser.departmentId != null &&
+                targetUser.departmentId === supervisorDeptId
+            ) {
+                return;
+            }
+            throw new ForbiddenException('Access denied');
+        }
+
+        throw new ForbiddenException('Access denied');
     }
 
     /**
@@ -1430,6 +1478,13 @@ export class TicketStatsService {
         period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<TicketStatsResponseDto> {
         const { startDate, limit, order } = this.getPeriodFilter(period);
+        const targetUser = await this.userRepository.findOne({
+            where: {
+                id: userId,
+                tenantId: accessProfile.tenantId,
+            },
+            relations: ['department'],
+        });
 
         // Query 1: Fetch tickets where the user is the target (assignee)
         const qb = this.ticketStatsRepository.createQueryBuilder('ticketStats');
@@ -1795,6 +1850,9 @@ export class TicketStatsService {
 
         // Only include efficiency score if user has at least 10 tickets
         const response: TicketStatsResponseDto = {
+            userFirstName: targetUser?.firstName,
+            userLastName: targetUser?.lastName,
+            userDepartmentName: targetUser?.department?.name,
             totalTickets,
             openTickets,
             closedTickets,
