@@ -72,4 +72,7 @@ export class User extends TenantBoundBaseEntity {
 
     @Column({ nullable: true })
     privacyPolicyVersion: string | null;
+
+    @Column({ default: false })
+    completedOnboarding: boolean;
 }

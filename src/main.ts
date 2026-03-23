@@ -15,7 +15,9 @@ async function bootstrap() {
         bodyParser: false, // Disable default to handle manually
     });
 
-    app.use(morgan('dev'));
+    app.use(
+        morgan(':date[iso] :method :url :status :response-time ms - :res[content-length]'),
+    );
 
     // Proxy de Migração: Captura tudo o que chegar se a variável estiver setada
     if (process.env.API_PROXY_TARGET) {

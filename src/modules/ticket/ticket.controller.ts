@@ -64,6 +64,14 @@ export class TicketController {
         return this.ticketService.findArchived(accessProfile, options);
     }
 
+    @Get('search')
+    findBySearchQuery(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetQueryOptions() options: QueryOptions<Ticket>,
+    ) {
+        return this.ticketService.findBySearchQuery(accessProfile, options);
+    }
+
     /**
      * Get ticket by customId (public-facing endpoint)
      */

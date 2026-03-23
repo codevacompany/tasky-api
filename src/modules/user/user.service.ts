@@ -70,6 +70,7 @@ export class UserService extends TenantBoundBaseService<User> {
         accessProfile: AccessProfile,
         additionalFilter?: { name: string },
         options?: QueryOptions<User>,
+        includeInactiveUsers = false,
     ): Promise<PaginatedResponse<User>> {
         const qb = this.userRepository.createQueryBuilder('user');
 
@@ -78,24 +79,31 @@ export class UserService extends TenantBoundBaseService<User> {
 
         qb.where('user.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
 
-        if (options?.where) {
-            if (options.where.departmentId) {
+        const whereOptions = options?.where;
+
+        if (whereOptions) {
+            if (whereOptions.departmentId) {
                 qb.andWhere('user.departmentId = :departmentId', {
-                    departmentId: options.where.departmentId,
+                    departmentId: whereOptions.departmentId,
                 });
             }
 
-            const isActiveParam = options.where.isActive as any;
-            if (isActiveParam !== 'all') {
-                const isActive =
-                    isActiveParam !== undefined
-                        ? typeof isActiveParam === 'string'
-                            ? isActiveParam === 'true'
-                            : !!isActiveParam
-                        : true;
-                qb.andWhere('user.isActive = :isActive', { isActive });
+            // Backwards compatibility: respect legacy isActive param only when
+            // includeInactiveUsers is false. When includeInactiveUsers is true,
+            // we deliberately do NOT filter by isActive.
+            if (!includeInactiveUsers) {
+                const isActiveParam = (whereOptions as any).isActive as any;
+                if (isActiveParam !== 'all') {
+                    const isActive =
+                        isActiveParam !== undefined
+                            ? typeof isActiveParam === 'string'
+                                ? isActiveParam === 'true'
+                                : !!isActiveParam
+                            : true;
+                    qb.andWhere('user.isActive = :isActive', { isActive });
+                }
             }
-        } else {
+        } else if (!includeInactiveUsers) {
             // Default to only active users if no where clause provided
             qb.andWhere('user.isActive = :isActive', { isActive: true });
         }
@@ -136,6 +144,29 @@ export class UserService extends TenantBoundBaseService<User> {
             limit,
             totalPages: Math.ceil(total / limit),
         };
+    }
+
+    async getTenantUserStats(accessProfile: AccessProfile): Promise<{
+        total: number;
+        active: number;
+        inactive: number;
+    }> {
+        const qb = this.userRepository
+            .createQueryBuilder('user')
+            .where('user.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .select('COUNT(*)', 'total')
+            .addSelect(
+                'SUM(CASE WHEN user.isActive = true THEN 1 ELSE 0 END)',
+                'active',
+            );
+
+        const raw = await qb.getRawOne<{ total: string | null; active: string | null }>();
+
+        const total = raw?.total ? Number(raw.total) : 0;
+        const active = raw?.active ? Number(raw.active) : 0;
+        const inactive = Math.max(total - active, 0);
+
+        return { total, active, inactive };
     }
 
     async findByEmail(
@@ -454,6 +485,20 @@ export class UserService extends TenantBoundBaseService<User> {
             privacyPolicyVersion: acceptTermsDto.privacyPolicyVersion || null,
         });
 
+        return this.userRepository.findOne({ where: { id: userId } }) as Promise<User>;
+    }
+
+    async completeOnboarding(userId: number): Promise<User> {
+        const user = await this.userRepository.findOne({ where: { id: userId } });
+
+        if (!user) {
+            throw new CustomNotFoundException({
+                code: 'user-not-found',
+                message: 'User not found',
+            });
+        }
+
+        await this.userRepository.update(userId, { completedOnboarding: true });
         return this.userRepository.findOne({ where: { id: userId } }) as Promise<User>;
     }
 

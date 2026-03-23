@@ -52,6 +52,9 @@ export class Ticket extends TenantBoundBaseEntity {
     @Column('text', { transformer: encryptedTransformer })
     description: string;
 
+    @Column('text', { array: true, nullable: true })
+    descriptionSearchTokens: string[];
+
     @Column()
     requesterId: number;
 
