@@ -3,6 +3,8 @@ export class DepartmentStatsDto {
     departmentName: string;
     totalTickets: number;
     resolvedTickets: number;
+    /** Number of closed tickets (resolved + rejected). Used for resolution rate among closed only. */
+    closedTickets?: number;
     averageResolutionTimeSeconds: number;
     averageAcceptanceTimeSeconds: number;
     resolutionRate: number;
@@ -31,6 +33,9 @@ export class DetailedMetricsDto {
 }
 
 export class TicketStatsResponseDto {
+    userFirstName?: string;
+    userLastName?: string;
+    userDepartmentName?: string;
     totalTickets: number;
     openTickets: number;
     closedTickets: number;
