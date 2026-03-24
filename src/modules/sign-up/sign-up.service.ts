@@ -19,6 +19,7 @@ import { SubscriptionStatus } from '../tenant-subscription/entities/tenant-subsc
 import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { TenantService } from '../tenant/tenant.service';
 import { UserService } from '../user/user.service';
+import { normalizeCnpj } from '../../shared/utils/normalize.util';
 import { CreateSignUpDto } from './dtos/create-sign-up.dto';
 import { SignUp, SignUpStatus } from './entities/sign-up.entity';
 import { SignUpRepository } from './sign-up.repository';
@@ -40,7 +41,15 @@ export class SignUpService {
     ) {}
 
     async create(createSignUpDto: CreateSignUpDto): Promise<SignUp> {
-        const signUpExists = await this.findByCnpj(createSignUpDto.cnpj);
+        const normalizedCnpj = normalizeCnpj(createSignUpDto.cnpj);
+        if (!normalizedCnpj || normalizedCnpj.length !== 14) {
+            throw new CustomBadRequestException({
+                code: 'invalid-cnpj',
+                message: 'CNPJ inválido',
+            });
+        }
+
+        const signUpExists = await this.findByCnpj(normalizedCnpj);
 
         if (signUpExists) {
             throw new CustomConflictException({
@@ -49,7 +58,32 @@ export class SignUpService {
             });
         }
 
-        const cnpjData = await this.cnpjService.validateAndFetchData(createSignUpDto.cnpj);
+        const cnpjData = await this.cnpjService.validateAndFetchData(normalizedCnpj);
+
+        const companyNameFromCnpj =
+            [cnpjData.nome, cnpjData.fantasia]
+                .map((s) => (typeof s === 'string' ? s.trim() : ''))
+                .find((s) => s.length > 0) || '';
+        const companyEmailFromCnpj = (cnpjData.email || '').trim();
+        const companyPhoneFromCnpj = (cnpjData.telefone || '').trim();
+
+        const resolvedCompanyName = companyNameFromCnpj;
+        const resolvedCompanyEmail =
+            companyEmailFromCnpj || (createSignUpDto.contactEmail || '').trim();
+
+        if (!resolvedCompanyName) {
+            throw new CustomBadRequestException({
+                code: 'cnpj-company-name-missing',
+                message: 'Não foi possível obter o nome da empresa a partir do CNPJ.',
+            });
+        }
+
+        if (!resolvedCompanyEmail) {
+            throw new CustomBadRequestException({
+                code: 'cnpj-company-email-missing',
+                message: 'Não foi possível definir o e-mail da empresa.',
+            });
+        }
 
         if (!createSignUpDto.termsAccepted) {
             throw new CustomBadRequestException({
@@ -118,14 +152,14 @@ export class SignUpService {
         // }
 
         const signUp = this.signUpRepository.create({
-            companyName: createSignUpDto.companyName,
-            email: createSignUpDto.email,
+            companyName: resolvedCompanyName,
+            email: resolvedCompanyEmail,
             contactName: createSignUpDto.contactName,
-            contactCpf: createSignUpDto.contactCpf,
+            contactCpf: '',
             contactEmail: createSignUpDto.contactEmail,
             contactPhone: createSignUpDto.contactPhone,
             status: SignUpStatus.PENDING,
-            cnpj: createSignUpDto.cnpj,
+            cnpj: normalizedCnpj,
             cep: cnpjData.cep,
             state: cnpjData.uf,
             city: cnpjData.municipio,
@@ -133,7 +167,7 @@ export class SignUpService {
             street: cnpjData.logradouro,
             number: cnpjData.numero,
             complement: cnpjData.complemento,
-            phoneNumber: cnpjData.telefone,
+            phoneNumber: companyPhoneFromCnpj,
             companySize: cnpjData.porte,
             mainActivity: cnpjData.atividade_principal?.[0]?.text || '',
             termsAccepted: createSignUpDto.termsAccepted,
@@ -191,11 +225,19 @@ export class SignUpService {
     }
 
     async findByCnpj(cnpj: string): Promise<SignUp> {
-        const signUp = await this.signUpRepository.findOne({
-            where: { cnpj },
-        });
+        const normalized = normalizeCnpj(cnpj);
+        if (!normalized) {
+            return null;
+        }
 
-        return signUp;
+        const formatted =
+            normalized.length === 14
+                ? `${normalized.slice(0, 2)}.${normalized.slice(2, 5)}.${normalized.slice(5, 8)}/${normalized.slice(8, 12)}-${normalized.slice(12, 14)}`
+                : normalized;
+
+        return this.signUpRepository.findOne({
+            where: [{ cnpj: normalized }, { cnpj: formatted }],
+        });
     }
 
     async findOne(id: number): Promise<SignUp> {
