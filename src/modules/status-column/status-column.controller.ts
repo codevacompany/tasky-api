@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
@@ -11,7 +11,7 @@ export class StatusColumnController {
     constructor(private readonly statusColumnService: StatusColumnService) {}
 
     @Get()
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async findAll(
         @GetAccessProfile() accessProfile: AccessProfile,
         @GetQueryOptions() options: QueryOptions<StatusColumn>,

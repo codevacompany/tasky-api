@@ -9,7 +9,7 @@ import {
     Query,
     Patch,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { TenantAdminGuard } from '../../shared/guards/tenant-admin.guard';
@@ -20,7 +20,7 @@ import { PaymentService } from '../payment/payment.service';
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 @Controller('tenant-subscriptions')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class TenantSubscriptionController {
     constructor(
         private readonly tenantSubscriptionService: TenantSubscriptionService,

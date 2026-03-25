@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { QueryOptions } from '../../shared/types/http';
@@ -18,7 +18,7 @@ export class SignUpController {
     }
 
     @Get()
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     findAll(
         @GetQueryOptions() options: QueryOptions<SignUp>,
         @Query('companyName') companyName?: string,
@@ -28,7 +28,7 @@ export class SignUpController {
     }
 
     @Get(':id')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     findOne(@Param('id', ParseIntPipe) id: number) {
         return this.signUpService.findOne(id);
     }
@@ -39,19 +39,19 @@ export class SignUpController {
     }
 
     @Post(':id/approve')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     approveSignUp(@Param('id', ParseIntPipe) id: number) {
         return this.signUpService.approveSignUp(id);
     }
 
     @Post(':id/reject')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     rejectSignUp(@Param('id', ParseIntPipe) id: number) {
         return this.signUpService.rejectSignUp(id);
     }
 
     @Post(':id/resend-email')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     resendEmail(@Param('id', ParseIntPipe) id: number) {
         return this.signUpService.resendActivationEmail(id);
     }

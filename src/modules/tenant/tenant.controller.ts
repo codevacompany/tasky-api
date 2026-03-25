@@ -9,7 +9,7 @@ import {
     Query,
     UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { QueryOptions } from '../../shared/types/http';
 import { CreateTenantDto } from './dtos/create-tenant.dto';
@@ -27,13 +27,13 @@ export class TenantController {
     constructor(private readonly tenantService: TenantService) {}
 
     @Get('me')
-    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    @UseGuards(JwtAuthGuard, TenantAdminGuard)
     async findMe(@GetAccessProfile() accessProfile: any) {
         return this.tenantService.findById(accessProfile.tenantId);
     }
 
     @Patch('me')
-    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    @UseGuards(JwtAuthGuard, TenantAdminGuard)
     async updateMe(
         @GetAccessProfile() accessProfile: any,
         @Body() updateTenantDto: UpdateTenantDto,
@@ -42,13 +42,13 @@ export class TenantController {
     }
 
     @Get()
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async findAll(@GetQueryOptions() options: QueryOptions<Tenant>, @Query('name') name?: string) {
         return this.tenantService.findAll({ name }, options);
     }
 
     @Get('with-stats')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async findWithStats(
         @GetQueryOptions() options: QueryOptions<Tenant>,
         @Query('name') name?: string,
@@ -57,37 +57,37 @@ export class TenantController {
     }
 
     @Get('by-email/:email')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async findByEmail(@Param('email') email: string) {
         return this.tenantService.findByEmail(email);
     }
 
     @Get('by-cnpj/:cnpj')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async findByCnpj(@Param('cnpj') cnpj: string) {
         return this.tenantService.findByCnpj(cnpj);
     }
 
     @Get('by-name/:name')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async findByName(@Param('name') name: string) {
         return this.tenantService.findByName(name);
     }
 
     @Post()
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async create(@Body() createTenantDto: CreateTenantDto) {
         return this.tenantService.create(createTenantDto);
     }
 
     @Get(':id/details')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async findDetails(@Param('id', ParseIntPipe) id: number) {
         return this.tenantService.findDetails(id);
     }
 
     @Patch(':id')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async update(@Param('id', ParseIntPipe) id: number, @Body() updateTenantDto: UpdateTenantDto) {
         return this.tenantService.update(id, updateTenantDto);
     }

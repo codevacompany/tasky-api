@@ -11,7 +11,7 @@ import {
     Query,
     UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
@@ -27,18 +27,18 @@ import { GetQueryOptions } from '../../shared/decorators/get-query-options.decor
 import { FindOneQueryOptions, QueryOptions } from '../../shared/types/http';
 
 @Controller('users')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class UserController {
     constructor(private readonly userService: UserService) {}
 
     @Get('me')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async me(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.userService.findById(accessProfile.userId);
     }
 
     @Post('accept-terms')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async acceptTerms(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Body() acceptTermsDto: AcceptTermsDto,
@@ -47,25 +47,25 @@ export class UserController {
     }
 
     @Post('complete-onboarding')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async completeOnboarding(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.userService.completeOnboarding(accessProfile.userId);
     }
 
     @Get('all')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async findAll(@GetQueryOptions() options: QueryOptions<User>, @Query('name') name?: string) {
         return this.userService.findAll({ name }, options);
     }
 
     @Get('tenant-admins')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async getTenantAdmins(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.userService.getTenantAdmins(accessProfile.tenantId);
     }
 
     @Get('stats')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async getTenantUserStats(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.userService.getTenantUserStats(accessProfile);
     }
@@ -75,7 +75,7 @@ export class UserController {
      * Use UUID for security and privacy
      */
     @Get(':uuid')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async findOneByUuid(
         @Param('uuid', UUIDValidationPipe) uuid: string,
         @GetAccessProfile() accessProfile: AccessProfile,
@@ -84,7 +84,7 @@ export class UserController {
     }
 
     @Get()
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async findMany(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Query('name') name?: string,
@@ -108,7 +108,7 @@ export class UserController {
     }
 
     @Get(':email')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async findByEmail(
         @GetAccessProfile() accessProfile: AccessProfile,
         @GetQueryOptions() options: FindOneQueryOptions<User>,
@@ -118,7 +118,7 @@ export class UserController {
     }
 
     @Get('department/:departmentId')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async findByDeparment(
         @GetAccessProfile() accessProfile: AccessProfile,
         @GetQueryOptions() options: QueryOptions<User>,
@@ -131,7 +131,7 @@ export class UserController {
     }
 
     @Post('super-admin')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async SuperAdminCreate(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Body() createUserDto: SuperAdminCreateUserDto,
@@ -140,7 +140,7 @@ export class UserController {
     }
 
     @Post()
-    @UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
+    @UseGuards(JwtAuthGuard, SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
     async create(
         @Body() createUserDto: CreateUserDto,
         @GetAccessProfile() accessProfile: AccessProfile,
@@ -152,7 +152,7 @@ export class UserController {
      * Update user by UUID (public-facing endpoint)
      */
     @Patch(':uuid')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async updateByUuid(
         @Param('uuid', UUIDValidationPipe) uuid: string,
         @Body() updateUserDto: UpdateUserDto,
@@ -162,7 +162,7 @@ export class UserController {
     }
 
     @Patch('super-admin/:id')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     async superAdminUpdate(
         @Param('id', ParseIntPipe) id: number,
         @Body() updateUserDto: UpdateUserDto,

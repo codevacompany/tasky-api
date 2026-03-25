@@ -1,10 +1,10 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { TicketUpdateService } from './ticket-update.service';
 
 @Controller('ticket-updates')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class TicketUpdateController {
     constructor(private readonly ticketUpdateService: TicketUpdateService) {}
 

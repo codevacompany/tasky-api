@@ -8,13 +8,13 @@ import {
     UploadedFile,
     ParseIntPipe,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { PaymentService } from './payment.service';
 
 @Controller('payments')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class PaymentController {
     constructor(private readonly paymentService: PaymentService) {}
 

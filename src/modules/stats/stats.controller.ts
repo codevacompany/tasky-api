@@ -1,5 +1,5 @@
 import { BadRequestException, Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
 import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
@@ -29,7 +29,7 @@ export enum StatsPeriod {
 }
 
 @Controller('stats')
-@UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
+@UseGuards(JwtAuthGuard, SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
 export class StatsController {
     constructor(private readonly ticketStatsService: TicketStatsService) {}
 
