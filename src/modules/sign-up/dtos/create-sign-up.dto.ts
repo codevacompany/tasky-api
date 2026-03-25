@@ -1,11 +1,19 @@
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+    IsBoolean,
+    IsEmail,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    MinLength,
+    ValidateIf,
+} from 'class-validator';
 import { IsCnpj } from '../../../shared/validators/is-cnpj.validator';
 
 export class CreateSignUpDto {
+    @ValidateIf((_, v) => v !== undefined && v !== null && String(v).trim() !== '')
     @IsString()
-    @IsNotEmpty()
     @IsCnpj({ message: 'Invalid CNPJ' })
-    cnpj: string;
+    cnpj?: string;
 
     @IsString()
     @IsNotEmpty()
