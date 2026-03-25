@@ -8,12 +8,12 @@ import {
     Post,
     UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { CreateTicketFileDto } from './dtos/create-ticket-file.dto';
 import { TicketFileService } from './ticket-file.service';
 
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 @Controller('ticket-files')
 export class TicketFileController {
     constructor(private readonly ticketFileService: TicketFileService) {}

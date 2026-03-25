@@ -10,7 +10,7 @@ import {
     MessageEvent,
     Query,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
@@ -24,7 +24,7 @@ import { switchMap } from 'rxjs/operators';
 export class NotificationController {
     constructor(private readonly notificationService: NotificationService) {}
 
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     @Get()
     async findAll(
         @GetAccessProfile() accessProfile: AccessProfile,
@@ -33,7 +33,7 @@ export class NotificationController {
         return this.notificationService.findMany(accessProfile, options);
     }
 
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     @Get('target-user/:id')
     async findByTargetUser(
         @GetAccessProfile() accessProfile: AccessProfile,
@@ -44,13 +44,13 @@ export class NotificationController {
         return this.notificationService.findByTargetUser(accessProfile, options);
     }
 
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     @Post('mark-as-read')
     async markAllAsRead(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.notificationService.markAllAsRead(accessProfile);
     }
 
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     @Post(':id/mark-as-read')
     async markAsRead(
         @GetAccessProfile() accessProfile: AccessProfile,
@@ -59,7 +59,7 @@ export class NotificationController {
         return this.notificationService.markAsRead(accessProfile, id);
     }
 
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     @Get('unread/count')
     async getUnreadCount(@GetAccessProfile() accessProfile: AccessProfile) {
         return { count: await this.notificationService.countUnreadByUser(accessProfile) };
@@ -68,7 +68,7 @@ export class NotificationController {
     /**
      * Delete notification by UUID (public-facing endpoint)
      */
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     @Delete(':uuid')
     async delete(
         @GetAccessProfile() accessProfile: AccessProfile,
@@ -78,7 +78,7 @@ export class NotificationController {
         return { message: 'Successfully deleted!' };
     }
 
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     @Post('stream-ticket')
     async getStreamTicket(@GetAccessProfile() accessProfile: AccessProfile) {
         return {

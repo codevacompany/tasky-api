@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
@@ -10,7 +10,7 @@ import { TicketComment } from './entities/ticket-comment.entity';
 import { TicketCommentService } from './ticket-comment.service';
 
 @Controller('ticket-comments')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class TicketCommentController {
     constructor(private readonly ticketCommentService: TicketCommentService) {}
 

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Patch, Param, ParseIntPipe, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { VerificationCodeService } from '../verification-code/verification-code.service';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dtos/login.dto';
@@ -27,7 +27,7 @@ export class AuthController {
     }
 
     @Get('whoami')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     whoami(@GetAccessProfile() accessProfile: AccessProfile) {
         return this.authService.whoami(accessProfile);
     }
@@ -55,7 +55,7 @@ export class AuthController {
     }
 
     @Post('change-password')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     changePassword(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Body() changePasswordDto: ChangePasswordDto,
@@ -64,7 +64,7 @@ export class AuthController {
     }
 
     @Patch('admin/reset-password-uuid/:uuid')
-    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    @UseGuards(JwtAuthGuard, TenantAdminGuard)
     adminResetPasswordWithRandomPassword(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Param('uuid', UUIDValidationPipe) uuid: string,
@@ -73,7 +73,7 @@ export class AuthController {
     }
 
     @Patch('admin/reset-password/:userId')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     adminResetPassword(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Param('userId', ParseIntPipe) userId: number,

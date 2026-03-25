@@ -10,7 +10,7 @@ import {
     Query,
     UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { QueryOptions } from '../../shared/types/http';
@@ -24,13 +24,13 @@ export class LegalDocumentController {
     constructor(private readonly legalDocumentService: LegalDocumentService) {}
 
     @Post()
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     create(@Body() createLegalDocumentDto: CreateLegalDocumentDto) {
         return this.legalDocumentService.create(createLegalDocumentDto);
     }
 
     @Get('admin')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     findAll(
         @GetQueryOptions() options: QueryOptions<any>,
         @Query('type') type?: LegalDocumentType,
@@ -49,13 +49,13 @@ export class LegalDocumentController {
     }
 
     @Get(':id')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     findOne(@Param('id', ParseIntPipe) id: number) {
         return this.legalDocumentService.findOne(id);
     }
 
     @Patch(':id')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     update(
         @Param('id', ParseIntPipe) id: number,
         @Body() updateLegalDocumentDto: UpdateLegalDocumentDto,
@@ -64,13 +64,13 @@ export class LegalDocumentController {
     }
 
     @Patch(':id/activate')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     activate(@Param('id', ParseIntPipe) id: number) {
         return this.legalDocumentService.activateDocument(id);
     }
 
     @Delete(':id')
-    @UseGuards(AuthGuard('jwt'), GlobalAdminGuard)
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     remove(@Param('id', ParseIntPipe) id: number) {
         return this.legalDocumentService.remove(id);
     }

@@ -10,13 +10,13 @@ import {
     Query,
     UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { CreateChecklistItemDto } from './dtos/create-checklist-item.dto';
 import { UpdateChecklistItemDto } from './dtos/update-checklist-item.dto';
 import { TicketChecklistService } from './ticket-checklist.service';
 
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 @Controller('ticket-checklists')
 export class TicketChecklistController {
     constructor(private readonly checklistService: TicketChecklistService) {}

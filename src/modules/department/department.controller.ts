@@ -8,7 +8,7 @@ import {
     Post,
     UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
@@ -18,7 +18,7 @@ import { CreateDepartmentDto } from './dtos/create-department.dto';
 import { UpdateDepartmentDto } from './dtos/update-department.dto';
 import { Department } from './entities/department.entity';
 
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 @Controller('departments')
 export class DepartmentController {
     constructor(private readonly departmentService: DepartmentService) {}
