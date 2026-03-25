@@ -1,9 +1,12 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { JwtPayload } from 'jsonwebtoken';
+import { jwtVerifyFailureDetails } from '../../utils/jwt-verify-error.util';
 
 @Injectable()
 export class TokenService {
+    private readonly logger = new Logger(TokenService.name);
+
     constructor(private readonly jwtService: JwtService) {}
 
     readonly defaultAccessTokenExpiresIn = '1d';
@@ -39,7 +42,13 @@ export class TokenService {
     verify(token: string): string | JwtPayload {
         try {
             return this.jwtService.verify(token);
-        } catch {
+        } catch (error) {
+            const details = jwtVerifyFailureDetails(error);
+            this.logger.warn({
+                message: 'JWT verify failed (refresh token or nested access payload)',
+                tokenUse: 'refresh',
+                ...details,
+            });
             throw new ForbiddenException();
         }
     }

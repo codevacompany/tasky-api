@@ -9,7 +9,7 @@ import {
     Post,
     UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
 import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
@@ -28,7 +28,7 @@ import { Ticket } from './entities/ticket.entity';
 import { TicketService } from './ticket.service';
 
 @Controller('tickets')
-@UseGuards(AuthGuard('jwt'), SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
+@UseGuards(JwtAuthGuard, SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
 export class TicketController {
     constructor(private readonly ticketService: TicketService) {}
 

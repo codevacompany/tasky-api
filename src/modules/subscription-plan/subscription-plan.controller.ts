@@ -1,9 +1,9 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { SubscriptionPlanService } from './subscription-plan.service';
 
 @Controller('subscription-plans')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class SubscriptionPlanController {
     constructor(private readonly subscriptionPlanService: SubscriptionPlanService) {}
 

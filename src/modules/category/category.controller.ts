@@ -8,7 +8,7 @@ import {
     Post,
     UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 import { GetFindOneQueryOptions } from '../../shared/decorators/get-find-one-query-options.decorator';
@@ -25,7 +25,7 @@ export class CategoryController {
     constructor(private readonly categoryService: CategoryService) {}
 
     @Get()
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async findAll(
         @GetAccessProfile() accessProfile: AccessProfile,
         @GetQueryOptions() options: QueryOptions<Category>,
@@ -34,7 +34,7 @@ export class CategoryController {
     }
 
     @Get('name/:name')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async findByName(
         @GetAccessProfile() acessProfile: AccessProfile,
         @GetFindOneQueryOptions() options: FindOneQueryOptions<Category>,
@@ -46,7 +46,7 @@ export class CategoryController {
      * Get category by UUID (public-facing endpoint)
      */
     @Get(':uuid')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(JwtAuthGuard)
     async findByUuid(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Param('uuid', UUIDValidationPipe) uuid: string,
@@ -55,7 +55,7 @@ export class CategoryController {
     }
 
     @Post()
-    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    @UseGuards(JwtAuthGuard, TenantAdminGuard)
     async create(
         @GetAccessProfile() acessProfile: AccessProfile,
         @Body() createCategoryDto: CreateCategoryDto,
@@ -67,7 +67,7 @@ export class CategoryController {
      * Update category by UUID (public-facing endpoint)
      */
     @Patch(':uuid')
-    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    @UseGuards(JwtAuthGuard, TenantAdminGuard)
     async update(
         @GetAccessProfile() acessProfile: AccessProfile,
         @Param('uuid', UUIDValidationPipe) uuid: string,
@@ -80,7 +80,7 @@ export class CategoryController {
      * Delete category by UUID (public-facing endpoint)
      */
     @Delete(':uuid')
-    @UseGuards(AuthGuard('jwt'), TenantAdminGuard)
+    @UseGuards(JwtAuthGuard, TenantAdminGuard)
     async delete(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Param('uuid', UUIDValidationPipe) uuid: string,
