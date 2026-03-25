@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
 import { QueryOptions } from '../../shared/types/http';
 import { CompleteSignUpDto } from './dtos/complete-sign-up.dto';
 import { CreateSignUpDto } from './dtos/create-sign-up.dto';
+import { UpdateSignUpDto } from './dtos/update-sign-up.dto';
 import { SignUp } from './entities/sign-up.entity';
 import { SignUpService } from './sign-up.service';
 
@@ -24,7 +25,21 @@ export class SignUpController {
         @Query('companyName') companyName?: string,
         @Query('status') status?: string,
     ) {
-        return this.signUpService.findAll({ companyName, status }, options);
+       return this.signUpService.findAll({ companyName, status }, options);
+    }
+
+    @Get('activation/:token')
+    getByActivationToken(@Param('token') token: string) {
+        return this.signUpService.findByActivationToken(token);
+    }
+
+    @Post('complete/:token')
+    completeSignUp(@Param('token') token: string, @Body() completeSignUpDto: CompleteSignUpDto) {
+        return this.signUpService.completeSignUp(
+            token,
+            completeSignUpDto.customKey,
+            completeSignUpDto.password,
+        );
     }
 
     @Get(':id')
@@ -33,9 +48,10 @@ export class SignUpController {
         return this.signUpService.findOne(id);
     }
 
-    @Get('activation/:token')
-    getByActivationToken(@Param('token') token: string) {
-        return this.signUpService.findByActivationToken(token);
+    @Patch(':id')
+    @UseGuards(JwtAuthGuard, GlobalAdminGuard)
+    update(@Param('id', ParseIntPipe) id: number, @Body() updateSignUpDto: UpdateSignUpDto) {
+        return this.signUpService.update(id, updateSignUpDto);
     }
 
     @Post(':id/approve')
@@ -54,14 +70,5 @@ export class SignUpController {
     @UseGuards(JwtAuthGuard, GlobalAdminGuard)
     resendEmail(@Param('id', ParseIntPipe) id: number) {
         return this.signUpService.resendActivationEmail(id);
-    }
-
-    @Post('complete/:token')
-    completeSignUp(@Param('token') token: string, @Body() completeSignUpDto: CompleteSignUpDto) {
-        return this.signUpService.completeSignUp(
-            token,
-            completeSignUpDto.customKey,
-            completeSignUpDto.password,
-        );
     }
 }

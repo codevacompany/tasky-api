@@ -1,29 +1,23 @@
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+    IsBoolean,
+    IsEmail,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    MinLength,
+    ValidateIf,
+} from 'class-validator';
 import { IsCnpj } from '../../../shared/validators/is-cnpj.validator';
-import { IsCpf } from '../../../shared/validators/is-cpf.validator';
 
 export class CreateSignUpDto {
+    @ValidateIf((_, v) => v !== undefined && v !== null && String(v).trim() !== '')
     @IsString()
-    @IsNotEmpty()
-    companyName: string;
-
-    @IsEmail()
-    @IsNotEmpty()
-    email: string;
-
-    @IsString()
-    @IsNotEmpty()
     @IsCnpj({ message: 'Invalid CNPJ' })
-    cnpj: string;
+    cnpj?: string;
 
     @IsString()
     @IsNotEmpty()
     contactName: string;
-
-    @IsString()
-    @IsNotEmpty()
-    @IsCpf({ message: 'This CPF is invalid' })
-    contactCpf: string;
 
     @IsEmail()
     @IsNotEmpty()
