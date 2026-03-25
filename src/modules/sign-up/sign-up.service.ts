@@ -19,7 +19,9 @@ import { SubscriptionStatus } from '../tenant-subscription/entities/tenant-subsc
 import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { TenantService } from '../tenant/tenant.service';
 import { UserService } from '../user/user.service';
+import { normalizeCnpj } from '../../shared/utils/normalize.util';
 import { CreateSignUpDto } from './dtos/create-sign-up.dto';
+import { UpdateSignUpDto } from './dtos/update-sign-up.dto';
 import { SignUp, SignUpStatus } from './entities/sign-up.entity';
 import { SignUpRepository } from './sign-up.repository';
 
@@ -40,16 +42,17 @@ export class SignUpService {
     ) {}
 
     async create(createSignUpDto: CreateSignUpDto): Promise<SignUp> {
-        const signUpExists = await this.findByCnpj(createSignUpDto.cnpj);
+        const normalizedCnpj = this.normalizeOptionalCnpj(createSignUpDto.cnpj);
+        if (normalizedCnpj) {
+            const signUpExists = await this.findByCnpj(normalizedCnpj);
 
-        if (signUpExists) {
-            throw new CustomConflictException({
-                code: 'sign-up-already-exists',
-                message: 'Sign-up already exists',
-            });
+            if (signUpExists) {
+                throw new CustomConflictException({
+                    code: 'sign-up-already-exists',
+                    message: 'Sign-up already exists',
+                });
+            }
         }
-
-        const cnpjData = await this.cnpjService.validateAndFetchData(createSignUpDto.cnpj);
 
         if (!createSignUpDto.termsAccepted) {
             throw new CustomBadRequestException({
@@ -117,25 +120,30 @@ export class SignUpService {
         //     }
         // }
 
+        const companyData = await this.getCompanyDataFromCnpj(
+            normalizedCnpj,
+            createSignUpDto.contactEmail,
+        );
+
         const signUp = this.signUpRepository.create({
-            companyName: createSignUpDto.companyName,
-            email: createSignUpDto.email,
+            companyName: companyData.companyName,
+            email: companyData.email,
             contactName: createSignUpDto.contactName,
-            contactCpf: createSignUpDto.contactCpf,
+            contactCpf: '',
             contactEmail: createSignUpDto.contactEmail,
             contactPhone: createSignUpDto.contactPhone,
             status: SignUpStatus.PENDING,
-            cnpj: createSignUpDto.cnpj,
-            cep: cnpjData.cep,
-            state: cnpjData.uf,
-            city: cnpjData.municipio,
-            neighborhood: cnpjData.bairro,
-            street: cnpjData.logradouro,
-            number: cnpjData.numero,
-            complement: cnpjData.complemento,
-            phoneNumber: cnpjData.telefone,
-            companySize: cnpjData.porte,
-            mainActivity: cnpjData.atividade_principal?.[0]?.text || '',
+            cnpj: companyData.cnpj,
+            cep: companyData.cep,
+            state: companyData.state,
+            city: companyData.city,
+            neighborhood: companyData.neighborhood,
+            street: companyData.street,
+            number: companyData.number,
+            complement: companyData.complement,
+            phoneNumber: companyData.phoneNumber,
+            companySize: companyData.companySize,
+            mainActivity: companyData.mainActivity,
             termsAccepted: createSignUpDto.termsAccepted,
             termsAcceptedAt: new Date(),
             termsVersion: createSignUpDto.termsVersion,
@@ -168,6 +176,46 @@ export class SignUpService {
         return savedSignUp;
     }
 
+    async update(id: number, updateSignUpDto: UpdateSignUpDto): Promise<any> {
+        const digits = String(updateSignUpDto.cnpj ?? '').replace(/\D/g, '');
+        const normalizedCnpj = digits ? this.normalizeOptionalCnpj(digits) : null;
+
+        if (normalizedCnpj) {
+            const existingCnpjSignup = await this.findByCnpj(normalizedCnpj);
+            if (existingCnpjSignup && existingCnpjSignup.id !== id) {
+                throw new CustomConflictException({
+                    code: 'sign-up-already-exists',
+                    message: 'Sign-up already exists',
+                });
+            }
+        }
+
+        const companyData = await this.getCompanyDataFromCnpj(
+            normalizedCnpj,
+            updateSignUpDto.contactEmail,
+        );
+        const updatePayload: Partial<SignUp> = {
+            contactName: updateSignUpDto.contactName,
+            contactEmail: updateSignUpDto.contactEmail,
+            contactPhone: updateSignUpDto.contactPhone,
+            companyName: companyData.companyName,
+            email: companyData.email,
+            cnpj: companyData.cnpj,
+            phoneNumber: companyData.phoneNumber,
+            cep: companyData.cep,
+            state: companyData.state,
+            city: companyData.city,
+            neighborhood: companyData.neighborhood,
+            street: companyData.street,
+            number: companyData.number,
+            complement: companyData.complement,
+            companySize: companyData.companySize,
+            mainActivity: companyData.mainActivity,
+        };
+
+        return this.signUpRepository.update(id, updatePayload);
+    }
+
     async findAll(
         where?: { companyName?: string; status?: string },
         options?: QueryOptions<SignUp>,
@@ -190,12 +238,20 @@ export class SignUpService {
         };
     }
 
-    async findByCnpj(cnpj: string): Promise<SignUp> {
-        const signUp = await this.signUpRepository.findOne({
-            where: { cnpj },
-        });
+    async findByCnpj(cnpj: string): Promise<SignUp | null> {
+        const normalized = normalizeCnpj(cnpj);
+        if (!normalized) {
+            return null;
+        }
 
-        return signUp;
+        const formatted =
+            normalized.length === 14
+                ? `${normalized.slice(0, 2)}.${normalized.slice(2, 5)}.${normalized.slice(5, 8)}/${normalized.slice(8, 12)}-${normalized.slice(12, 14)}`
+                : normalized;
+
+        return this.signUpRepository.findOne({
+            where: [{ cnpj: normalized }, { cnpj: formatted }],
+        });
     }
 
     async findOne(id: number): Promise<SignUp> {
@@ -242,6 +298,13 @@ export class SignUpService {
             throw new CustomNotFoundException({
                 message: 'This sign-up has already been completed',
                 code: 'sign-up-already-completed',
+            });
+        }
+
+        if (!this.hasApprovalData(signUp)) {
+            throw new CustomBadRequestException({
+                message: 'Preencha o CNPJ e os dados da empresa antes de aprovar.',
+                code: 'sign-up-missing-cnpj-info',
             });
         }
 
@@ -465,5 +528,73 @@ export class SignUpService {
         }
 
         return { where: queryWhere };
+    }
+
+    private normalizeOptionalCnpj(cnpj?: string): string | null {
+        const normalized = normalizeCnpj(cnpj);
+        if (!normalized) return null;
+        if (normalized.length !== 14) {
+            throw new CustomBadRequestException({
+                code: 'invalid-cnpj',
+                message: 'CNPJ inválido',
+            });
+        }
+        return normalized;
+    }
+
+    private async getCompanyDataFromCnpj(normalizedCnpj: string | null, contactEmail: string) {
+        if (!normalizedCnpj) {
+            return {
+                companyName: '',
+                email: (contactEmail || '').trim(),
+                cnpj: null,
+                phoneNumber: null,
+                cep: null,
+                state: null,
+                city: null,
+                neighborhood: null,
+                street: null,
+                number: null,
+                complement: null,
+                companySize: null,
+                mainActivity: null,
+            };
+        }
+
+        const cnpjData = await this.cnpjService.validateAndFetchData(normalizedCnpj);
+        const companyName =
+            [cnpjData.nome, cnpjData.fantasia]
+                .map((s) => (typeof s === 'string' ? s.trim() : ''))
+                .find((s) => s.length > 0) || '';
+        const email = (cnpjData.email || '').trim() || (contactEmail || '').trim();
+
+        if (!companyName) {
+            throw new CustomBadRequestException({
+                code: 'cnpj-company-name-missing',
+                message: 'Não foi possível obter o nome da empresa a partir do CNPJ.',
+            });
+        }
+
+        return {
+            companyName,
+            email,
+            cnpj: normalizedCnpj,
+            phoneNumber: (cnpjData.telefone || '').trim() || null,
+            cep: cnpjData.cep || null,
+            state: cnpjData.uf || null,
+            city: cnpjData.municipio || null,
+            neighborhood: cnpjData.bairro || null,
+            street: cnpjData.logradouro || null,
+            number: cnpjData.numero || null,
+            complement: cnpjData.complemento || null,
+            companySize: cnpjData.porte || null,
+            mainActivity: cnpjData.atividade_principal?.[0]?.text || null,
+        };
+    }
+
+    private hasApprovalData(signUp: SignUp): boolean {
+        const name = (signUp.companyName || '').trim();
+        const normalized = normalizeCnpj(signUp.cnpj);
+        return Boolean(normalized && normalized.length === 14 && name.length > 0);
     }
 }
