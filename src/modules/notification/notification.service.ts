@@ -180,18 +180,18 @@ export class NotificationService
         return notification;
     }
 
-    async countUnread(tenantId: number, targetUserId: number): Promise<number> {
+    async countUnseen(tenantId: number, targetUserId: number): Promise<number> {
         return await this.notificationRepository.count({
             where: {
                 tenantId,
                 targetUserId,
-                read: false,
+                seen: false,
             },
         });
     }
 
     async emitFromEntity(notification: Notification) {
-        const unreadCount = await this.countUnread(
+        const unseenCount = await this.countUnseen(
             notification.tenantId,
             notification.targetUserId,
         );
@@ -199,7 +199,7 @@ export class NotificationService
         const eventData = {
             type: 'notification',
             notification,
-            unreadCount,
+            unseenCount,
         };
 
         // Emit locally
@@ -231,10 +231,10 @@ export class NotificationService
         });
     }
 
-    async emitUnreadCount(tenantId: number, userId: number) {
-        const unreadCount = await this.countUnread(tenantId, userId);
+    async emitUnseenCount(tenantId: number, userId: number) {
+        const unseenCount = await this.countUnseen(tenantId, userId);
         const eventData = {
-            unreadCount,
+            unseenCount,
         };
 
         this.emitToLocalStream(userId, eventData);
@@ -274,9 +274,10 @@ export class NotificationService
         }
 
         notification.read = true;
+        notification.seen = true;
         await this.notificationRepository.save(notification);
 
-        await this.emitUnreadCount(accessProfile.tenantId, accessProfile.userId);
+        await this.emitUnseenCount(accessProfile.tenantId, accessProfile.userId);
 
         return { message: 'Notification marked as read' };
     }
@@ -284,12 +285,29 @@ export class NotificationService
     async markAllAsRead(accessProfile: AccessProfile): Promise<{ message: string }> {
         await this.notificationRepository.update(
             { tenantId: accessProfile.tenantId, targetUserId: accessProfile.userId },
-            { read: true },
+            { read: true, seen: true },
         );
 
-        await this.emitUnreadCount(accessProfile.tenantId, accessProfile.userId);
+        await this.emitUnseenCount(accessProfile.tenantId, accessProfile.userId);
 
         return { message: 'All notifications marked as read' };
+    }
+
+    async markAsSeen(
+        accessProfile: AccessProfile,
+    ): Promise<{ message: string }> {
+        await this.notificationRepository.update(
+            {
+                tenantId: accessProfile.tenantId,
+                targetUserId: accessProfile.userId,
+                seen: false,
+            },
+            { seen: true },
+        );
+
+        await this.emitUnseenCount(accessProfile.tenantId, accessProfile.userId);
+
+        return { message: 'Notifications marked as seen' };
     }
 
     async countUnreadByUser(accessProfile: AccessProfile): Promise<number> {
@@ -297,7 +315,7 @@ export class NotificationService
             where: {
                 tenantId: accessProfile.tenantId,
                 targetUserId: accessProfile.userId,
-                read: false,
+                seen: false,
             },
         });
     }
