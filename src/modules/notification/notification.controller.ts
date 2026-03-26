@@ -51,6 +51,12 @@ export class NotificationController {
     }
 
     @UseGuards(JwtAuthGuard)
+    @Post('mark-as-seen')
+    async markAsSeen(@GetAccessProfile() accessProfile: AccessProfile) {
+        return this.notificationService.markAsSeen(accessProfile);
+    }
+
+    @UseGuards(JwtAuthGuard)
     @Post(':id/mark-as-read')
     async markAsRead(
         @GetAccessProfile() accessProfile: AccessProfile,
