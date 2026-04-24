@@ -259,8 +259,69 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             });
         }
 
-        await super.updateByUuid(accessProfile, uuid, dto as QueryDeepPartialEntity<TicketComment>);
-        return this.findByUuid(accessProfile, uuid);
+        const previousMentionedUserIds = this.extractMentionedUserIdsFromContent(comment.content);
+        const incomingMentionedUserIds = new Set((dto.mentions || []).map((mention) => mention.userId));
+
+        const updateData = { ...dto } as Partial<UpdateTicketCommentDto>;
+        delete updateData.mentions;
+        await super.updateByUuid(
+            accessProfile,
+            uuid,
+            updateData as QueryDeepPartialEntity<TicketComment>,
+        );
+        const updatedComment = await this.findByUuid(accessProfile, uuid);
+
+        const newlyMentionedUserIds = Array.from(incomingMentionedUserIds).filter(
+            (userId) => userId !== accessProfile.userId && !previousMentionedUserIds.has(userId),
+        );
+
+        if (newlyMentionedUserIds.length > 0) {
+            const notifications = await Promise.all(
+                newlyMentionedUserIds.map((mentionedUserId) =>
+                    this.notificationRepository.save({
+                        tenantId: accessProfile.tenantId,
+                        type: NotificationType.Comment,
+                        message:
+                            '<p><span>user</span> mencionou você em um comentário no ticket <span>resource</span>.</p>',
+                        createdById: accessProfile.userId,
+                        targetUserId: mentionedUserId,
+                        resourceId: updatedComment.ticketId,
+                        resourceCustomId: updatedComment.ticketCustomId,
+                        metadata: {
+                            commentText: updateData.content ?? updatedComment.content,
+                            isMention: true,
+                            source: 'comment-edit',
+                        },
+                    }),
+                ),
+            );
+
+            await Promise.all(
+                notifications.map((notification) => this.notificationService.emitFromEntity(notification)),
+            );
+        }
+
+        return updatedComment;
+    }
+
+    private extractMentionedUserIdsFromContent(content: string): Set<number> {
+        const mentionUserIds = new Set<number>();
+        if (!content) {
+            return mentionUserIds;
+        }
+
+        const regex = /data-user-id=['"](\d+)['"]/g;
+        let match = regex.exec(content);
+
+        while (match) {
+            const userId = Number(match[1]);
+            if (Number.isInteger(userId) && userId > 0) {
+                mentionUserIds.add(userId);
+            }
+            match = regex.exec(content);
+        }
+
+        return mentionUserIds;
     }
 
     /**
