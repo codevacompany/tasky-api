@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
     endOfDay,
@@ -112,6 +112,54 @@ export class TicketStatsService {
         if (!role || role.name !== RoleName.Supervisor) return null;
 
         return user.departmentId;
+    }
+
+    /**
+     * Ensures the requesting user may view stats for targetUserId (same tenant).
+     * TenantAdmin: any user in tenant. Supervisor: user must be in supervisor's department.
+     * Otherwise: only own stats.
+     */
+    async assertCanViewUserStats(accessProfile: AccessProfile, targetUserId: number): Promise<void> {
+        if (targetUserId === accessProfile.userId) {
+            return;
+        }
+
+        const targetUser = await this.userRepository.findOne({
+            where: { id: targetUserId, tenantId: accessProfile.tenantId },
+        });
+        if (!targetUser) {
+            throw new NotFoundException('User not found');
+        }
+
+        const viewer = await this.userRepository.findOne({
+            where: { id: accessProfile.userId, tenantId: accessProfile.tenantId },
+        });
+        if (!viewer) {
+            throw new ForbiddenException('Access denied');
+        }
+
+        const viewerRole = await this.roleService.findById(viewer.roleId);
+        if (!viewerRole) {
+            throw new ForbiddenException('Access denied');
+        }
+
+        if (viewerRole.name === RoleName.TenantAdmin) {
+            return;
+        }
+
+        if (viewerRole.name === RoleName.Supervisor) {
+            const supervisorDeptId = viewer.departmentId;
+            if (
+                supervisorDeptId != null &&
+                targetUser.departmentId != null &&
+                targetUser.departmentId === supervisorDeptId
+            ) {
+                return;
+            }
+            throw new ForbiddenException('Access denied');
+        }
+
+        throw new ForbiddenException('Access denied');
     }
 
     /**
@@ -555,7 +603,38 @@ export class TicketStatsService {
                 ? statsItems.filter((s) => s.departmentIds?.includes(supervisorDeptId))
                 : statsItems;
 
-        if (filteredStatsItems.length === 0) return [];
+        // When no tickets in period, still return all departments with zeroed stats
+        if (filteredStatsItems.length === 0) {
+            const departmentsRes = await this.departmentService.findMany(accessProfile, {
+                paginated: false,
+            });
+            const deptsToProcess =
+                supervisorDeptId !== null
+                    ? departmentsRes.items.filter((d) => d.id === supervisorDeptId)
+                    : departmentsRes.items;
+
+            const zeroedResults = await Promise.all(
+                deptsToProcess.map(async (dept) => ({
+                    departmentId: dept.id,
+                    departmentName: dept.name,
+                    totalTickets: 0,
+                    resolvedTickets: 0,
+                    averageResolutionTimeSeconds: 0,
+                    averageAcceptanceTimeSeconds: 0,
+                    resolutionRate: 0,
+                    sentToVerificationOverdueRate: 0,
+                    completionOverdueRate: 0,
+                    userCount: await this.userRepository.count({
+                        where: {
+                            tenantId: accessProfile.tenantId,
+                            departmentId: dept.id,
+                            isActive: true,
+                        },
+                    }),
+                })),
+            );
+            return zeroedResults;
+        }
 
         // 2. Fetch Core Data and Analyze Lifecycle
         const finishedTicketIds = this.getFinishedTicketIds(filteredStatsItems);
@@ -659,10 +738,11 @@ export class TicketStatsService {
                 };
 
                 if (metrics) {
+                    const totalClosed = metrics.totalCompleted + metrics.rejectedCount;
+                    deptStats.closedTickets = totalClosed;
+                    // Resolution rate among closed tickets (resolved / closed)
                     resolutionRate =
-                        metrics.totalEntries > 0
-                            ? metrics.totalCompleted / metrics.totalEntries
-                            : 0;
+                        totalClosed > 0 ? metrics.totalCompleted / totalClosed : 0;
 
                     // Only calculate efficiency score if department has at least 5 tickets
                     if (totalTickets >= 5) {
@@ -696,7 +776,6 @@ export class TicketStatsService {
                         },
                     );
 
-                    const totalClosed = metrics.totalCompleted + metrics.rejectedCount;
                     const totalTicketsForOverdueRate = totalClosed + deptOpenOverdueCount + deptVerificationOverdueCount;
                     const closedOverdueCount = totalClosed - metrics.sentToVerificationOnTime;
                     const totalOverdueCount = closedOverdueCount + deptOpenOverdueCount + deptVerificationOverdueCount;
@@ -1399,6 +1478,13 @@ export class TicketStatsService {
         period: StatsPeriod = StatsPeriod.TRIMESTRAL,
     ): Promise<TicketStatsResponseDto> {
         const { startDate, limit, order } = this.getPeriodFilter(period);
+        const targetUser = await this.userRepository.findOne({
+            where: {
+                id: userId,
+                tenantId: accessProfile.tenantId,
+            },
+            relations: ['department'],
+        });
 
         // Query 1: Fetch tickets where the user is the target (assignee)
         const qb = this.ticketStatsRepository.createQueryBuilder('ticketStats');
@@ -1764,6 +1850,9 @@ export class TicketStatsService {
 
         // Only include efficiency score if user has at least 10 tickets
         const response: TicketStatsResponseDto = {
+            userFirstName: targetUser?.firstName,
+            userLastName: targetUser?.lastName,
+            userDepartmentName: targetUser?.department?.name,
             totalTickets,
             openTickets,
             closedTickets,

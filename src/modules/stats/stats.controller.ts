@@ -1,5 +1,5 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
+import { BadRequestException, Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AccessProfile, GetAccessProfile } from '../../shared/common/access-profile';
 import { SubscriptionRequiredGuard } from '../../shared/guards/subscription-required.guard';
 import { TermsAcceptanceRequiredGuard } from '../../shared/guards/terms-acceptance-required.guard';
@@ -48,8 +48,19 @@ export class StatsController {
     async getUserStats(
         @GetAccessProfile() accessProfile: AccessProfile,
         @Query('period') period: StatsPeriod = StatsPeriod.TRIMESTRAL,
+        @Query('userId') userIdParam?: string,
     ): Promise<TicketStatsResponseDto> {
-        return this.ticketStatsService.getUserStats(accessProfile, accessProfile.userId, period);
+        const targetUserId =
+            userIdParam !== undefined && userIdParam !== null && String(userIdParam).trim() !== ''
+                ? parseInt(String(userIdParam), 10)
+                : accessProfile.userId;
+        if (Number.isNaN(targetUserId)) {
+            throw new BadRequestException('Invalid userId');
+        }
+        if (targetUserId !== accessProfile.userId) {
+            await this.ticketStatsService.assertCanViewUserStats(accessProfile, targetUserId);
+        }
+        return this.ticketStatsService.getUserStats(accessProfile, targetUserId, period);
     }
 
     @Get('ticket-trends')
