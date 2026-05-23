@@ -94,6 +94,32 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         return user?.departmentId || null;
     }
 
+    private async isTicketAdmin(accessProfile: AccessProfile): Promise<boolean> {
+        if (!accessProfile.roleId) return false;
+        const role = await this.roleService.findById(accessProfile.roleId);
+        return (
+            role?.name === RoleName.TenantAdmin || role?.name === RoleName.GlobalAdmin
+        );
+    }
+
+    private isTerminalTicketStatus(statusKey: string): boolean {
+        return (
+            statusKey === TicketStatus.Completed ||
+            statusKey === TicketStatus.Rejected ||
+            statusKey === TicketStatus.Canceled
+        );
+    }
+
+    private assertTicketOpenForAssignment(statusKey: string): void {
+        if (this.isTerminalTicketStatus(statusKey)) {
+            throw new CustomForbiddenException({
+                message:
+                    'Cannot modify assignee or reviewer on finished, canceled, or rejected tickets',
+                code: 'ticket-terminal-status',
+            });
+        }
+    }
+
     async findAll(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
         const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId);
 
@@ -332,7 +358,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         if (user.roleId) {
             const role = await this.roleService.findById(user.roleId);
-            if (role && role.name === RoleName.TenantAdmin) {
+            if (
+                role &&
+                (role.name === RoleName.TenantAdmin || role.name === RoleName.GlobalAdmin)
+            ) {
                 return true;
             }
         }
@@ -2335,12 +2364,17 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const ticket = await this.findById(accessProfile, customId);
 
         const currentStatus = ticket.ticketStatus?.key || '';
-        const allowedStatuses = [TicketStatus.Pending, TicketStatus.InProgress];
-        if (!allowedStatuses.includes(currentStatus as TicketStatus)) {
-            throw new CustomForbiddenException({
-                message: 'Can only update assignee when ticket is pending or in progress',
-                code: 'ticket-not-pending-or-in-progress',
-            });
+        const isAdmin = await this.isTicketAdmin(accessProfile);
+        this.assertTicketOpenForAssignment(currentStatus);
+
+        if (!isAdmin) {
+            const allowedStatuses = [TicketStatus.Pending, TicketStatus.InProgress];
+            if (!allowedStatuses.includes(currentStatus as TicketStatus)) {
+                throw new CustomForbiddenException({
+                    message: 'Can only update assignee when ticket is pending or in progress',
+                    code: 'ticket-not-pending-or-in-progress',
+                });
+            }
         }
 
         const newTargetUser = await this.userRepository.findOne({
@@ -2478,6 +2512,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         order?: number,
     ) {
         const ticket = await this.findById(accessProfile, customId);
+        const currentStatus = ticket.ticketStatus?.key || '';
+        this.assertTicketOpenForAssignment(currentStatus);
 
         const newTargetUser = await this.userRepository.findOne({
             where: {
@@ -2604,23 +2640,26 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         targetUserIdToRemove: number,
     ) {
         const ticket = await this.findById(accessProfile, customId);
+        const isAdmin = await this.isTicketAdmin(accessProfile);
 
-        // Check if user is the requester
-        if (accessProfile.userId !== ticket.requester.id) {
+        if (!isAdmin && accessProfile.userId !== ticket.requester.id) {
             throw new CustomForbiddenException({
                 message: 'Only the requester can remove target users',
                 code: 'only-requester-can-remove',
             });
         }
 
-        // Check if ticket is pending or in progress (only those allow removing target users)
         const currentStatus = ticket.ticketStatus?.key || '';
-        const allowedStatuses = [TicketStatus.Pending, TicketStatus.InProgress];
-        if (!allowedStatuses.includes(currentStatus as TicketStatus)) {
-            throw new CustomForbiddenException({
-                message: 'Can only remove target users when ticket is pending or in progress',
-                code: 'ticket-not-pending-or-in-progress',
-            });
+        this.assertTicketOpenForAssignment(currentStatus);
+
+        if (!isAdmin) {
+            const allowedStatuses = [TicketStatus.Pending, TicketStatus.InProgress];
+            if (!allowedStatuses.includes(currentStatus as TicketStatus)) {
+                throw new CustomForbiddenException({
+                    message: 'Can only remove target users when ticket is pending or in progress',
+                    code: 'ticket-not-pending-or-in-progress',
+                });
+            }
         }
 
         const targetUsers = await this.ticketTargetUserRepository.find({
@@ -2659,8 +2698,11 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const isLastTargetUser =
             targetUserToRemove.order === targetUsers[targetUsers.length - 1].order;
 
-        // If not removing current target user, check if user has already worked
-        if (!isRemovingCurrentTargetUser && targetUserToRemove.order < currentTargetUser.order) {
+        if (
+            !isAdmin &&
+            !isRemovingCurrentTargetUser &&
+            targetUserToRemove.order < currentTargetUser.order
+        ) {
             throw new CustomForbiddenException({
                 message: 'Cannot remove target user who has already worked on the task',
                 code: 'cannot-remove-user-who-worked',
@@ -3042,6 +3084,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
     async updateReviewer(accessProfile: AccessProfile, customId: string, newReviewerId: number) {
         const ticket = await this.findById(accessProfile, customId);
+        const currentStatus = ticket.ticketStatus?.key || '';
+        this.assertTicketOpenForAssignment(currentStatus);
 
         const newReviewer = await this.userRepository.findOne({
             where: {
