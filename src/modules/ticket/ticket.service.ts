@@ -1235,6 +1235,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             accessProfile.tenantId,
         );
 
+        const updateDescription = this.getTicketUpdateDescription(ticketDto);
+
         await this.ticketUpdateRepository.save({
             tenantId: accessProfile.tenantId,
             ticketId: ticketResponse.id,
@@ -1249,7 +1251,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             toUserId: accessProfile.userId || null,
             fromDepartmentId,
             toDepartmentId: fromDepartmentId,
-            description: '<p><span>user</span> atualizou esta tarefa.</p>',
+            description: updateDescription,
         });
 
         const targetUsers = await this.ticketTargetUserRepository.find({
@@ -1276,6 +1278,16 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         await this.notifyTicketUpdate(accessProfile, ticketResponse.id);
 
         return ticketResponse;
+    }
+
+    private getTicketUpdateDescription(dto: UpdateTicketDto): string {
+        if (dto.name !== undefined)        return '<p><span>user</span> atualizou o assunto desta tarefa.</p>';
+        if (dto.description !== undefined) return '<p><span>user</span> atualizou a descrição desta tarefa.</p>';
+        if (dto.priority !== undefined)    return '<p><span>user</span> atualizou a prioridade desta tarefa.</p>';
+        if (dto.categoryId !== undefined)  return '<p><span>user</span> atualizou a categoria desta tarefa.</p>';
+        if (dto.dueAt !== undefined)       return '<p><span>user</span> atualizou o prazo desta tarefa.</p>';
+        if (dto.isPrivate !== undefined)   return '<p><span>user</span> atualizou a privacidade desta tarefa.</p>';
+        return '<p><span>user</span> atualizou esta tarefa.</p>';
     }
 
     async updateStatus(
