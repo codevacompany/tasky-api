@@ -30,6 +30,7 @@ import { TicketTargetUserModule } from './modules/ticket-target-user/ticket-targ
 import { TicketUpdateModule } from './modules/ticket-updates/ticket-update.module';
 import { TicketModule } from './modules/ticket/ticket.module';
 import { UserModule } from './modules/user/user.module';
+import { UserDeactivationModule } from './modules/user/user-deactivation.module';
 import { VerificationCodeModule } from './modules/verification-code/verification-code.module';
 import { RedisModule } from './shared/redis/redis.module';
 
@@ -41,6 +42,7 @@ import { RedisModule } from './shared/redis/redis.module';
         RedisModule,
         DatabaseModule,
         UserModule,
+        UserDeactivationModule,
         AuthModule,
         VerificationCodeModule,
         CategoryModule,
