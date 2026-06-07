@@ -3346,4 +3346,115 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             console.error('Error broadcasting ticket update:', error);
         }
     }
+
+    private getTerminalTicketStatuses(): TicketStatus[] {
+        return [TicketStatus.Completed, TicketStatus.Rejected, TicketStatus.Canceled];
+    }
+
+    async getUserDeactivationTicketCounts(
+        accessProfile: AccessProfile,
+        userId: number,
+    ): Promise<{ targetUserTicketCount: number; reviewerTicketCount: number }> {
+        const terminalStatuses = this.getTerminalTicketStatuses();
+
+        const targetUserTicketCount = await this.repository
+            .createQueryBuilder('ticket')
+            .innerJoin('ticket.ticketStatus', 'status')
+            .innerJoin(
+                'ticket_target_user',
+                'ttu',
+                'ttu."ticketId" = ticket.id AND ttu."tenantId" = ticket."tenantId"',
+            )
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ttu."userId" = :userId', { userId })
+            .andWhere('status.key NOT IN (:...terminalStatuses)', { terminalStatuses })
+            .getCount();
+
+        const reviewerTicketCount = await this.repository
+            .createQueryBuilder('ticket')
+            .innerJoin('ticket.ticketStatus', 'status')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.reviewerId = :userId', { userId })
+            .andWhere('status.key NOT IN (:...terminalStatuses)', { terminalStatuses })
+            .getCount();
+
+        return { targetUserTicketCount, reviewerTicketCount };
+    }
+
+    async reassignTicketsOnUserDeactivation(
+        accessProfile: AccessProfile,
+        userIdToDeactivate: number,
+        newTargetUserId?: number,
+        newReviewerId?: number,
+    ): Promise<void> {
+        const terminalStatuses = this.getTerminalTicketStatuses();
+
+        const targetUserTickets = await this.repository
+            .createQueryBuilder('ticket')
+            .innerJoin('ticket.ticketStatus', 'status')
+            .innerJoin(
+                'ticket_target_user',
+                'ttu',
+                'ttu."ticketId" = ticket.id AND ttu."tenantId" = ticket."tenantId"',
+            )
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ttu."userId" = :userId', { userId: userIdToDeactivate })
+            .andWhere('status.key NOT IN (:...terminalStatuses)', { terminalStatuses })
+            .select(['ticket.id', 'ticket.customId'])
+            .getMany();
+
+        for (const ticket of targetUserTickets) {
+            if (!newTargetUserId) {
+                throw new CustomBadRequestException({
+                    code: 'new-target-user-required',
+                    message: 'A new target user must be selected to reassign open tickets',
+                });
+            }
+
+            const targetUsers = await this.ticketTargetUserRepository.find({
+                where: {
+                    ticketId: ticket.id,
+                    tenantId: accessProfile.tenantId,
+                },
+                order: { order: 'ASC' },
+            });
+
+            const entryToReplace = targetUsers.find((tu) => tu.userId === userIdToDeactivate);
+            if (!entryToReplace) {
+                continue;
+            }
+
+            const isAlreadyAssigned = targetUsers.some((tu) => tu.userId === newTargetUserId);
+            if (isAlreadyAssigned) {
+                await this.removeAssignee(accessProfile, ticket.customId, userIdToDeactivate);
+            } else {
+                await this.updateAssignee(
+                    accessProfile,
+                    ticket.customId,
+                    newTargetUserId,
+                    entryToReplace.order,
+                );
+            }
+        }
+
+        const reviewerTickets = await this.repository
+            .createQueryBuilder('ticket')
+            .innerJoin('ticket.ticketStatus', 'status')
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.reviewerId = :userId', { userId: userIdToDeactivate })
+            .andWhere('status.key NOT IN (:...terminalStatuses)', { terminalStatuses })
+            .select(['ticket.customId'])
+            .getMany();
+
+        for (const ticket of reviewerTickets) {
+            if (!newReviewerId) {
+                throw new CustomBadRequestException({
+                    code: 'new-reviewer-required',
+                    message: 'A new reviewer must be selected to reassign open tickets',
+                });
+            }
+
+            await this.updateReviewer(accessProfile, ticket.customId, newReviewerId);
+        }
+    }
 }
