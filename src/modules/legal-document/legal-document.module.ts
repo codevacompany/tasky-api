@@ -7,10 +7,7 @@ import { LegalDocumentRepository } from './legal-document.repository';
 import { LegalDocumentService } from './legal-document.service';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([LegalDocument]),
-        RoleModule,
-    ],
+    imports: [TypeOrmModule.forFeature([LegalDocument]), RoleModule],
     controllers: [LegalDocumentController],
     providers: [LegalDocumentService, LegalDocumentRepository],
     exports: [LegalDocumentService],

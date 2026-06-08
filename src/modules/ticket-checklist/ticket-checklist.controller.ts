@@ -7,7 +7,6 @@ import {
     ParseIntPipe,
     Patch,
     Post,
-    Query,
     UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
@@ -55,4 +54,3 @@ export class TicketChecklistController {
         return { message: 'Checklist item deleted successfully' };
     }
 }
-

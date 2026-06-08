@@ -32,7 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         return new AccessProfile({
             userId: payload.sub.userId,
             tenantId: payload.sub.tenantId,
-            roleId: user.roleId
-        })
+            roleId: user.roleId,
+        });
     }
 }

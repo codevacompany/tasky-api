@@ -10,9 +10,9 @@ import {
     CustomNotFoundException,
 } from '../../shared/exceptions/http-exception';
 import { QueryOptions } from '../../shared/types/http';
+import { NotificationEvent } from '../notification/constants/notification-events';
 import { NotificationType } from '../notification/entities/notification.entity';
-import { NotificationRepository } from '../notification/notification.repository';
-import { NotificationService } from '../notification/notification.service';
+import { NotificationDispatcher } from '../notification/notification-dispatcher.service';
 import { RoleName } from '../role/entities/role.entity';
 import { Ticket } from '../ticket/entities/ticket.entity';
 import { UserRepository } from '../user/user.repository';
@@ -27,8 +27,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
     constructor(
         private readonly ticketCommentRepository: TicketCommentRepository,
         private readonly userRepository: UserRepository,
-        private readonly notificationService: NotificationService,
-        private readonly notificationRepository: NotificationRepository,
+        private readonly notificationDispatcher: NotificationDispatcher,
         @InjectRepository(Ticket)
         private readonly ticketRepository: Repository<Ticket>,
         private readonly ticketService: TicketService,
@@ -114,16 +113,17 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             });
         }
 
-        const notifications = [];
+        const notifications: Promise<unknown>[] = [];
 
         if (ticketCommentDto.userId !== commentWithTicket.ticket.requesterId) {
             notifications.push(
-                this.notificationRepository.save({
+                this.notificationDispatcher.notify({
                     tenantId: accessProfile.tenantId,
+                    targetUserId: commentWithTicket.ticket.requesterId,
+                    event: NotificationEvent.COMMENT_ON_TICKET,
                     type: NotificationType.Comment,
                     message: '<p><span>user</span> comentou no ticket <span>resource</span>.</p>',
                     createdById: ticketCommentDto.userId,
-                    targetUserId: commentWithTicket.ticket.requesterId,
                     resourceId: commentWithTicket.ticketId,
                     resourceCustomId: commentWithTicket.ticketCustomId,
                     metadata: {
@@ -138,12 +138,13 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             ticketCommentDto.userId !== commentWithTicket.ticket.currentTargetUserId
         ) {
             notifications.push(
-                this.notificationRepository.save({
+                this.notificationDispatcher.notify({
                     tenantId: accessProfile.tenantId,
+                    targetUserId: commentWithTicket.ticket.currentTargetUserId,
+                    event: NotificationEvent.COMMENT_ON_TICKET,
                     type: NotificationType.Comment,
                     message: '<p><span>user</span> comentou no ticket <span>resource</span>.</p>',
                     createdById: ticketCommentDto.userId,
-                    targetUserId: commentWithTicket.ticket.currentTargetUserId,
                     resourceId: commentWithTicket.ticketId,
                     resourceCustomId: commentWithTicket.ticketCustomId,
                     metadata: {
@@ -153,31 +154,29 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             );
         }
 
-        // Process mentions and create notifications for mentioned users
         if (ticketCommentDto.mentions && ticketCommentDto.mentions.length > 0) {
             const mentionedUserIds = new Set(
                 ticketCommentDto.mentions.map((mention) => mention.userId),
             );
 
-            // Remove duplicates and exclude the comment author
             const uniqueMentionedUserIds = Array.from(mentionedUserIds).filter(
                 (userId) => userId !== ticketCommentDto.userId,
             );
 
             for (const mentionedUserId of uniqueMentionedUserIds) {
-                // Don't create duplicate notifications if user is already notified above
                 if (
                     mentionedUserId !== commentWithTicket.ticket.requesterId &&
                     mentionedUserId !== commentWithTicket.ticket.currentTargetUserId
                 ) {
                     notifications.push(
-                        this.notificationRepository.save({
+                        this.notificationDispatcher.notify({
                             tenantId: accessProfile.tenantId,
+                            targetUserId: mentionedUserId,
+                            event: NotificationEvent.COMMENT_MENTION,
                             type: NotificationType.Comment,
                             message:
                                 '<p><span>user</span> mencionou você em um comentário no ticket <span>resource</span>.</p>',
                             createdById: ticketCommentDto.userId,
-                            targetUserId: mentionedUserId,
                             resourceId: commentWithTicket.ticketId,
                             resourceCustomId: commentWithTicket.ticketCustomId,
                             metadata: {
@@ -190,14 +189,7 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             }
         }
 
-        const savedNotifications = await Promise.all(notifications);
-        await Promise.all(
-            savedNotifications.map((notification) => {
-                if (notification) {
-                    return this.notificationService.emitFromEntity(notification);
-                }
-            }),
-        );
+        await Promise.all(notifications);
 
         await this.ticketService.notifyTicketUpdate(accessProfile, commentWithTicket.ticketId);
 
@@ -260,7 +252,9 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         }
 
         const previousMentionedUserIds = this.extractMentionedUserIdsFromContent(comment.content);
-        const incomingMentionedUserIds = new Set((dto.mentions || []).map((mention) => mention.userId));
+        const incomingMentionedUserIds = new Set(
+            (dto.mentions || []).map((mention) => mention.userId),
+        );
 
         const updateData = { ...dto } as Partial<UpdateTicketCommentDto>;
         delete updateData.mentions;
@@ -276,15 +270,16 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         );
 
         if (newlyMentionedUserIds.length > 0) {
-            const notifications = await Promise.all(
+            await Promise.all(
                 newlyMentionedUserIds.map((mentionedUserId) =>
-                    this.notificationRepository.save({
+                    this.notificationDispatcher.notify({
                         tenantId: accessProfile.tenantId,
+                        targetUserId: mentionedUserId,
+                        event: NotificationEvent.COMMENT_MENTION,
                         type: NotificationType.Comment,
                         message:
                             '<p><span>user</span> mencionou você em um comentário no ticket <span>resource</span>.</p>',
                         createdById: accessProfile.userId,
-                        targetUserId: mentionedUserId,
                         resourceId: updatedComment.ticketId,
                         resourceCustomId: updatedComment.ticketCustomId,
                         metadata: {
@@ -294,10 +289,6 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
                         },
                     }),
                 ),
-            );
-
-            await Promise.all(
-                notifications.map((notification) => this.notificationService.emitFromEntity(notification)),
             );
         }
 

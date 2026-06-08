@@ -17,4 +17,3 @@ export class AcceptTermsDto {
     @IsOptional()
     privacyPolicyVersion?: string;
 }
-

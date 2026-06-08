@@ -9,4 +9,3 @@ export class CreateChecklistDto {
     @IsNumber()
     ticketId: number;
 }
-
