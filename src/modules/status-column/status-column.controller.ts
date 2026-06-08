@@ -19,5 +19,3 @@ export class StatusColumnController {
         return this.statusColumnService.findMany(accessProfile, options);
     }
 }
-
-

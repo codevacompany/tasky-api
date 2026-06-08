@@ -155,10 +155,7 @@ export class UserService extends TenantBoundBaseService<User> {
             .createQueryBuilder('user')
             .where('user.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .select('COUNT(*)', 'total')
-            .addSelect(
-                'SUM(CASE WHEN user.isActive = true THEN 1 ELSE 0 END)',
-                'active',
-            );
+            .addSelect('SUM(CASE WHEN user.isActive = true THEN 1 ELSE 0 END)', 'active');
 
         const raw = await qb.getRawOne<{ total: string | null; active: string | null }>();
 

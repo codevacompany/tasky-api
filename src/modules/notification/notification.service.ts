@@ -97,12 +97,15 @@ export class NotificationService
         }
 
         // Cleanup expired tickets after expiration
-        setTimeout(() => {
-            const existingTicket = this.streamTickets.get(ticket);
-            if (existingTicket && Date.now() > existingTicket.expiresAt) {
-                this.streamTickets.delete(ticket);
-            }
-        }, 5 * 60 * 1000);
+        setTimeout(
+            () => {
+                const existingTicket = this.streamTickets.get(ticket);
+                if (existingTicket && Date.now() > existingTicket.expiresAt) {
+                    this.streamTickets.delete(ticket);
+                }
+            },
+            5 * 60 * 1000,
+        );
 
         return ticket;
     }
@@ -293,9 +296,7 @@ export class NotificationService
         return { message: 'All notifications marked as read' };
     }
 
-    async markAsSeen(
-        accessProfile: AccessProfile,
-    ): Promise<{ message: string }> {
+    async markAsSeen(accessProfile: AccessProfile): Promise<{ message: string }> {
         await this.notificationRepository.update(
             {
                 tenantId: accessProfile.tenantId,

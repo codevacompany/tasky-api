@@ -4,7 +4,14 @@ import { QueryOptions } from '../types/http';
 export const GetQueryOptions = createParamDecorator(
     (data: unknown, ctx: ExecutionContext): QueryOptions<any> => {
         const request = ctx.switchToHttp().getRequest();
-        const { page = '1', limit = '10', sortBy, sortOrder, paginated, ...filters } = request.query;
+        const {
+            page = '1',
+            limit = '10',
+            sortBy,
+            sortOrder,
+            paginated,
+            ...filters
+        } = request.query;
 
         const options: QueryOptions<any> = {
             page: parseInt(page, 10),

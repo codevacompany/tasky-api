@@ -97,9 +97,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     private async isTicketAdmin(accessProfile: AccessProfile): Promise<boolean> {
         if (!accessProfile.roleId) return false;
         const role = await this.roleService.findById(accessProfile.roleId);
-        return (
-            role?.name === RoleName.TenantAdmin || role?.name === RoleName.GlobalAdmin
-        );
+        return role?.name === RoleName.TenantAdmin || role?.name === RoleName.GlobalAdmin;
     }
 
     private isTerminalTicketStatus(statusKey: string): boolean {
@@ -652,13 +650,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     private async applyWhereFilters(
         qb: ReturnType<typeof this.repository.createQueryBuilder>,
         accessProfile: AccessProfile,
-        where?: FindOptionsWhere<Ticket> & {
-            status?: any;
-            departmentId?: number;
-            departmentUuid?: string;
-            targetUserId?: number;
-            targetUserUuid?: string;
-        },
+        where?: Record<string, any>,
     ) {
         if (!where) return;
 
@@ -684,8 +676,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
                 if (searchTokens.length > 0) {
                     // Ticket must contain every search token in name OR in description (COALESCE for NULL arrays)
-                    const tokenMatch =
-                        `(COALESCE(ticket."nameSearchTokens", ARRAY[]::text[]) @> :searchTokens::text[] OR COALESCE(ticket."descriptionSearchTokens", ARRAY[]::text[]) @> :searchTokens::text[])`;
+                    const tokenMatch = `(COALESCE(ticket."nameSearchTokens", ARRAY[]::text[]) @> :searchTokens::text[] OR COALESCE(ticket."descriptionSearchTokens", ARRAY[]::text[]) @> :searchTokens::text[])`;
                     const whereClause = `(
                         ticket.customId ILIKE :name
                         OR ${tokenMatch}
@@ -727,6 +718,26 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 )`,
                 { targetUserId },
             );
+        }
+
+        let reviewerId = where.reviewerId;
+        if (where.reviewerUuid && !reviewerId) {
+            try {
+                const reviewer = await this.userRepository.findOne({
+                    where: { uuid: where.reviewerUuid, tenantId: accessProfile.tenantId },
+                });
+                if (reviewer) {
+                    reviewerId = reviewer.id;
+                } else {
+                    return;
+                }
+            } catch {
+                return;
+            }
+        }
+
+        if (reviewerId !== undefined && reviewerId !== null) {
+            qb.andWhere('ticket.reviewerId = :reviewerId', { reviewerId });
         }
 
         let departmentId = where.departmentId;
@@ -843,14 +854,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         }
 
         if (options?.where) {
-            if (options.where.name) {
-                qb.andWhere('(ticket.name ILIKE :name OR ticket.customId ILIKE :name)', {
-                    name: `%${options.where.name}%`,
-                });
-            }
-            if (options.where.priority) {
-                qb.andWhere('ticket.priority = :priority', { priority: options.where.priority });
-            }
+            await this.applyWhereFilters(qb, accessProfile, options.where);
         }
         this.applySorting(qb, options?.order);
 
@@ -1225,7 +1229,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             updateData.nameSearchTokens = this.encryptionService.createSearchTokens(ticketDto.name);
         }
         if (ticketDto.description !== undefined) {
-            updateData.descriptionSearchTokens = this.encryptionService.createSearchTokens(ticketDto.description);
+            updateData.descriptionSearchTokens = this.encryptionService.createSearchTokens(
+                ticketDto.description,
+            );
         }
 
         await this.repository.update(ticketResponse.id, updateData);
@@ -1545,6 +1551,13 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             throw new CustomNotFoundException({
                 code: 'ticket-not-found',
                 message: 'Ticket not found.',
+            });
+        }
+
+        if (accessProfile.userId !== ticketResponse.currentTargetUserId) {
+            throw new CustomForbiddenException({
+                message: 'Only the current target user can accept this ticket',
+                code: 'not-current-target-user',
             });
         }
 

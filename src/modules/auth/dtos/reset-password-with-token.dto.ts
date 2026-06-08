@@ -11,4 +11,3 @@ export class ResetPasswordWithTokenDto {
     @IsPasswordStrong()
     newPassword: string;
 }
-
