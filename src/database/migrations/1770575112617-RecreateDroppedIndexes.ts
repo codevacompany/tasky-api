@@ -11,38 +11,22 @@ export class RecreateDroppedIndexes1770575112617 implements MigrationInterface {
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Ticket: GIN index for array overlap searches
-        await queryRunner.query(
-            `DROP INDEX IF EXISTS "public"."IDX_ticket_nameSearchTokens"`,
-        );
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_ticket_nameSearchTokens"`);
         await queryRunner.query(
             `CREATE INDEX "IDX_ticket_nameSearchTokens" ON "ticket" USING GIN ("nameSearchTokens")`,
         );
 
         // Tenant: B-tree indexes for email/CNPJ lookups
-        await queryRunner.query(
-            `DROP INDEX IF EXISTS "public"."IDX_tenant_emailHash"`,
-        );
-        await queryRunner.query(
-            `CREATE INDEX "IDX_tenant_emailHash" ON "tenant" ("emailHash")`,
-        );
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_tenant_emailHash"`);
+        await queryRunner.query(`CREATE INDEX "IDX_tenant_emailHash" ON "tenant" ("emailHash")`);
 
-        await queryRunner.query(
-            `DROP INDEX IF EXISTS "public"."IDX_tenant_cnpjHash"`,
-        );
-        await queryRunner.query(
-            `CREATE INDEX "IDX_tenant_cnpjHash" ON "tenant" ("cnpjHash")`,
-        );
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_tenant_cnpjHash"`);
+        await queryRunner.query(`CREATE INDEX "IDX_tenant_cnpjHash" ON "tenant" ("cnpjHash")`);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(
-            `DROP INDEX IF EXISTS "public"."IDX_ticket_nameSearchTokens"`,
-        );
-        await queryRunner.query(
-            `DROP INDEX IF EXISTS "public"."IDX_tenant_emailHash"`,
-        );
-        await queryRunner.query(
-            `DROP INDEX IF EXISTS "public"."IDX_tenant_cnpjHash"`,
-        );
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_ticket_nameSearchTokens"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_tenant_emailHash"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_tenant_cnpjHash"`);
     }
 }

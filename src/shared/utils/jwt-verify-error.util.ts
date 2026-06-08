@@ -2,7 +2,9 @@
  * Normalizes jsonwebtoken / passport-jwt failures for safe structured logs.
  * Never includes raw tokens.
  */
-export function jwtVerifyFailureDetails(infoOrError: unknown): Record<string, string | number | undefined> {
+export function jwtVerifyFailureDetails(
+    infoOrError: unknown,
+): Record<string, string | number | undefined> {
     if (!infoOrError) {
         return { jwtFailure: 'unknown', reason: 'empty_error' };
     }

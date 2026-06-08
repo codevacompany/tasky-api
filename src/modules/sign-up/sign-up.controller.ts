@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Get,
+    Param,
+    ParseIntPipe,
+    Patch,
+    Post,
+    Query,
+    UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 import { GetQueryOptions } from '../../shared/decorators/get-query-options.decorator';
 import { GlobalAdminGuard } from '../../shared/guards/global-admin.guard';
@@ -25,7 +35,7 @@ export class SignUpController {
         @Query('companyName') companyName?: string,
         @Query('status') status?: string,
     ) {
-        return this.signUpService.findAll({ companyName, status }, options);
+       return this.signUpService.findAll({ companyName, status }, options);
     }
 
     @Get('activation/:token')

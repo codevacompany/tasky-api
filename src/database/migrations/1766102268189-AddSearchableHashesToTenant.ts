@@ -1,12 +1,12 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddSearchableHashesToTenant1766102268189 implements MigrationInterface {
-    name = 'AddSearchableHashesToTenant1766102268189'
+    name = 'AddSearchableHashesToTenant1766102268189';
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`ALTER TABLE "tenant" ADD "emailHash" character varying`);
         await queryRunner.query(`ALTER TABLE "tenant" ADD "cnpjHash" character varying`);
-        
+
         // Create indexes for faster searches
         await queryRunner.query(`CREATE INDEX "IDX_tenant_emailHash" ON "tenant" ("emailHash")`);
         await queryRunner.query(`CREATE INDEX "IDX_tenant_cnpjHash" ON "tenant" ("cnpjHash")`);
@@ -18,5 +18,4 @@ export class AddSearchableHashesToTenant1766102268189 implements MigrationInterf
         await queryRunner.query(`ALTER TABLE "tenant" DROP COLUMN "cnpjHash"`);
         await queryRunner.query(`ALTER TABLE "tenant" DROP COLUMN "emailHash"`);
     }
-
 }

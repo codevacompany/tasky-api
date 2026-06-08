@@ -13,7 +13,7 @@ export function IsCpf(validationOptions?: ValidationOptions) {
             propertyName: propertyName,
             options: validationOptions,
             validator: {
-                validate(value: any, args: ValidationArguments) {
+                validate(value: any) {
                     if (typeof value !== 'string') return false;
 
                     // CPF should have 11 digits

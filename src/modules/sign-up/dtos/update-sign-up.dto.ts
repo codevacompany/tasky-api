@@ -1,10 +1,4 @@
-import {
-    IsEmail,
-    IsNotEmpty,
-    IsString,
-    MinLength,
-    ValidateIf,
-} from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, ValidateIf } from 'class-validator';
 import { IsCnpj } from '../../../shared/validators/is-cnpj.validator';
 
 export class UpdateSignUpDto {

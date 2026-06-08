@@ -331,9 +331,9 @@ export class AuthService {
 
         const hashedPassword = this.encryptionService.hashSync(adminResetPasswordDto.newPassword);
 
-            await this.userService.superAdminUpdate(accessProfile, userId, {
-                password: hashedPassword,
-            });
+        await this.userService.superAdminUpdate(accessProfile, userId, {
+            password: hashedPassword,
+        });
 
         try {
             const html = this.emailService.compileTemplate('password-reset', {

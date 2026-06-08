@@ -22,4 +22,3 @@ export class CreateChecklistItemDto {
     @IsNumber()
     order?: number;
 }
-
