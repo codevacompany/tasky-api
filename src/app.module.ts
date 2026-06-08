@@ -33,6 +33,7 @@ import { UserModule } from './modules/user/user.module';
 import { UserDeactivationModule } from './modules/user/user-deactivation.module';
 import { VerificationCodeModule } from './modules/verification-code/verification-code.module';
 import { RedisModule } from './shared/redis/redis.module';
+import { UserPreferenceModule } from './modules/user-preference/user-preference.module';
 
 @Module({
     imports: [
@@ -69,6 +70,7 @@ import { RedisModule } from './shared/redis/redis.module';
         PaymentModule,
         SubscriptionPlanModule,
         TenantSubscriptionModule,
+        UserPreferenceModule,
     ],
     controllers: [AppController],
     providers: [

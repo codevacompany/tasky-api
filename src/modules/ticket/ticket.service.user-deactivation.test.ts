@@ -4,10 +4,9 @@ import { DataSource } from 'typeorm';
 import { AccessProfile } from '../../shared/common/access-profile';
 import { CustomBadRequestException } from '../../shared/exceptions/http-exception';
 import { CorrectionRequestService } from '../correction-request-reason/correction-request-reason.service';
-import { NotificationRepository } from '../notification/notification.repository';
 import { NotificationService } from '../notification/notification.service';
+import { NotificationDispatcher } from '../notification/notification-dispatcher.service';
 import { TenantRepository } from '../tenant/tenant.repository';
-import { TenantSubscriptionService } from '../tenant-subscription/tenant-subscription.service';
 import { TicketCancellationReasonService } from '../ticket-cancellation-reason/ticket-cancellation-reason.service';
 import { TicketDisapprovalReasonService } from '../ticket-disapproval-reason/ticket-disapproval-reason.service';
 import { TicketFileRepository } from '../ticket-file/ticket-file.repository';
@@ -21,7 +20,6 @@ import { StatusAction } from '../status-action/entities/status-action.entity';
 import { TicketStatus as TicketStatusEntity } from '../ticket-status/entities/ticket-status.entity';
 import { TicketService } from './ticket.service';
 import { TicketRepository } from './ticket.repository';
-import { EmailService } from '../../shared/services/email/email.service';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
 
 describe('TicketService user deactivation', () => {
@@ -57,7 +55,7 @@ describe('TicketService user deactivation', () => {
                 { provide: DataSource, useValue: {} },
                 { provide: TicketRepository, useValue: mockTicketRepository },
                 { provide: NotificationService, useValue: {} },
-                { provide: NotificationRepository, useValue: {} },
+                { provide: NotificationDispatcher, useValue: { notify: jest.fn() } },
                 { provide: UserRepository, useValue: {} },
                 { provide: TicketUpdateRepository, useValue: {} },
                 { provide: TenantRepository, useValue: {} },
@@ -65,9 +63,7 @@ describe('TicketService user deactivation', () => {
                 { provide: TicketCancellationReasonService, useValue: {} },
                 { provide: TicketDisapprovalReasonService, useValue: {} },
                 { provide: CorrectionRequestService, useValue: {} },
-                { provide: EmailService, useValue: {} },
                 { provide: EncryptionService, useValue: {} },
-                { provide: TenantSubscriptionService, useValue: {} },
                 { provide: TicketTargetUserRepository, useValue: mockTicketTargetUserRepository },
                 { provide: RoleService, useValue: {} },
                 { provide: DepartmentService, useValue: {} },

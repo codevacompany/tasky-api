@@ -55,25 +55,25 @@ describe('TicketStatsService', () => {
     };
 
     const mockBusinessHoursService = {
-        calculateBusinessTime: jest.fn(),
+        calculateBusinessHours: jest.fn().mockReturnValue(0),
+    };
+
+    const createTicketUpdateQueryBuilder = (getManyResult: unknown[] = []) => ({
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(getManyResult),
+    });
+
+    const setupGetTenantStatsMocks = (getManyResult: unknown[] = []) => {
+        mockTicketUpdateRepository.createQueryBuilder.mockReturnValue(
+            createTicketUpdateQueryBuilder(getManyResult),
+        );
+        mockTicketUpdateRepository.find.mockResolvedValue([]);
     };
 
     const mockRoleService = {
         findById: jest.fn(),
-    };
-
-    const createTicketUpdateQueryBuilderMock = () => ({
-        leftJoin: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue([]),
-    });
-
-    const setupGetTenantStatsMocks = () => {
-        mockTicketUpdateRepository.createQueryBuilder.mockReturnValue(
-            createTicketUpdateQueryBuilderMock(),
-        );
-        mockTicketUpdateRepository.find.mockResolvedValue([]);
     };
 
     beforeEach(async () => {
@@ -229,12 +229,14 @@ describe('TicketStatsService', () => {
             const mockStats = [
                 {
                     id: 1,
+                    ticketId: 1,
                     isResolved: true,
                     totalTimeSeconds: 3600,
                     acceptanceTimeSeconds: 1800,
                 },
                 {
                     id: 2,
+                    ticketId: 2,
                     isResolved: false,
                     totalTimeSeconds: null,
                     acceptanceTimeSeconds: 900,
@@ -262,6 +264,7 @@ describe('TicketStatsService', () => {
             const mockStats = [
                 {
                     id: 1,
+                    ticketId: 1,
                     isResolved: true,
                     totalTimeSeconds: 7200,
                     acceptanceTimeSeconds: 3600,
@@ -293,6 +296,7 @@ describe('TicketStatsService', () => {
             const mockStats = [
                 {
                     id: 1,
+                    ticketId: 1,
                     isResolved: true,
                     totalTimeSeconds: 3600,
                     acceptanceTimeSeconds: 1800,
@@ -300,6 +304,7 @@ describe('TicketStatsService', () => {
                 },
                 {
                     id: 2,
+                    ticketId: 2,
                     isResolved: false,
                     totalTimeSeconds: null,
                     acceptanceTimeSeconds: 900,
@@ -323,6 +328,7 @@ describe('TicketStatsService', () => {
             const mockStats = [
                 {
                     id: 1,
+                    ticketId: 1,
                     isResolved: false,
                     totalTimeSeconds: null,
                     acceptanceTimeSeconds: 1800,
