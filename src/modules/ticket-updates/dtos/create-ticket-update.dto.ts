@@ -3,24 +3,23 @@ import { TicketActionType } from '../entities/ticket-update.entity';
 import { TicketStatus } from '../../ticket/entities/ticket.entity';
 
 export class CreateTicketUpdateDto {
-  @IsNumber()
-  @IsNotEmpty()
-  ticketId: number;
+    @IsNumber()
+    @IsNotEmpty()
+    ticketId: number;
 
-  @IsEnum(TicketActionType)
-  @IsNotEmpty()
-  action: TicketActionType;
+    @IsEnum(TicketActionType)
+    @IsNotEmpty()
+    action: TicketActionType;
 
-  @IsEnum(TicketStatus)
-  @IsOptional()
-  fromStatus?: TicketStatus;
+    @IsEnum(TicketStatus)
+    @IsOptional()
+    fromStatus?: TicketStatus;
 
-  @IsEnum(TicketStatus)
-  @IsOptional()
-  toStatus?: TicketStatus;
+    @IsEnum(TicketStatus)
+    @IsOptional()
+    toStatus?: TicketStatus;
 
-  @IsString()
-  @IsOptional()
-  description?: string;
+    @IsString()
+    @IsOptional()
+    description?: string;
 }
-

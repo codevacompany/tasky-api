@@ -260,7 +260,9 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
         }
 
         const previousMentionedUserIds = this.extractMentionedUserIdsFromContent(comment.content);
-        const incomingMentionedUserIds = new Set((dto.mentions || []).map((mention) => mention.userId));
+        const incomingMentionedUserIds = new Set(
+            (dto.mentions || []).map((mention) => mention.userId),
+        );
 
         const updateData = { ...dto } as Partial<UpdateTicketCommentDto>;
         delete updateData.mentions;
@@ -297,7 +299,9 @@ export class TicketCommentService extends TenantBoundBaseService<TicketComment> 
             );
 
             await Promise.all(
-                notifications.map((notification) => this.notificationService.emitFromEntity(notification)),
+                notifications.map((notification) =>
+                    this.notificationService.emitFromEntity(notification),
+                ),
             );
         }
 
