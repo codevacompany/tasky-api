@@ -105,6 +105,15 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         );
     }
 
+    private assertTicketIsNotDraft(ticket: Ticket): void {
+        if (ticket.isDraft) {
+            throw new CustomBadRequestException({
+                message: 'Publish the draft before performing this action',
+                code: 'ticket-is-draft',
+            });
+        }
+    }
+
     private assertTicketOpenForAssignment(statusKey: string): void {
         if (this.isTerminalTicketStatus(statusKey)) {
             throw new CustomForbiddenException({
@@ -351,6 +360,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const userId = user.id;
         const userDepartmentId = user.departmentId;
 
+        if (ticket.isDraft) {
+            return ticket.requesterId === userId;
+        }
+
         if (user.roleId) {
             const role = await this.roleService.findById(user.roleId);
             if (
@@ -548,40 +561,44 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
      * - Deep nested relations like comment user departments
      * - checklistItems.assignedTo relations (only isCompleted needed for progress)
      */
-    private buildLightweightQueryBuilder(tenantId: number) {
-        return (
-            this.repository
-                .createQueryBuilder('ticket')
-                .leftJoinAndSelect('ticket.requester', 'requester')
-                .leftJoinAndSelect('requester.department', 'requesterDepartment')
-                // Target users - needed for displaying assignees
-                .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
-                .leftJoinAndSelect('targetUsers.user', 'targetUser')
-                .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
-                .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
-                .leftJoinAndSelect('currentTargetUser.department', 'currentTargetUserDepartment')
-                // Reviewer - only basic info needed
-                .leftJoin('ticket.reviewer', 'reviewer')
-                .addSelect(['reviewer.id', 'reviewer.firstName', 'reviewer.lastName'])
-                .leftJoin('reviewer.department', 'reviewerDepartment')
-                .addSelect(['reviewerDepartment.id', 'reviewerDepartment.name'])
-                // Status - essential for status display
-                .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
-                // Category - for category display
-                .leftJoin('ticket.category', 'category')
-                .addSelect(['category.id', 'category.name'])
-                .addOrderBy('targetUsers.order', 'ASC')
-                // Checklist items - only basic fields for progress calculation
-                .leftJoin('ticket.checklistItems', 'checklistItems')
-                .addSelect(['checklistItems.id', 'checklistItems.isCompleted'])
-                // Files - only id for count (frontend uses .length)
-                .leftJoin('ticket.files', 'files')
-                .addSelect(['files.id'])
-                // Comments - only id for count (frontend uses .length)
-                .leftJoin('ticket.comments', 'comments')
-                .addSelect(['comments.id'])
-                .where('ticket.tenantId = :tenantId', { tenantId })
-        );
+    private buildLightweightQueryBuilder(tenantId: number, options?: { includeDrafts?: boolean }) {
+        const qb = this.repository
+            .createQueryBuilder('ticket')
+            .leftJoinAndSelect('ticket.requester', 'requester')
+            .leftJoinAndSelect('requester.department', 'requesterDepartment')
+            // Target users - needed for displaying assignees
+            .leftJoinAndSelect('ticket.targetUsers', 'targetUsers')
+            .leftJoinAndSelect('targetUsers.user', 'targetUser')
+            .leftJoinAndSelect('targetUser.department', 'targetUserDepartment')
+            .leftJoinAndSelect('ticket.currentTargetUser', 'currentTargetUser')
+            .leftJoinAndSelect('currentTargetUser.department', 'currentTargetUserDepartment')
+            // Reviewer - only basic info needed
+            .leftJoin('ticket.reviewer', 'reviewer')
+            .addSelect(['reviewer.id', 'reviewer.firstName', 'reviewer.lastName'])
+            .leftJoin('reviewer.department', 'reviewerDepartment')
+            .addSelect(['reviewerDepartment.id', 'reviewerDepartment.name'])
+            // Status - essential for status display
+            .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
+            // Category - for category display
+            .leftJoin('ticket.category', 'category')
+            .addSelect(['category.id', 'category.name'])
+            .addOrderBy('targetUsers.order', 'ASC')
+            // Checklist items - only basic fields for progress calculation
+            .leftJoin('ticket.checklistItems', 'checklistItems')
+            .addSelect(['checklistItems.id', 'checklistItems.isCompleted'])
+            // Files - only id for count (frontend uses .length)
+            .leftJoin('ticket.files', 'files')
+            .addSelect(['files.id'])
+            // Comments - only id for count (frontend uses .length)
+            .leftJoin('ticket.comments', 'comments')
+            .addSelect(['comments.id'])
+            .where('ticket.tenantId = :tenantId', { tenantId });
+
+        if (!options?.includeDrafts) {
+            qb.andWhere('ticket.isDraft = false');
+        }
+
+        return qb;
     }
 
     /**
@@ -928,10 +945,20 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     async create(accessProfile: AccessProfile, ticketDto: CreateTicketDto) {
         const {
             files,
-            targetUserIds,
+            targetUserIds: rawTargetUserIds,
             checklistItems: checklistItemsDto,
             ...ticketData
         } = ticketDto;
+
+        const isDraft = Boolean(ticketDto.isDraft);
+        const targetUserIds = rawTargetUserIds ?? [];
+
+        if (!isDraft && targetUserIds.length === 0) {
+            throw new CustomBadRequestException({
+                message: 'At least one target user is required',
+                code: 'target-users-required',
+            });
+        }
 
         const requester = await this.userRepository.findOne({
             where: { id: ticketDto.requesterId, tenantId: accessProfile.tenantId },
@@ -944,9 +971,12 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
-        const targetUsers = await this.userRepository.find({
-            where: { id: In(targetUserIds), tenantId: accessProfile.tenantId },
-        });
+        const targetUsers =
+            targetUserIds.length > 0
+                ? await this.userRepository.find({
+                      where: { id: In(targetUserIds), tenantId: accessProfile.tenantId },
+                  })
+                : [];
 
         if (targetUsers.length !== targetUserIds.length) {
             throw new CustomNotFoundException({
@@ -971,6 +1001,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         // If admin/supervisor provided a reviewerId, use it
         if (ticketDto.reviewerId) {
             reviewerId = ticketDto.reviewerId;
+        } else if (!firstTargetUser) {
+            reviewerId = null;
         } else if (isRequesterInTargetUsers) {
             const supervisorRole = await this.roleService.findByName(RoleName.Supervisor);
 
@@ -1039,29 +1071,34 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
             const ticket = manager.create(Ticket, {
                 ...ticketData,
+                description: ticketDto.description || '',
                 customId,
                 nameSearchTokens,
                 descriptionSearchTokens,
                 tenantId: accessProfile.tenantId,
                 createdById: requester.id,
                 updatedById: requester.id,
-                currentTargetUserId: firstTargetUser.id,
+                currentTargetUserId: firstTargetUser?.id ?? null,
                 reviewerId,
                 statusId: pendingStatus.id,
+                isDraft,
+                publishedAt: isDraft ? null : new Date(),
             });
 
             createdTicket = await manager.save(ticket);
 
-            const ticketTargetUsers = targetUserIds.map((userId, index) => ({
-                ticketId: createdTicket.id,
-                userId,
-                order: index + 1,
-                tenantId: accessProfile.tenantId,
-                createdById: requester.id,
-                updatedById: requester.id,
-            }));
+            if (targetUserIds.length > 0) {
+                const ticketTargetUsers = targetUserIds.map((userId, index) => ({
+                    ticketId: createdTicket.id,
+                    userId,
+                    order: index + 1,
+                    tenantId: accessProfile.tenantId,
+                    createdById: requester.id,
+                    updatedById: requester.id,
+                }));
 
-            await manager.save(this.ticketTargetUserRepository.create(ticketTargetUsers));
+                await manager.save(this.ticketTargetUserRepository.create(ticketTargetUsers));
+            }
 
             if (files?.length) {
                 const ticketFiles = files.map((file) => ({
@@ -1091,11 +1128,207 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 await manager.save(this.ticketChecklistItemRepository.create(checklistItems));
             }
 
+            if (!isDraft && firstTargetUser) {
+                await manager.save(
+                    this.ticketUpdateRepository.create({
+                        tenantId: accessProfile.tenantId,
+                        ticketId: createdTicket.id,
+                        ticketCustomId: createdTicket.customId,
+                        performedById: requester.id,
+                        createdById: requester.id,
+                        updatedById: requester.id,
+                        action: TicketActionType.Creation,
+                        fromStatus: null,
+                        toStatus: TicketStatus.Pending,
+                        fromUserId: null,
+                        toUserId: firstTargetUser.id,
+                        fromDepartmentId: null,
+                        toDepartmentId: firstTargetUser.departmentId,
+                        description: '<p><span>user</span> criou esta tarefa.</p>',
+                    }),
+                );
+
+                const isGroupTicket = targetUserIds.length > 1;
+                const messagePrefix = isGroupTicket
+                    ? 'criou uma tarefa em grupo para você'
+                    : 'criou uma nova tarefa para você';
+
+                for (const targetUser of targetUsers) {
+                    if (ticketDto.requesterId !== targetUser.id) {
+                        const notification = await this.notificationDispatcher.notify({
+                            tenantId: accessProfile.tenantId,
+                            targetUserId: targetUser.id,
+                            event: NotificationEvent.TICKET_ASSIGNED_TO_ME,
+                            type: NotificationType.Open,
+                            message: `<p><span>user</span> ${messagePrefix}.</p>`,
+                            createdById: requester.id,
+                            updatedById: requester.id,
+                            resourceId: createdTicket.id,
+                            resourceCustomId: createdTicket.customId,
+                            entityManager: manager,
+                            deferEmit: true,
+                            email: {
+                                subject: 'Uma nova tarefa foi criada para você.',
+                                htmlMessage: `Nova tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`,
+                                to: targetUser.email,
+                                ticketCustomId: createdTicket.customId,
+                            },
+                        });
+                        if (notification) {
+                            notificationsToEmit.push(notification);
+                        }
+                    }
+                }
+
+                if (reviewerId && reviewerId !== ticketDto.requesterId) {
+                    const reviewer = await manager.findOne(User, { where: { id: reviewerId } });
+                    const notification = await this.notificationDispatcher.notify({
+                        tenantId: accessProfile.tenantId,
+                        targetUserId: reviewerId,
+                        event: NotificationEvent.TICKET_ASSIGNED_AS_REVIEWER,
+                        type: NotificationType.Open,
+                        message:
+                            '<p><span>user</span> atribuiu você como revisor de uma tarefa.</p>',
+                        createdById: requester.id,
+                        updatedById: requester.id,
+                        resourceId: createdTicket.id,
+                        resourceCustomId: createdTicket.customId,
+                        entityManager: manager,
+                        deferEmit: true,
+                        email: reviewer
+                            ? {
+                                  subject: 'Você foi designado como revisor de uma tarefa.',
+                                  htmlMessage: `Você foi designado como revisor da tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`,
+                                  to: reviewer.email,
+                                  ticketCustomId: createdTicket.customId,
+                              }
+                            : undefined,
+                    });
+                    if (notification) {
+                        notificationsToEmit.push(notification);
+                    }
+                }
+            }
+        });
+
+        // Emit notifications via SSE after the transaction is successfully committed
+        await Promise.all(
+            notificationsToEmit.map((notification) =>
+                this.notificationService.emitFromEntity(notification),
+            ),
+        );
+
+        if (!isDraft) {
+            await this.notifyTicketUpdate(accessProfile, createdTicket.id);
+        }
+
+        return createdTicket;
+    }
+
+    async publish(accessProfile: AccessProfile, customId: string) {
+        const ticket = await this.findById(accessProfile, customId);
+
+        if (!ticket.isDraft) {
+            throw new CustomBadRequestException({
+                message: 'Ticket is already published',
+                code: 'ticket-already-published',
+            });
+        }
+
+        if (ticket.requesterId !== accessProfile.userId) {
+            throw new CustomForbiddenException({
+                message: 'Only the requester can publish this draft',
+                code: 'only-requester-can-publish',
+            });
+        }
+
+        const targetUsers = await this.ticketTargetUserRepository.find({
+            where: { ticketId: ticket.id, tenantId: accessProfile.tenantId },
+            relations: ['user'],
+            order: { order: 'ASC' },
+        });
+
+        if (targetUsers.length === 0) {
+            throw new CustomBadRequestException({
+                message: 'At least one assignee is required to publish a draft',
+                code: 'target-users-required',
+            });
+        }
+
+        if (!ticket.categoryId) {
+            throw new CustomBadRequestException({
+                message: 'A category is required to publish a draft',
+                code: 'category-required',
+            });
+        }
+
+        const firstTargetUser = targetUsers[0].user;
+        if (!firstTargetUser) {
+            throw new CustomNotFoundException({
+                message: 'First target user not found',
+                code: 'target-users-not-found',
+            });
+        }
+
+        const requester = await this.userRepository.findOne({
+            where: { id: ticket.requesterId, tenantId: accessProfile.tenantId },
+        });
+
+        if (!requester) {
+            throw new CustomNotFoundException({
+                message: 'Requester not found',
+                code: 'requester-not-found',
+            });
+        }
+
+        const targetUserIds = targetUsers.map((tu) => tu.userId);
+
+        if (ticket.isPrivate && targetUserIds.includes(ticket.requesterId)) {
+            throw new CustomBadRequestException({
+                message: 'Cannot publish a private ticket with yourself as a target user',
+                code: 'private-ticket-to-self',
+            });
+        }
+
+        const isRequesterInTargetUsers = targetUserIds.includes(ticket.requesterId);
+        let reviewerId: number | null = ticket.reviewerId ?? null;
+
+        if (!reviewerId) {
+            if (isRequesterInTargetUsers) {
+                const supervisorRole = await this.roleService.findByName(RoleName.Supervisor);
+
+                if (supervisorRole && requester.roleId !== supervisorRole.id) {
+                    const departmentSupervisor = await this.userRepository.findOne({
+                        where: {
+                            tenantId: accessProfile.tenantId,
+                            departmentId: requester.departmentId,
+                            roleId: supervisorRole.id,
+                            isActive: true,
+                        } as any,
+                    });
+                    reviewerId = departmentSupervisor ? departmentSupervisor.id : null;
+                }
+            } else {
+                reviewerId = ticket.requesterId;
+            }
+        }
+
+        const notificationsToEmit: Notification[] = [];
+
+        await this.dataSource.transaction(async (manager) => {
+            await manager.update(Ticket, ticket.id, {
+                isDraft: false,
+                publishedAt: new Date(),
+                currentTargetUserId: firstTargetUser.id,
+                reviewerId,
+                updatedById: accessProfile.userId,
+            });
+
             await manager.save(
                 this.ticketUpdateRepository.create({
                     tenantId: accessProfile.tenantId,
-                    ticketId: createdTicket.id,
-                    ticketCustomId: createdTicket.customId,
+                    ticketId: ticket.id,
+                    ticketCustomId: ticket.customId,
                     performedById: requester.id,
                     createdById: requester.id,
                     updatedById: requester.id,
@@ -1115,34 +1348,37 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 ? 'criou uma tarefa em grupo para você'
                 : 'criou uma nova tarefa para você';
 
-            for (const targetUser of targetUsers) {
-                if (ticketDto.requesterId !== targetUser.id) {
-                    const notification = await this.notificationDispatcher.notify({
-                        tenantId: accessProfile.tenantId,
-                        targetUserId: targetUser.id,
-                        event: NotificationEvent.TICKET_ASSIGNED_TO_ME,
-                        type: NotificationType.Open,
-                        message: `<p><span>user</span> ${messagePrefix}.</p>`,
-                        createdById: requester.id,
-                        updatedById: requester.id,
-                        resourceId: createdTicket.id,
-                        resourceCustomId: createdTicket.customId,
-                        entityManager: manager,
-                        deferEmit: true,
-                        email: {
-                            subject: 'Uma nova tarefa foi criada para você.',
-                            htmlMessage: `Nova tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`,
-                            to: targetUser.email,
-                            ticketCustomId: createdTicket.customId,
-                        },
-                    });
-                    if (notification) {
-                        notificationsToEmit.push(notification);
-                    }
+            for (const ticketTargetUser of targetUsers) {
+                const targetUser = ticketTargetUser.user;
+                if (!targetUser || ticket.requesterId === targetUser.id) {
+                    continue;
+                }
+
+                const notification = await this.notificationDispatcher.notify({
+                    tenantId: accessProfile.tenantId,
+                    targetUserId: targetUser.id,
+                    event: NotificationEvent.TICKET_ASSIGNED_TO_ME,
+                    type: NotificationType.Open,
+                    message: `<p><span>user</span> ${messagePrefix}.</p>`,
+                    createdById: requester.id,
+                    updatedById: requester.id,
+                    resourceId: ticket.id,
+                    resourceCustomId: ticket.customId,
+                    entityManager: manager,
+                    deferEmit: true,
+                    email: {
+                        subject: 'Uma nova tarefa foi criada para você.',
+                        htmlMessage: `Nova tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`,
+                        to: targetUser.email,
+                        ticketCustomId: ticket.customId,
+                    },
+                });
+                if (notification) {
+                    notificationsToEmit.push(notification);
                 }
             }
 
-            if (reviewerId && reviewerId !== ticketDto.requesterId) {
+            if (reviewerId && reviewerId !== ticket.requesterId) {
                 const reviewer = await manager.findOne(User, { where: { id: reviewerId } });
                 const notification = await this.notificationDispatcher.notify({
                     tenantId: accessProfile.tenantId,
@@ -1152,8 +1388,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                     message: '<p><span>user</span> atribuiu você como revisor de uma tarefa.</p>',
                     createdById: requester.id,
                     updatedById: requester.id,
-                    resourceId: createdTicket.id,
-                    resourceCustomId: createdTicket.customId,
+                    resourceId: ticket.id,
+                    resourceCustomId: ticket.customId,
                     entityManager: manager,
                     deferEmit: true,
                     email: reviewer
@@ -1161,7 +1397,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                               subject: 'Você foi designado como revisor de uma tarefa.',
                               htmlMessage: `Você foi designado como revisor da tarefa criada por <span style="font-weight: 600;">${requester.firstName} ${requester.lastName}</span>.`,
                               to: reviewer.email,
-                              ticketCustomId: createdTicket.customId,
+                              ticketCustomId: ticket.customId,
                           }
                         : undefined,
                 });
@@ -1171,16 +1407,15 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             }
         });
 
-        // Emit notifications via SSE after the transaction is successfully committed
         await Promise.all(
             notificationsToEmit.map((notification) =>
                 this.notificationService.emitFromEntity(notification),
             ),
         );
 
-        await this.notifyTicketUpdate(accessProfile, createdTicket.id);
+        await this.notifyTicketUpdate(accessProfile, ticket.id);
 
-        return createdTicket;
+        return this.findById(accessProfile, customId);
     }
 
     async updateTicket(accessProfile: AccessProfile, customId: string, ticketDto: UpdateTicketDto) {
@@ -1240,28 +1475,31 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             description: updateDescription,
         });
 
-        const targetUsers = await this.ticketTargetUserRepository.find({
-            where: { ticketId: ticketResponse.id, tenantId: accessProfile.tenantId },
-            relations: ['user'],
-        });
+        if (!ticketResponse.isDraft) {
+            const targetUsers = await this.ticketTargetUserRepository.find({
+                where: { ticketId: ticketResponse.id, tenantId: accessProfile.tenantId },
+                relations: ['user'],
+            });
 
-        for (const ticketTargetUser of targetUsers) {
-            if (accessProfile.userId !== ticketTargetUser.userId) {
-                await this.notificationDispatcher.notify({
-                    tenantId: accessProfile.tenantId,
-                    targetUserId: ticketTargetUser.userId,
-                    event: NotificationEvent.TICKET_FIELD_UPDATED,
-                    type: NotificationType.TicketUpdate,
-                    message: '<p><span>user</span> atualizou a tarefa <span>resource</span>.</p>',
-                    createdById: accessProfile.userId,
-                    updatedById: accessProfile.userId,
-                    resourceId: ticketResponse.id,
-                    resourceCustomId: ticketResponse.customId,
-                });
+            for (const ticketTargetUser of targetUsers) {
+                if (accessProfile.userId !== ticketTargetUser.userId) {
+                    await this.notificationDispatcher.notify({
+                        tenantId: accessProfile.tenantId,
+                        targetUserId: ticketTargetUser.userId,
+                        event: NotificationEvent.TICKET_FIELD_UPDATED,
+                        type: NotificationType.TicketUpdate,
+                        message:
+                            '<p><span>user</span> atualizou a tarefa <span>resource</span>.</p>',
+                        createdById: accessProfile.userId,
+                        updatedById: accessProfile.userId,
+                        resourceId: ticketResponse.id,
+                        resourceCustomId: ticketResponse.customId,
+                    });
+                }
             }
-        }
 
-        await this.notifyTicketUpdate(accessProfile, ticketResponse.id);
+            await this.notifyTicketUpdate(accessProfile, ticketResponse.id);
+        }
 
         return ticketResponse;
     }
@@ -1289,6 +1527,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     ) {
         return this.dataSource.transaction(async () => {
             const ticket = await this.findById(accessProfile, customId);
+            this.assertTicketIsNotDraft(ticket);
             const currentStatus = ticket.ticketStatus?.key || '';
 
             if (!ticket) {
@@ -1537,13 +1776,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
     async accept(accessProfile: AccessProfile, customId: string) {
         const ticketResponse = await this.findById(accessProfile, customId);
-
-        if (!ticketResponse) {
-            throw new CustomNotFoundException({
-                code: 'ticket-not-found',
-                message: 'Ticket not found.',
-            });
-        }
+        this.assertTicketIsNotDraft(ticketResponse);
 
         if (accessProfile.userId !== ticketResponse.currentTargetUserId) {
             throw new CustomForbiddenException({
@@ -1647,6 +1880,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
     async approve(accessProfile: AccessProfile, customId: string) {
         const ticketResponse = await this.findById(accessProfile, customId);
+        this.assertTicketIsNotDraft(ticketResponse);
 
         const completedStatus = await this.ticketStatusRepository.findOne({
             where: { key: TicketStatus.Completed, tenantId: accessProfile.tenantId },
@@ -1743,6 +1977,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         reasonDto: CreateTicketDisapprovalReasonDto,
     ) {
         const ticketResponse = await this.findById(accessProfile, customId);
+        this.assertTicketIsNotDraft(ticketResponse);
 
         const rejectedStatus = await this.ticketStatusRepository.findOne({
             where: { key: TicketStatus.Rejected, tenantId: accessProfile.tenantId },
@@ -1854,6 +2089,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         reasonDto: CreateTicketCancellationReasonDto,
     ) {
         const ticketResponse = await this.findById(accessProfile, customId);
+        this.assertTicketIsNotDraft(ticketResponse);
         const { requester } = ticketResponse;
 
         if (accessProfile.userId !== requester.id) {
@@ -1968,22 +2204,32 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
     }
 
     async deleteTicket(accessProfile: AccessProfile, customId: string) {
-        try {
-            const entity = await this.repository.findOne({
-                where: { customId, tenantId: accessProfile.tenantId } as any,
-            });
+        const entity = await this.repository.findOne({
+            where: { customId, tenantId: accessProfile.tenantId } as any,
+        });
 
-            if (!entity) {
-                throw new Error('Unauthorized or not found');
-            }
-
-            await this.repository.remove(entity);
-        } catch (error) {
+        if (!entity) {
             throw new CustomNotFoundException({
                 code: 'ticket-not-found',
                 message: 'Ticket not found or already deleted',
             });
         }
+
+        if (!entity.isDraft) {
+            throw new CustomForbiddenException({
+                message: 'Only draft tickets can be deleted',
+                code: 'only-drafts-can-be-deleted',
+            });
+        }
+
+        if (entity.requesterId !== accessProfile.userId) {
+            throw new CustomForbiddenException({
+                message: 'Only the requester can delete this draft',
+                code: 'only-requester-can-delete-draft',
+            });
+        }
+
+        await this.repository.remove(entity);
     }
 
     private calculateTimeInSeconds(startDate: Date, endDate: Date): number {
@@ -2041,8 +2287,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         await this.ticketFileRepository.save(this.ticketFileRepository.create(ticketFiles));
 
+        const fromUserId = ticket.currentTargetUser?.id ?? accessProfile.userId;
         const fromDepartmentId = await this.getDepartmentIdFromUserId(
-            ticket.currentTargetUser.id,
+            fromUserId,
             accessProfile.tenantId,
         );
 
@@ -2057,8 +2304,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 action: TicketActionType.Update,
                 fromStatus: ticket.ticketStatus?.key || null,
                 toStatus: ticket.ticketStatus?.key || null,
-                fromUserId: ticket.currentTargetUser.id,
-                toUserId: ticket.currentTargetUser.id,
+                fromUserId,
+                toUserId: fromUserId,
                 fromDepartmentId,
                 toDepartmentId: fromDepartmentId,
                 description: `<p><span>user</span> adicionou ${files.length} arquivo(s) à tarefa.</p>`,
@@ -2137,12 +2384,41 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         };
     }
 
+    async findDrafts(accessProfile: AccessProfile, options?: QueryOptions<Ticket>) {
+        const qb = this.buildLightweightQueryBuilder(accessProfile.tenantId, {
+            includeDrafts: true,
+        })
+            .andWhere('ticket.isDraft = true')
+            .andWhere('ticket.requesterId = :userId', { userId: accessProfile.userId });
+
+        if (options?.where) {
+            await this.applyWhereFilters(qb, accessProfile, options.where as Record<string, any>);
+        }
+
+        this.applySorting(qb, options?.order);
+
+        const page = options?.page || 1;
+        const limit = options?.limit || 10;
+        qb.skip((page - 1) * limit).take(limit);
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
+    }
+
     async requestCorrection(
         accessProfile: AccessProfile,
         customId: string,
         dto: CreateCorrectionRequestDto,
     ) {
         const ticket = await this.findById(accessProfile, customId);
+        this.assertTicketIsNotDraft(ticket);
 
         if (!ticket) {
             throw new CustomNotFoundException({
@@ -2410,29 +2686,31 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             description: `<p><span>user</span> substituiu ${targetUserToReplace.user.firstName} ${targetUserToReplace.user.lastName} por ${newTargetUser.firstName} ${newTargetUser.lastName}.</p>`,
         });
 
-        await this.notificationDispatcher.notify({
-            tenantId: accessProfile.tenantId,
-            targetUserId: newTargetUserId,
-            event: NotificationEvent.TICKET_ASSIGNEE_ADDED,
-            type: NotificationType.TicketUpdate,
-            message: '<p><span>user</span> atribuiu a tarefa a você.</p>',
-            createdById: accessProfile.userId,
-            updatedById: accessProfile.userId,
-            resourceId: ticket.id,
-            resourceCustomId: ticket.customId,
-        });
+        if (!ticket.isDraft) {
+            await this.notificationDispatcher.notify({
+                tenantId: accessProfile.tenantId,
+                targetUserId: newTargetUserId,
+                event: NotificationEvent.TICKET_ASSIGNEE_ADDED,
+                type: NotificationType.TicketUpdate,
+                message: '<p><span>user</span> atribuiu a tarefa a você.</p>',
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                resourceId: ticket.id,
+                resourceCustomId: ticket.customId,
+            });
 
-        await this.notificationDispatcher.notify({
-            tenantId: accessProfile.tenantId,
-            targetUserId: targetUserToReplace.userId,
-            event: NotificationEvent.TICKET_ASSIGNEE_REMOVED,
-            type: NotificationType.TicketUpdate,
-            message: '<p><span>user</span> removeu você da tarefa <span>resource</span>.</p>',
-            createdById: accessProfile.userId,
-            updatedById: accessProfile.userId,
-            resourceId: ticket.id,
-            resourceCustomId: ticket.customId,
-        });
+            await this.notificationDispatcher.notify({
+                tenantId: accessProfile.tenantId,
+                targetUserId: targetUserToReplace.userId,
+                event: NotificationEvent.TICKET_ASSIGNEE_REMOVED,
+                type: NotificationType.TicketUpdate,
+                message: '<p><span>user</span> removeu você da tarefa <span>resource</span>.</p>',
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                resourceId: ticket.id,
+                resourceCustomId: ticket.customId,
+            });
+        }
 
         const updatedTicket = await this.findById(accessProfile, customId);
         await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
@@ -2527,6 +2805,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
         await this.ticketTargetUserRepository.save(newTargetUserEntity);
 
+        if (!ticket.currentTargetUserId) {
+            await this.repository.update(ticket.id, { currentTargetUserId: newTargetUserId });
+        }
+
         // Create ticket update
         const toDepartmentId = await this.getDepartmentIdFromUserId(
             newTargetUserId,
@@ -2550,17 +2832,19 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             description: `<p><span>user</span> adicionou ${newTargetUser.firstName} ${newTargetUser.lastName} como responsável.</p>`,
         });
 
-        await this.notificationDispatcher.notify({
-            tenantId: accessProfile.tenantId,
-            targetUserId: newTargetUserId,
-            event: NotificationEvent.TICKET_ASSIGNEE_ADDED,
-            type: NotificationType.TicketUpdate,
-            message: '<p><span>user</span> atribuiu a tarefa <span>resource</span> a você.</p>',
-            createdById: accessProfile.userId,
-            updatedById: accessProfile.userId,
-            resourceId: ticket.id,
-            resourceCustomId: ticket.customId,
-        });
+        if (!ticket.isDraft) {
+            await this.notificationDispatcher.notify({
+                tenantId: accessProfile.tenantId,
+                targetUserId: newTargetUserId,
+                event: NotificationEvent.TICKET_ASSIGNEE_ADDED,
+                type: NotificationType.TicketUpdate,
+                message: '<p><span>user</span> atribuiu a tarefa <span>resource</span> a você.</p>',
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                resourceId: ticket.id,
+                resourceCustomId: ticket.customId,
+            });
+        }
 
         const updatedTicket = await this.findById(accessProfile, customId);
         await this.notifyTicketUpdate(accessProfile, updatedTicket.id);
@@ -2844,6 +3128,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
 
     async sendToNextDepartment(accessProfile: AccessProfile, customId: string) {
         const ticket = await this.findById(accessProfile, customId);
+        this.assertTicketIsNotDraft(ticket);
 
         if (!ticket) {
             throw new CustomNotFoundException({
@@ -3047,8 +3332,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             reviewerId: newReviewerId,
         });
 
+        const fromUserId = ticket.currentTargetUser?.id ?? accessProfile.userId;
         const fromDepartmentId = await this.getDepartmentIdFromUserId(
-            ticket.currentTargetUser.id,
+            fromUserId,
             accessProfile.tenantId,
         );
 
@@ -3062,25 +3348,27 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             action: TicketActionType.Update,
             fromStatus: ticket.ticketStatus?.key || null,
             toStatus: ticket.ticketStatus?.key || null,
-            fromUserId: ticket.currentTargetUser.id,
-            toUserId: ticket.currentTargetUser.id,
+            fromUserId,
+            toUserId: fromUserId,
             fromDepartmentId,
             toDepartmentId: fromDepartmentId,
             description: `<p><span>user</span> definiu ${newReviewer.firstName} ${newReviewer.lastName} como revisor desta tarefa.</p>`,
         });
 
-        await this.notificationDispatcher.notify({
-            tenantId: accessProfile.tenantId,
-            targetUserId: newReviewer.id,
-            event: NotificationEvent.TICKET_REVIEWER_CHANGED,
-            type: NotificationType.TicketUpdate,
-            message:
-                '<p><span>user</span> definiu você como revisor da tarefa <span>resource</span>.</p>',
-            createdById: accessProfile.userId,
-            updatedById: accessProfile.userId,
-            resourceId: ticket.id,
-            resourceCustomId: ticket.customId,
-        });
+        if (!ticket.isDraft) {
+            await this.notificationDispatcher.notify({
+                tenantId: accessProfile.tenantId,
+                targetUserId: newReviewer.id,
+                event: NotificationEvent.TICKET_REVIEWER_CHANGED,
+                type: NotificationType.TicketUpdate,
+                message:
+                    '<p><span>user</span> definiu você como revisor da tarefa <span>resource</span>.</p>',
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                resourceId: ticket.id,
+                resourceCustomId: ticket.customId,
+            });
+        }
 
         await this.notifyTicketUpdate(accessProfile, ticket.id);
         return ticket;
@@ -3226,7 +3514,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 ],
             });
 
-            if (!ticket) return;
+            if (!ticket || ticket.isDraft) return;
 
             const userIds = new Set<number>();
 
@@ -3287,6 +3575,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere('ttu."userId" = :userId', { userId })
             .andWhere('status.key NOT IN (:...terminalStatuses)', { terminalStatuses })
+            .andWhere('ticket.isDraft = false')
             .getCount();
 
         const reviewerTicketCount = await this.repository
@@ -3295,6 +3584,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere('ticket.reviewerId = :userId', { userId })
             .andWhere('status.key NOT IN (:...terminalStatuses)', { terminalStatuses })
+            .andWhere('ticket.isDraft = false')
             .getCount();
 
         return { targetUserTicketCount, reviewerTicketCount };
@@ -3319,6 +3609,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere('ttu."userId" = :userId', { userId: userIdToDeactivate })
             .andWhere('status.key NOT IN (:...terminalStatuses)', { terminalStatuses })
+            .andWhere('ticket.isDraft = false')
             .select(['ticket.id', 'ticket.customId'])
             .getMany();
 
@@ -3362,6 +3653,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
             .andWhere('ticket.reviewerId = :userId', { userId: userIdToDeactivate })
             .andWhere('status.key NOT IN (:...terminalStatuses)', { terminalStatuses })
+            .andWhere('ticket.isDraft = false')
             .select(['ticket.customId'])
             .getMany();
 

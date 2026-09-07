@@ -116,6 +116,12 @@ export class Ticket extends TenantBoundBaseEntity {
     @Column({ default: false })
     isPrivate: boolean;
 
+    @Column({ default: false })
+    isDraft: boolean;
+
+    @Column('timestamp', { nullable: true })
+    publishedAt: Date | null;
+
     @OneToMany(() => TicketUpdate, (update) => update.ticket)
     updates: TicketUpdate[];
 

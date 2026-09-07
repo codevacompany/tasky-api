@@ -64,6 +64,14 @@ export class TicketController {
         return this.ticketService.findArchived(accessProfile, options);
     }
 
+    @Get('drafts')
+    findDrafts(
+        @GetAccessProfile() accessProfile: AccessProfile,
+        @GetQueryOptions() options: QueryOptions<Ticket>,
+    ) {
+        return this.ticketService.findDrafts(accessProfile, options);
+    }
+
     @Get('search')
     findBySearchQuery(
         @GetAccessProfile() accessProfile: AccessProfile,
@@ -159,6 +167,11 @@ export class TicketController {
     @Post(':customId/accept')
     accept(@Param('customId') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
         return this.ticketService.accept(accessProfile, customId);
+    }
+
+    @Post(':customId/publish')
+    publish(@Param('customId') customId: string, @GetAccessProfile() accessProfile: AccessProfile) {
+        return this.ticketService.publish(accessProfile, customId);
     }
 
     /**
