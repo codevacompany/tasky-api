@@ -34,6 +34,7 @@ import { UserDeactivationModule } from './modules/user/user-deactivation.module'
 import { VerificationCodeModule } from './modules/verification-code/verification-code.module';
 import { RedisModule } from './shared/redis/redis.module';
 import { UserPreferenceModule } from './modules/user-preference/user-preference.module';
+import { FeatureTipModule } from './modules/feature-tip/feature-tip.module';
 
 @Module({
     imports: [
@@ -71,6 +72,7 @@ import { UserPreferenceModule } from './modules/user-preference/user-preference.
         SubscriptionPlanModule,
         TenantSubscriptionModule,
         UserPreferenceModule,
+        FeatureTipModule,
     ],
     controllers: [AppController],
     providers: [

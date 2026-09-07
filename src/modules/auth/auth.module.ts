@@ -12,6 +12,7 @@ import { TenantModule } from '../tenant/tenant.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RoleModule } from '../role/role.module';
+import { FeatureTipModule } from '../feature-tip/feature-tip.module';
 @Module({
     imports: [
         EncryptionModule,
@@ -20,6 +21,7 @@ import { RoleModule } from '../role/role.module';
         VerificationCodeModule,
         EmailModule,
         RoleModule,
+        FeatureTipModule,
         forwardRef(() => TenantSubscriptionModule),
         forwardRef(() => TenantModule),
         JwtModule.registerAsync({

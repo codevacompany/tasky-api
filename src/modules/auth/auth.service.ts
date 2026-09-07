@@ -21,6 +21,7 @@ import { LoginDto } from './dtos/login.dto';
 import { VerificationCodeValidationDto } from './dtos/verification-code-validation.dto';
 import { ChangePasswordDto } from './dtos/change-password.dto';
 import { AdminResetPasswordDto } from './dtos/admin-reset-password.dto';
+import { FeatureTipService } from '../feature-tip/feature-tip.service';
 
 @Injectable()
 export class AuthService {
@@ -35,6 +36,7 @@ export class AuthService {
         private tenantSubscriptionService: TenantSubscriptionService,
         @Inject(forwardRef(() => TenantService))
         private tenantService: TenantService,
+        private featureTipService: FeatureTipService,
     ) {}
     async login(body: LoginDto) {
         const accessProfile = new AccessProfile();
@@ -101,9 +103,11 @@ export class AuthService {
 
         delete user.password;
 
+        const seenFeatureTipIds = await this.featureTipService.listSeenTipIds(user.id);
+
         const response: any = {
             token,
-            user: { ...user, permissions: tenantPermissions },
+            user: { ...user, permissions: tenantPermissions, seenFeatureTipIds },
         };
 
         if (isTenantAdmin) {
@@ -157,10 +161,13 @@ export class AuthService {
 
         delete user.password;
 
+        const seenFeatureTipIds = await this.featureTipService.listSeenTipIds(user.id);
+
         const response: any = {
             user: {
                 ...user,
                 permissions: tenantPermissions,
+                seenFeatureTipIds,
             },
         };
 
