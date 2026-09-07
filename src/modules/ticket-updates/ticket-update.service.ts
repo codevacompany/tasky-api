@@ -40,7 +40,9 @@ export class TicketUpdateService {
             .createQueryBuilder('tu')
             .select('COUNT(*)', 'count')
             .addSelect('MAX(tu.createdAt)', 'latestUpdate')
+            .innerJoin('tu.ticket', 'ticket')
             .where('tu.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.isDraft = false')
             .getRawOne();
 
         return {
