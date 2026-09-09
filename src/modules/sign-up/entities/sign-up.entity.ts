@@ -69,7 +69,7 @@ export class SignUp extends IdTimestampBaseEntity {
     })
     status: SignUpStatus;
 
-    @Column({ nullable: true, transformer: encryptedTransformer })
+    @Column({ nullable: true })
     activationToken: string;
 
     @Column({ type: 'timestamp', nullable: true })
