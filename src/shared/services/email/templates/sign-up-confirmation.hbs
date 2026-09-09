@@ -1,11 +1,20 @@
 {{#> layout}}
   <p>Olá {{contactName}},</p>
 
-  <p>Obrigado pelo interesse em usar o Tasky Pro. Recebemos sua solicitação de cadastro para <strong>{{companyName}}</strong> e ela está sendo analisada pela nossa equipe.</p>
+  <p>Recebemos o cadastro de <strong>{{companyName}}</strong> no Tasky Pro.</p>
 
-  <p>Você receberá outro email assim que sua solicitação for processada.</p>
+  <p>Para concluir, defina sua senha e o identificador da empresa clicando no botão abaixo:</p>
 
-  <p>Se tiver alguma dúvida, por favor responda a este email ou entre em contato com nosso suporte.</p>
+  <div style="width: 100%; text-align: center; margin: 30px 0;">
+    <a
+      href="{{frontendUrl}}/completar-cadastro/{{activationToken}}"
+      target="_blank"
+      style="display: block; color: #fff; font-weight: 500; max-width: 300px; margin: 0 auto; text-decoration: none; padding-top: 0.625rem; padding-bottom: 0.625rem; padding-left: 1.25rem; padding-right: 1.25rem; border-radius: 0.25rem; background-color: #2563eb;">
+      Completar Cadastro
+    </a>
+  </div>
+
+  <p>Se você já estiver na tela de conclusão, pode ignorar este email.</p>
 
   <p>Atenciosamente,<br>
   Equipe Tasky Pro</p>
