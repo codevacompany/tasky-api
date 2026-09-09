@@ -41,17 +41,29 @@ export class SignUpService {
         private readonly tokenService: TokenService,
     ) {}
 
-    async create(createSignUpDto: CreateSignUpDto): Promise<SignUp> {
+    async create(createSignUpDto: CreateSignUpDto): Promise<SignUp & { activationToken: string }> {
         const normalizedCnpj = this.normalizeOptionalCnpj(createSignUpDto.cnpj);
-        if (normalizedCnpj) {
-            const signUpExists = await this.findByCnpj(normalizedCnpj);
+        if (!normalizedCnpj) {
+            throw new CustomBadRequestException({
+                code: 'cnpj-required',
+                message: 'CNPJ is required',
+            });
+        }
 
-            if (signUpExists) {
-                throw new CustomConflictException({
-                    code: 'sign-up-already-exists',
-                    message: 'Sign-up already exists',
-                });
-            }
+        const signUpExists = await this.findByCnpj(normalizedCnpj);
+        if (signUpExists) {
+            throw new CustomConflictException({
+                code: 'sign-up-already-exists',
+                message: 'Sign-up already exists',
+            });
+        }
+
+        const existingTenant = await this.tenantService.findByCnpj(normalizedCnpj);
+        if (existingTenant) {
+            throw new CustomConflictException({
+                code: 'tenant-already-exists',
+                message: 'A company with this CNPJ is already registered',
+            });
         }
 
         if (!createSignUpDto.termsAccepted) {
@@ -68,62 +80,12 @@ export class SignUpService {
             });
         }
 
-        // Validate that the terms version exists
-        // if (createSignUpDto.termsVersion) {
-        //     try {
-        //         await this.legalDocumentService.findByTypeAndVersion(
-        //             LegalDocumentType.TERMS_OF_SERVICE,
-        //             createSignUpDto.termsVersion,
-        //         );
-        //     } catch (error) {
-        //         throw new CustomBadRequestException({
-        //             code: 'invalid-terms-version',
-        //             message: `Terms of service version ${createSignUpDto.termsVersion} not found`,
-        //         });
-        //     }
-        // } else {
-        //     // Get the active terms version
-        //     try {
-        //         const activeTerms = await this.legalDocumentService.getActiveDocumentByType(
-        //             LegalDocumentType.TERMS_OF_SERVICE,
-        //         );
-        //         createSignUpDto.termsVersion = activeTerms.version;
-        //     } catch (error) {
-        //         // If no active terms, use default version
-        //         createSignUpDto.termsVersion = '1.0';
-        //     }
-        // }
-
-        // Validate that the privacy policy version exists
-        // if (createSignUpDto.privacyPolicyVersion) {
-        //     try {
-        //         await this.legalDocumentService.findByTypeAndVersion(
-        //             LegalDocumentType.PRIVACY_POLICY,
-        //             createSignUpDto.privacyPolicyVersion,
-        //         );
-        //     } catch (error) {
-        //         throw new CustomBadRequestException({
-        //             code: 'invalid-privacy-policy-version',
-        //             message: `Privacy policy version ${createSignUpDto.privacyPolicyVersion} not found`,
-        //         });
-        //     }
-        // } else {
-        //     // Get the active privacy policy version
-        //     try {
-        //         const activePrivacyPolicy = await this.legalDocumentService.getActiveDocumentByType(
-        //             LegalDocumentType.PRIVACY_POLICY,
-        //         );
-        //         createSignUpDto.privacyPolicyVersion = activePrivacyPolicy.version;
-        //     } catch (error) {
-        //         // If no active privacy policy, use default version
-        //         createSignUpDto.privacyPolicyVersion = '1.0';
-        //     }
-        // }
-
         const companyData = await this.getCompanyDataFromCnpj(
             normalizedCnpj,
             createSignUpDto.contactEmail,
         );
+
+        const activationToken = uuidv4();
 
         const signUp = this.signUpRepository.create({
             companyName: companyData.companyName,
@@ -132,7 +94,8 @@ export class SignUpService {
             contactCpf: '',
             contactEmail: createSignUpDto.contactEmail,
             contactPhone: createSignUpDto.contactPhone,
-            status: SignUpStatus.PENDING,
+            status: SignUpStatus.APPROVED,
+            activationToken,
             cnpj: companyData.cnpj,
             cep: companyData.cep,
             state: companyData.state,
@@ -155,7 +118,7 @@ export class SignUpService {
         const savedSignUp = await this.signUpRepository.save(signUp);
 
         await this.emailService.sendMail({
-            subject: 'Nova solicitação de cadastro',
+            subject: 'Novo cadastro no Tasky Pro',
             html: this.emailService.compileTemplate('sign-up-notification', {
                 companyName: savedSignUp.companyName,
                 contactName: savedSignUp.contactName,
@@ -165,15 +128,17 @@ export class SignUpService {
         });
 
         await this.emailService.sendMail({
-            subject: 'Solicitação de cadastro recebida',
+            subject: 'Complete seu cadastro no Tasky Pro',
             html: this.emailService.compileTemplate('sign-up-confirmation', {
                 companyName: savedSignUp.companyName,
                 contactName: savedSignUp.contactName,
+                activationToken,
+                frontendUrl: process.env.FRONTEND_URL,
             }),
             to: savedSignUp.contactEmail,
         });
 
-        return savedSignUp;
+        return { ...savedSignUp, activationToken };
     }
 
     async update(id: number, updateSignUpDto: UpdateSignUpDto): Promise<any> {
@@ -186,6 +151,14 @@ export class SignUpService {
                 throw new CustomConflictException({
                     code: 'sign-up-already-exists',
                     message: 'Sign-up already exists',
+                });
+            }
+
+            const existingTenant = await this.tenantService.findByCnpj(normalizedCnpj);
+            if (existingTenant) {
+                throw new CustomConflictException({
+                    code: 'tenant-already-exists',
+                    message: 'A company with this CNPJ is already registered',
                 });
             }
         }
@@ -270,6 +243,13 @@ export class SignUpService {
     }
 
     async findByActivationToken(token: string): Promise<SignUp> {
+        if (!token?.trim()) {
+            throw new CustomNotFoundException({
+                message: 'Invalid activation token',
+                code: 'invalid-activation-token',
+            });
+        }
+
         const signUp = await this.signUpRepository.findOne({
             where: { activationToken: token },
         });
