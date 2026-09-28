@@ -12,6 +12,7 @@ import {
     ArrayMinSize,
     IsNumber,
     ValidateNested,
+    ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TicketPriority } from '../entities/ticket.entity';
@@ -43,6 +44,7 @@ export class CreateTicketDto {
     @IsEnum(TicketPriority)
     priority: TicketPriority;
 
+    @ValidateIf((o) => o.isDraft !== true)
     @IsNotEmpty()
     @IsString()
     description: string;
@@ -55,11 +57,12 @@ export class CreateTicketDto {
     @IsInt()
     requesterId: number;
 
+    @ValidateIf((o) => o.isDraft !== true)
     @IsArray()
     @ArrayMinSize(1)
     @ArrayMaxSize(3)
     @IsInt({ each: true })
-    targetUserIds: number[];
+    targetUserIds?: number[];
 
     @IsOptional()
     @IsInt()
@@ -68,6 +71,10 @@ export class CreateTicketDto {
     @IsOptional()
     @IsBoolean()
     isPrivate?: boolean;
+
+    @IsOptional()
+    @IsBoolean()
+    isDraft?: boolean;
 
     @IsOptional()
     @IsInt()

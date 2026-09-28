@@ -963,7 +963,8 @@ export class TicketStatsService {
         const createdQuery = this.ticketRepository.createQueryBuilder('ticket');
         createdQuery
             .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
-            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+            .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.isDraft = false');
 
         if (startDate) {
             createdQuery.andWhere('ticket.createdAt >= :startDate', { startDate });
@@ -991,6 +992,7 @@ export class TicketStatsService {
         resolvedQuery
             .leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus')
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.isDraft = false')
             .andWhere('ticket.completedAt IS NOT NULL')
             .andWhere('ticketStatus.key = :status', { status: TicketStatus.Completed });
 
@@ -1045,7 +1047,9 @@ export class TicketStatsService {
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
         qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
-        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId }).andWhere(
+            'ticket.isDraft = false',
+        );
         qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
         qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticketStatus.key']);
 
@@ -1111,7 +1115,9 @@ export class TicketStatsService {
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
         qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
-        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId }).andWhere(
+            'ticket.isDraft = false',
+        );
         qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
         qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticketStatus.key']);
 
@@ -1179,7 +1185,9 @@ export class TicketStatsService {
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
         qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
-        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId }).andWhere(
+            'ticket.isDraft = false',
+        );
         qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
         qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticketStatus.key']);
 
@@ -1249,7 +1257,9 @@ export class TicketStatsService {
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
         qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
-        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId }).andWhere(
+            'ticket.isDraft = false',
+        );
         qb.andWhere('ticket.createdAt >= :startOfRange', { startOfRange });
         qb.select(['ticket.id', 'ticket.createdAt', 'ticket.completedAt', 'ticketStatus.key']);
 
@@ -1315,7 +1325,9 @@ export class TicketStatsService {
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
         qb.leftJoinAndSelect('ticket.ticketStatus', 'ticketStatus');
-        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId }).andWhere(
+            'ticket.isDraft = false',
+        );
 
         if (startDate) {
             qb.andWhere('ticket.createdAt >= :startDate', { startDate });
@@ -1375,7 +1387,9 @@ export class TicketStatsService {
         const { startDate } = this.getPeriodFilter(period);
 
         const qb = this.ticketRepository.createQueryBuilder('ticket');
-        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId }).andWhere(
+            'ticket.isDraft = false',
+        );
 
         // Apply period filter
         if (startDate) {
@@ -1439,6 +1453,7 @@ export class TicketStatsService {
             .createQueryBuilder('ticket')
             .leftJoin('ticket.category', 'category')
             .where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId })
+            .andWhere('ticket.isDraft = false')
             .andWhere('ticket.categoryId IS NOT NULL')
             .select('ticket.categoryId', 'categoryid')
             .addSelect('category.name', 'categoryname')
@@ -1932,7 +1947,9 @@ export class TicketStatsService {
 
         const qb = this.ticketUpdateRepository.createQueryBuilder('update');
         qb.innerJoin('update.ticket', 'ticket');
-        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId }).andWhere(
+            'ticket.isDraft = false',
+        );
         qb.andWhere('update.timeSecondsInLastStatus IS NOT NULL');
 
         // Filter by department if Supervisor using EXISTS subquery
@@ -2359,7 +2376,9 @@ export class TicketStatsService {
         // Get all ticket updates for this period where the status changed from the requested status
         const qb = this.ticketUpdateRepository.createQueryBuilder('update');
         qb.innerJoin('update.ticket', 'ticket');
-        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId });
+        qb.where('ticket.tenantId = :tenantId', { tenantId: accessProfile.tenantId }).andWhere(
+            'ticket.isDraft = false',
+        );
         qb.andWhere('update.fromStatus = :status', { status });
         qb.andWhere('update.timeSecondsInLastStatus IS NOT NULL');
         qb.andWhere('update.createdAt >= :startDate', { startDate });
