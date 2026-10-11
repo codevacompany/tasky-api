@@ -159,21 +159,18 @@ export class TagService extends TenantBoundBaseService<Tag> {
         }
 
         const deptIds = [...contextDepartmentIds];
-        if (deptIds.length) {
-            qb.andWhere(
-                `(NOT EXISTS (
-                    SELECT 1 FROM tag_suggested_for_department td WHERE td."tagId" = tag.id
-                ) OR EXISTS (
-                    SELECT 1 FROM tag_suggested_for_department td
-                    WHERE td."tagId" = tag.id AND td."departmentId" IN (:...deptIds)
-                ))`,
-                { deptIds },
-            );
-        } else {
-            qb.andWhere(
-                `NOT EXISTS (SELECT 1 FROM tag_suggested_for_department td WHERE td."tagId" = tag.id)`,
-            );
+        // Empty suggestedForDepartments = not suggested (catalog only). Suggest only on sector match.
+        if (!deptIds.length) {
+            return [];
         }
+
+        qb.andWhere(
+            `EXISTS (
+                SELECT 1 FROM tag_suggested_for_department td
+                WHERE td."tagId" = tag.id AND td."departmentId" IN (:...deptIds)
+            )`,
+            { deptIds },
+        );
 
         qb.orderBy('tag.name', 'ASC').take(limit);
         return qb.getMany();
@@ -331,7 +328,7 @@ export class TagService extends TenantBoundBaseService<Tag> {
             });
         }
 
-        // Supervisors cannot create global tags — always scoped to their department.
+        // Supervisors always suggest for their own department.
         return [actor.departmentId];
     }
 
@@ -353,7 +350,7 @@ export class TagService extends TenantBoundBaseService<Tag> {
         if (!departmentIds.length || !departmentIds.includes(actor.departmentId)) {
             throw new CustomBadRequestException({
                 code: 'sector-scope-required',
-                message: 'Supervisors cannot make tags global; keep their department in the scope',
+                message: 'Supervisors must keep their department as a suggestion target',
             });
         }
 

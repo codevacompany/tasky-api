@@ -15,7 +15,7 @@ export class Tag extends TenantBoundBaseEntity {
     @Column({ default: true })
     isActive: boolean;
 
-    /** Departments for which this tag is suggested in the picker (empty = company-wide). */
+    /** Departments for which this tag is suggested in the picker (empty = catalog only, not suggested). */
     @ManyToMany(() => Department)
     @JoinTable({
         name: 'tag_suggested_for_department',
