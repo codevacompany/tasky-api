@@ -18,6 +18,8 @@ import { UserRepository } from '../user/user.repository';
 import { TicketChecklistItem } from '../ticket-checklist/entities/ticket-checklist-item.entity';
 import { StatusAction } from '../status-action/entities/status-action.entity';
 import { TicketStatus as TicketStatusEntity } from '../ticket-status/entities/ticket-status.entity';
+import { Tag } from '../tag/entities/tag.entity';
+import { TicketTag } from '../tag/entities/ticket-tag.entity';
 import { TicketService } from './ticket.service';
 import { TicketRepository } from './ticket.repository';
 import { EncryptionService } from '../../shared/services/encryption/encryption.service';
@@ -70,6 +72,8 @@ describe('TicketService user deactivation', () => {
                 { provide: getRepositoryToken(StatusAction), useValue: {} },
                 { provide: getRepositoryToken(TicketStatusEntity), useValue: {} },
                 { provide: getRepositoryToken(TicketChecklistItem), useValue: {} },
+                { provide: getRepositoryToken(Tag), useValue: {} },
+                { provide: getRepositoryToken(TicketTag), useValue: {} },
             ],
         }).compile();
 

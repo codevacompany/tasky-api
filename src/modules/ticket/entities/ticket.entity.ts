@@ -9,6 +9,7 @@ import { TicketDisapprovalReason } from '../../ticket-disapproval-reason/entitie
 import { TicketFile } from '../../ticket-file/entities/ticket-file.entity';
 import { TicketTargetUser } from '../../ticket-target-user/entities/ticket-target-user.entity';
 import { TicketUpdate } from '../../ticket-updates/entities/ticket-update.entity';
+import { TicketTag } from '../../tag/entities/ticket-tag.entity';
 import { User } from '../../user/entities/user.entity';
 import { TicketStatus as TicketStatusEntity } from '../../ticket-status/entities/ticket-status.entity';
 import { encryptedTransformer } from '../../../shared/decorators/encrypted-column.decorator';
@@ -109,6 +110,9 @@ export class Ticket extends TenantBoundBaseEntity {
     @ManyToOne(() => Category, (category) => category.tickets)
     @JoinColumn({ name: 'categoryId' })
     category: Category;
+
+    @OneToMany(() => TicketTag, (ticketTag) => ticketTag.ticket, { cascade: true })
+    ticketTags: TicketTag[];
 
     @OneToMany(() => TicketComment, (ticketcomment) => ticketcomment.ticket)
     comments: TicketComment[];
