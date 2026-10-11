@@ -24,8 +24,10 @@ import { UpdateTicketStatusDto } from './dtos/update-ticket-status.dto';
 import { UpdateTicketDto } from './dtos/update-ticket.dto';
 import { UpdateTicketAssigneeDto } from './dtos/update-ticket-assignee.dto';
 import { AddTicketAssigneeDto } from './dtos/add-ticket-assignee.dto';
+import { ApplyTicketTagDto } from '../tag/dtos/apply-ticket-tag.dto';
 import { Ticket } from './entities/ticket.entity';
 import { TicketService } from './ticket.service';
+import { UUIDValidationPipe } from '../../shared/pipes/uuid-validation.pipe';
 
 @Controller('tickets')
 @UseGuards(JwtAuthGuard, SubscriptionRequiredGuard, TermsAcceptanceRequiredGuard)
@@ -325,5 +327,23 @@ export class TicketController {
         @GetAccessProfile() accessProfile: AccessProfile,
     ) {
         return this.ticketService.executeCustomStatusAction(accessProfile, customId, actionId);
+    }
+
+    @Post(':customId/tags')
+    applyTag(
+        @Param('customId') customId: string,
+        @Body() dto: ApplyTicketTagDto,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.applyTag(accessProfile, customId, dto.tagUuid);
+    }
+
+    @Delete(':customId/tags/:tagUuid')
+    removeTag(
+        @Param('customId') customId: string,
+        @Param('tagUuid', UUIDValidationPipe) tagUuid: string,
+        @GetAccessProfile() accessProfile: AccessProfile,
+    ) {
+        return this.ticketService.removeTag(accessProfile, customId, tagUuid);
     }
 }

@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AwsModule } from './modules/aws/aws.module';
 import { CategoryModule } from './modules/category/category.module';
+import { TagModule } from './modules/tag/tag.module';
 import { CorrectionRequestModule } from './modules/correction-request-reason/correction-request-reason.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { LegalDocumentModule } from './modules/legal-document/legal-document.module';
@@ -48,6 +49,7 @@ import { FeatureTipModule } from './modules/feature-tip/feature-tip.module';
         AuthModule,
         VerificationCodeModule,
         CategoryModule,
+        TagModule,
         DepartmentModule,
         NotificationModule,
         TicketModule,

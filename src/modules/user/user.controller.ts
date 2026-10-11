@@ -123,10 +123,12 @@ export class UserController {
         @GetAccessProfile() accessProfile: AccessProfile,
         @GetQueryOptions() options: QueryOptions<User>,
         @Param('departmentId', ParseIntPipe) departmentId: number,
+        @Query('name') name?: string,
     ) {
-        return this.userService.findBy(accessProfile, {
+        return this.userService.findManyUsers(accessProfile, name ? { name } : undefined, {
             ...options,
             where: { ...options.where, departmentId },
+            relations: ['department', 'role'],
         });
     }
 
