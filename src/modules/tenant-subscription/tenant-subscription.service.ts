@@ -102,6 +102,8 @@ export class TenantSubscriptionService {
         return this.userService.getActiveUserCount(tenantId);
     }
 
+    static readonly TRIAL_DAYS = 14;
+
     async createTrialSubscription(tenantId: number, planSlug: string = 'avancado') {
         const plan = await this.subscriptionPlanService.findBySlug(planSlug);
         if (!plan) {
@@ -109,7 +111,7 @@ export class TenantSubscriptionService {
         }
 
         const trialEndDate = new Date();
-        trialEndDate.setDate(trialEndDate.getDate() + 30); // 30 days trial
+        trialEndDate.setDate(trialEndDate.getDate() + TenantSubscriptionService.TRIAL_DAYS);
 
         const subscription = this.tenantSubscriptionRepository.create({
             tenantId,
@@ -513,7 +515,7 @@ export class TenantSubscriptionService {
             subscription.trialEndDate && subscription.trialEndDate > now
                 ? new Date(subscription.trialEndDate)
                 : now;
-        baseDate.setDate(baseDate.getDate() + 14);
+        baseDate.setDate(baseDate.getDate() + TenantSubscriptionService.TRIAL_DAYS);
         subscription.trialEndDate = baseDate;
         await this.tenantSubscriptionRepository.save(subscription);
         return subscription;
