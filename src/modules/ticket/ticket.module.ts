@@ -20,6 +20,8 @@ import { UserModule } from '../user/user.module';
 import { StatusActionModule } from '../status-action/status-action.module';
 import { TicketStatusModule } from '../ticket-status/ticket-status.module';
 import { DepartmentModule } from '../department/department.module';
+import { Tag } from '../tag/entities/tag.entity';
+import { TicketTag } from '../tag/entities/ticket-tag.entity';
 import { Ticket } from './entities/ticket.entity';
 import { TicketChecklistItem } from '../ticket-checklist/entities/ticket-checklist-item.entity';
 import { TicketController } from './ticket.controller';
@@ -28,7 +30,7 @@ import { TicketService } from './ticket.service';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Ticket, TicketChecklistItem]),
+        TypeOrmModule.forFeature([Ticket, TicketChecklistItem, Tag, TicketTag]),
         EncryptionModule,
         NotificationModule,
         UserModule,

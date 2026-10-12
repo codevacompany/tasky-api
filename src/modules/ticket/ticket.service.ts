@@ -44,6 +44,8 @@ import { StatusAction } from '../status-action/entities/status-action.entity';
 import { TicketStatus as TicketStatusEntity } from '../ticket-status/entities/ticket-status.entity';
 import { DepartmentService } from '../department/department.service';
 import { TicketChecklistItem } from '../ticket-checklist/entities/ticket-checklist-item.entity';
+import { Tag } from '../tag/entities/tag.entity';
+import { TicketTag } from '../tag/entities/ticket-tag.entity';
 
 @Injectable()
 export class TicketService extends TenantBoundBaseService<Ticket> {
@@ -69,6 +71,10 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         private readonly ticketStatusRepository: Repository<TicketStatusEntity>,
         @InjectRepository(TicketChecklistItem)
         private readonly ticketChecklistItemRepository: Repository<TicketChecklistItem>,
+        @InjectRepository(Tag)
+        private readonly tagRepository: Repository<Tag>,
+        @InjectRepository(TicketTag)
+        private readonly ticketTagRepository: Repository<TicketTag>,
     ) {
         super(ticketRepository);
     }
@@ -153,7 +159,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
@@ -211,7 +217,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
@@ -278,7 +284,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
@@ -300,6 +306,8 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
                 'reviewer',
                 'reviewer.department',
                 'category',
+                'ticketTags',
+                'ticketTags.tag',
                 'files',
                 'comments',
                 'comments.user',
@@ -343,7 +351,180 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             });
         }
 
+        return this.attachTicketTags(ticket);
+    }
+
+    private attachTicketTags(ticket: Ticket): Ticket {
+        const tags = (ticket.ticketTags || [])
+            .map((tt) => tt.tag)
+            .filter(Boolean)
+            .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+            .map((tag) => ({
+                id: tag.id,
+                uuid: tag.uuid,
+                name: tag.name,
+                color: tag.color,
+                isActive: tag.isActive,
+            }));
+
+        (ticket as any).tags = tags;
+        delete (ticket as any).ticketTags;
         return ticket;
+    }
+
+    private async withListMeta(items: Ticket[]): Promise<Ticket[]> {
+        const withTags = items.map((item) => this.attachTicketTags(item));
+        await this.attachLastStatusMovedAt(withTags);
+        return withTags;
+    }
+
+    /**
+     * Last card "movimentação": only status-changing ticket updates
+     * (criação, mudança_de_status, finalização, cancelamento).
+     */
+    private async attachLastStatusMovedAt(items: Ticket[]): Promise<void> {
+        if (!items.length) return;
+
+        const ids = items.map((item) => item.id);
+        const statusMoveActions = [
+            TicketActionType.Creation,
+            TicketActionType.StatusUpdate,
+            TicketActionType.Completion,
+            TicketActionType.Cancellation,
+        ];
+
+        const rows = await this.ticketUpdateRepository
+            .createQueryBuilder('tu')
+            .select('tu.ticketId', 'ticketId')
+            .addSelect('MAX(tu.createdAt)', 'lastMovedAt')
+            .where('tu.ticketId IN (:...ids)', { ids })
+            .andWhere('tu.action IN (:...actions)', { actions: statusMoveActions })
+            .groupBy('tu.ticketId')
+            .getRawMany<{ ticketId: string | number; lastMovedAt: Date | string }>();
+
+        const byTicketId = new Map(rows.map((row) => [Number(row.ticketId), row.lastMovedAt]));
+
+        for (const item of items) {
+            (item as any).lastStatusMovedAt =
+                byTicketId.get(item.id) ?? item.createdAt ?? item.updatedAt;
+        }
+    }
+
+    async applyTag(
+        accessProfile: AccessProfile,
+        customId: string,
+        tagUuid: string,
+    ): Promise<Ticket> {
+        const ticket = await this.findById(accessProfile, customId);
+
+        const tag = await this.tagRepository.findOne({
+            where: { uuid: tagUuid, tenantId: accessProfile.tenantId },
+        });
+
+        if (!tag) {
+            throw new CustomNotFoundException({
+                code: 'tag-not-found',
+                message: 'Tag not found.',
+            });
+        }
+
+        if (!tag.isActive) {
+            throw new CustomBadRequestException({
+                code: 'tag-inactive',
+                message: 'Cannot apply an inactive tag.',
+            });
+        }
+
+        const existing = await this.ticketTagRepository.findOne({
+            where: {
+                ticketId: ticket.id,
+                tagId: tag.id,
+                tenantId: accessProfile.tenantId,
+            },
+        });
+
+        if (!existing) {
+            await this.ticketTagRepository.save({
+                ticketId: ticket.id,
+                tagId: tag.id,
+                tenantId: accessProfile.tenantId,
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+            });
+
+            const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                accessProfile.userId,
+                accessProfile.tenantId,
+            );
+
+            await this.ticketUpdateRepository.save({
+                tenantId: accessProfile.tenantId,
+                ticketId: ticket.id,
+                ticketCustomId: ticket.customId,
+                performedById: accessProfile.userId,
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                action: TicketActionType.TagAdd,
+                fromStatus: ticket.ticketStatus?.key || null,
+                toStatus: ticket.ticketStatus?.key || null,
+                fromDepartmentId,
+                description: `<p><span>user</span> adicionou a tag <strong>${tag.name}</strong>.</p>`,
+            });
+        }
+
+        return this.findById(accessProfile, customId);
+    }
+
+    async removeTag(
+        accessProfile: AccessProfile,
+        customId: string,
+        tagUuid: string,
+    ): Promise<Ticket> {
+        const ticket = await this.findById(accessProfile, customId);
+
+        const tag = await this.tagRepository.findOne({
+            where: { uuid: tagUuid, tenantId: accessProfile.tenantId },
+        });
+
+        if (!tag) {
+            throw new CustomNotFoundException({
+                code: 'tag-not-found',
+                message: 'Tag not found.',
+            });
+        }
+
+        const existing = await this.ticketTagRepository.findOne({
+            where: {
+                ticketId: ticket.id,
+                tagId: tag.id,
+                tenantId: accessProfile.tenantId,
+            },
+        });
+
+        if (existing) {
+            await this.ticketTagRepository.remove(existing);
+
+            const fromDepartmentId = await this.getDepartmentIdFromUserId(
+                accessProfile.userId,
+                accessProfile.tenantId,
+            );
+
+            await this.ticketUpdateRepository.save({
+                tenantId: accessProfile.tenantId,
+                ticketId: ticket.id,
+                ticketCustomId: ticket.customId,
+                performedById: accessProfile.userId,
+                createdById: accessProfile.userId,
+                updatedById: accessProfile.userId,
+                action: TicketActionType.TagRemove,
+                fromStatus: ticket.ticketStatus?.key || null,
+                toStatus: ticket.ticketStatus?.key || null,
+                fromDepartmentId,
+                description: `<p><span>user</span> removeu a tag <strong>${tag.name}</strong>.</p>`,
+            });
+        }
+
+        return this.findById(accessProfile, customId);
     }
 
     /**
@@ -479,7 +660,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
@@ -543,7 +724,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
@@ -582,6 +763,9 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
             // Category - for category display
             .leftJoin('ticket.category', 'category')
             .addSelect(['category.id', 'category.name'])
+            // Tags - compact fields for card/table chips
+            .leftJoinAndSelect('ticket.ticketTags', 'ticketTags')
+            .leftJoinAndSelect('ticketTags.tag', 'tag')
             .addOrderBy('targetUsers.order', 'ASC')
             // Checklist items - only basic fields for progress calculation
             .leftJoin('ticket.checklistItems', 'checklistItems')
@@ -883,7 +1067,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
@@ -934,7 +1118,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
@@ -2376,7 +2560,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
@@ -2404,7 +2588,7 @@ export class TicketService extends TenantBoundBaseService<Ticket> {
         const [items, total] = await qb.getManyAndCount();
 
         return {
-            items,
+            items: await this.withListMeta(items),
             total,
             page,
             limit,
