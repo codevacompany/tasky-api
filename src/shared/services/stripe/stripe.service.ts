@@ -4,6 +4,9 @@ import Stripe from 'stripe';
 
 export type StripeBillingInterval = 'monthly' | 'yearly';
 
+/** Stripe Billing Meter event name — must match dashboard (Medidores → Nome do evento). */
+export const STRIPE_ADDITIONAL_USERS_METER_EVENT = 'additional_users';
+
 export interface EnsureStripeCustomerOptions {
     tenantId: number;
     name?: string;
@@ -133,6 +136,10 @@ export class StripeService {
         });
     }
 
+    /**
+     * Legacy Usage Records API (pre-meter prices). Prefer {@link reportMeterUsage} for
+     * prices linked to a Billing Meter.
+     */
     async reportUsage(
         subscriptionItemId: string,
         quantity: number,
@@ -143,6 +150,31 @@ export class StripeService {
             quantity,
             action,
             timestamp: Math.floor(timestamp.getTime() / 1000),
+        });
+    }
+
+    /**
+     * Report absolute usage for a Billing Meter–backed price.
+     * The meter should use "Last" aggregation so each sync sets the period total
+     * (e.g. additional users over the included baseline) instead of summing deltas.
+     */
+    async reportMeterUsage(options: {
+        eventName: string;
+        customerId: string;
+        value: number;
+        identifier?: string;
+        timestamp?: Date;
+    }) {
+        return this.stripe.billing.meterEvents.create({
+            event_name: options.eventName,
+            payload: {
+                stripe_customer_id: options.customerId,
+                value: String(Math.max(0, Math.floor(options.value))),
+            },
+            identifier: options.identifier,
+            timestamp: options.timestamp
+                ? Math.floor(options.timestamp.getTime() / 1000)
+                : undefined,
         });
     }
 

@@ -8,6 +8,7 @@ interface PlanData {
     name: string;
     slug: string;
     maxUsers: number | null;
+    includedUsers: number | null;
     priceMonthly: number;
     priceYearly: number;
     description: string;
@@ -27,6 +28,7 @@ export class SubscriptionPlanSeeder extends Seeder {
                 name: 'Plano Básico',
                 slug: 'basico',
                 maxUsers: 5,
+                includedUsers: 5,
                 priceMonthly: 99.0,
                 priceYearly: 950.0,
                 description: 'Ideal para microempresas e startups',
@@ -36,6 +38,7 @@ export class SubscriptionPlanSeeder extends Seeder {
                 name: 'Plano Essencial',
                 slug: 'essencial',
                 maxUsers: 15,
+                includedUsers: 15,
                 priceMonthly: 199.0,
                 priceYearly: 1900.0,
                 description: 'Ideal para pequenas empresas em crescimento',
@@ -49,6 +52,7 @@ export class SubscriptionPlanSeeder extends Seeder {
                 name: 'Plano Avançado',
                 slug: 'avancado',
                 maxUsers: 30,
+                includedUsers: 30,
                 priceMonthly: 399.0,
                 priceYearly: 3800.0,
                 description: 'Ideal para empresas médias',
@@ -65,6 +69,7 @@ export class SubscriptionPlanSeeder extends Seeder {
                 name: 'Plano Customizado',
                 slug: 'customizado',
                 maxUsers: null,
+                includedUsers: 30,
                 priceMonthly: 399.0,
                 priceYearly: 3800.0,
                 description: 'Ideal para grandesempresas',
@@ -81,7 +86,14 @@ export class SubscriptionPlanSeeder extends Seeder {
 
         const existingPlansCount = await planRepository.count();
         if (existingPlansCount >= plansData.length) {
-            console.log('ℹ️ Subscription plans already exist, skipping plan seeding');
+            // Keep includedUsers in sync for existing installs (e.g. customizado = 30).
+            for (const planData of plansData) {
+                await planRepository.update(
+                    { slug: planData.slug },
+                    { includedUsers: planData.includedUsers },
+                );
+            }
+            console.log('ℹ️ Subscription plans already exist, refreshed includedUsers');
             return;
         }
 
@@ -91,6 +103,7 @@ export class SubscriptionPlanSeeder extends Seeder {
                     name: planData.name,
                     slug: planData.slug,
                     maxUsers: planData.maxUsers,
+                    includedUsers: planData.includedUsers,
                     priceMonthly: planData.priceMonthly,
                     priceYearly: planData.priceYearly,
                     description: planData.description,

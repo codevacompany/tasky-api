@@ -43,33 +43,17 @@ export class BillingService {
 
         const plan = subscription.subscriptionPlan;
         const basePlanCost = Number(plan.priceMonthly);
+        const includedUsers = plan.includedUsers ?? plan.maxUsers ?? 0;
+        const perUserRate = Number(plan.pricePerUserMonthly || 0);
         let additionalUsersCost = 0;
         let additionalUsers = 0;
         let description = `Plano ${plan.name}`;
 
-        // For Plano Avançado (30 users max), calculate additional user costs
-        if (plan.slug === 'avancado' && plan.maxUsers && currentUsers > plan.maxUsers) {
-            additionalUsers = currentUsers - plan.maxUsers;
-            const additionalPlan = await this.subscriptionPlanService.findBySlug('adicional');
-
-            if (additionalPlan) {
-                const additionalUserRate = Number(additionalPlan.priceMonthly); // R$ 15 per user
-                additionalUsersCost = additionalUsers * additionalUserRate;
-                description = `${plan.name} + ${additionalUsers} usuário${additionalUsers > 1 ? 's' : ''} adicional${additionalUsers > 1 ? 'is' : ''}`;
-            }
-        }
-
-        // For other plans that exceed their limits (but aren't avancado)
-        else if (plan.maxUsers && currentUsers > plan.maxUsers && plan.slug !== 'adicional') {
-            // This shouldn't happen normally, but we handle it for completeness
-            additionalUsers = currentUsers - plan.maxUsers;
-            const additionalPlan = await this.subscriptionPlanService.findBySlug('adicional');
-
-            if (additionalPlan) {
-                const additionalUserRate = Number(additionalPlan.priceMonthly);
-                additionalUsersCost = additionalUsers * additionalUserRate;
-                description = `${plan.name} + ${additionalUsers} usuário${additionalUsers > 1 ? 's' : ''} adicional${additionalUsers > 1 ? 'is' : ''}`;
-            }
+        // Metered overage (typically customizado): charge per user beyond includedUsers.
+        if (perUserRate > 0 && currentUsers > includedUsers) {
+            additionalUsers = currentUsers - includedUsers;
+            additionalUsersCost = additionalUsers * perUserRate;
+            description = `${plan.name} + ${additionalUsers} usuário${additionalUsers > 1 ? 's' : ''} adicional${additionalUsers > 1 ? 'is' : ''}`;
         }
 
         const totalCost = basePlanCost + additionalUsersCost;
@@ -78,7 +62,7 @@ export class BillingService {
             basePlanCost,
             additionalUsersCost,
             totalCost,
-            basePlanUsers: plan.maxUsers || 0,
+            basePlanUsers: includedUsers,
             additionalUsers,
             totalUsers: currentUsers,
             planName: plan.name,
@@ -182,11 +166,9 @@ export class BillingService {
             };
         }
 
-        // For limited plans, calculate additional cost if exceeding limit
         const newTotalUsers = currentBilling.totalUsers + usersToAdd;
 
         if (newTotalUsers <= plan.maxUsers) {
-            // Still within plan limits, no additional cost
             return {
                 canAdd: true,
                 additionalCost: 0,
@@ -194,26 +176,11 @@ export class BillingService {
             };
         }
 
-        // Exceeding plan limits, calculate additional user cost
-        const usersOverLimit = newTotalUsers - plan.maxUsers;
-        const currentUsersOverLimit = Math.max(0, currentBilling.totalUsers - plan.maxUsers);
-        const additionalUsersToCharge = usersOverLimit - currentUsersOverLimit;
-
-        const additionalPlan = await this.subscriptionPlanService.findBySlug('adicional');
-        if (!additionalPlan) {
-            return {
-                canAdd: false,
-                reason: 'Additional user pricing not configured',
-            };
-        }
-
-        const additionalCost = additionalUsersToCharge * Number(additionalPlan.priceMonthly);
-        const newTotalCost = currentBilling.totalCost + additionalCost;
-
         return {
-            canAdd: true,
-            additionalCost,
-            newTotalCost,
+            canAdd: false,
+            reason: `Seu plano permite até ${plan.maxUsers} usuários ativos. Faça upgrade do plano para adicionar mais colaboradores.`,
+            additionalCost: 0,
+            newTotalCost: currentBilling.totalCost,
         };
     }
 

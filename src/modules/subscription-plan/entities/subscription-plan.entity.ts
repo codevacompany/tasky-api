@@ -14,6 +14,13 @@ export class SubscriptionPlan extends IdTimestampBaseEntity {
     @Column({ nullable: true })
     maxUsers: number;
 
+    /**
+     * Users covered by the base price before metered per-user charges apply.
+     * For customizado: maxUsers is null (unlimited) but includedUsers is typically 30.
+     */
+    @Column({ nullable: true })
+    includedUsers: number;
+
     @Column({ type: 'decimal', precision: 10, scale: 2 })
     priceMonthly: number;
 

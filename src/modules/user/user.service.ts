@@ -357,6 +357,17 @@ export class UserService extends TenantBoundBaseService<User> {
             });
         }
 
+        if (data.isActive === true) {
+            const existing = await this.userRepository.findOne({
+                where: { id, tenantId: accessProfile.tenantId },
+            });
+            if (existing && !existing.isActive) {
+                await this.tenantSubscriptionService.assertCanAddActiveUsers(
+                    accessProfile.tenantId,
+                );
+            }
+        }
+
         const updateData = { ...data };
         if (data.isAdmin !== undefined) {
             const roleName = data.isAdmin ? RoleName.TenantAdmin : RoleName.User;
@@ -382,31 +393,8 @@ export class UserService extends TenantBoundBaseService<User> {
         return super.update(accessProfile, id, data, false);
     }
 
-    /**
-     * Validate user limits before creating a new user
-     * This method checks if creating a new user would exceed billing limits
-     */
     private async validateUserLimitBeforeCreation(tenantId: number): Promise<void> {
-        try {
-            // We can't inject BillingService directly due to circular dependencies
-            // So we'll implement a basic validation here
-            // The BillingService can be called from the controller level if needed
-
-            // For now, we'll implement basic validation
-            // This can be enhanced when BillingService is properly integrated
-            const currentUserCount = await this.getActiveUserCount(tenantId);
-
-            // This is a basic check - the actual billing logic is in BillingService
-            // For a complete implementation, this should integrate with the subscription service
-            console.log(`Current user count for tenant ${tenantId}: ${currentUserCount}`);
-
-            // The actual validation will be handled by the billing service
-            // This is just a placeholder for now
-        } catch (error) {
-            console.error('Error validating user limit:', error);
-            // For now, we'll allow user creation even if validation fails
-            // In production, you might want to throw an error here
-        }
+        await this.tenantSubscriptionService.assertCanAddActiveUsers(tenantId);
     }
 
     async getActiveUserCount(tenantId: number): Promise<number> {
