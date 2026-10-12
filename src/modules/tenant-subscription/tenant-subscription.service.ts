@@ -10,7 +10,11 @@ import {
     CustomBadRequestException,
     CustomNotFoundException,
 } from '../../shared/exceptions/http-exception';
-import { StripeService, StripeBillingInterval } from '../../shared/services/stripe/stripe.service';
+import {
+    StripeService,
+    StripeBillingInterval,
+    STRIPE_ADDITIONAL_USERS_METER_EVENT,
+} from '../../shared/services/stripe/stripe.service';
 import { PaymentService } from '../payment/payment.service';
 import { PaymentMethod, PaymentStatus } from '../payment/entities/payment.entity';
 import Stripe from 'stripe';
@@ -194,26 +198,52 @@ export class TenantSubscriptionService {
 
     async syncMeteredUsage(tenantId: number) {
         const subscription = await this.findCurrentTenantSubscription(tenantId);
-        if (
-            !subscription ||
-            !subscription.subscriptionPlan ||
-            !subscription.stripeSubscriptionItemIdPerUser ||
-            !subscription.subscriptionPlan.maxUsers
-        ) {
-            return {
-                reportedUsers: 0,
-            };
+        const plan = subscription?.subscriptionPlan;
+
+        if (!subscription || !plan) {
+            return { reportedUsers: 0 };
+        }
+
+        const hasPerUserPricing = Boolean(
+            plan.stripePriceIdPerUserMonthly || plan.stripePriceIdPerUserYearly,
+        );
+        if (!hasPerUserPricing) {
+            return { reportedUsers: 0 };
         }
 
         const currentUsers = await this.getCurrentUserCount(tenantId);
-        const includedUsers = subscription.subscriptionPlan.maxUsers || 0;
+        const includedUsers = plan.includedUsers ?? plan.maxUsers ?? 0;
         const additionalUsers = Math.max(0, currentUsers - includedUsers);
 
-        await this.stripeService.reportUsage(
-            subscription.stripeSubscriptionItemIdPerUser,
-            additionalUsers,
-            'set',
-        );
+        const tenant = await this.tenantService.findById(tenantId);
+
+        if (tenant.stripeCustomerId) {
+            // Billing Meters: report absolute additional-user count for the period.
+            // Meter aggregation should be "Last" so repeated syncs replace the total.
+            await this.stripeService.reportMeterUsage({
+                eventName: STRIPE_ADDITIONAL_USERS_METER_EVENT,
+                customerId: tenant.stripeCustomerId,
+                value: additionalUsers,
+                identifier: `tenant-${tenantId}-additional-users-${Date.now()}`,
+            });
+        } else if (subscription.stripeSubscriptionItemIdPerUser) {
+            // Legacy Usage Records fallback for older metered prices without a Meter.
+            await this.stripeService.reportUsage(
+                subscription.stripeSubscriptionItemIdPerUser,
+                additionalUsers,
+                'set',
+            );
+        } else {
+            this.logger.warn(
+                `Cannot sync metered usage for tenant ${tenantId}: missing Stripe customer or per-user subscription item`,
+            );
+            return {
+                reportedUsers: 0,
+                currentUsers,
+                includedUsers,
+                skipped: true,
+            };
+        }
 
         return {
             reportedUsers: additionalUsers,
@@ -342,7 +372,18 @@ export class TenantSubscriptionService {
             stripeSubscriptionItemIdPerUser: perUserItem?.id,
         });
 
-        return this.tenantSubscriptionRepository.save(subscription);
+        const saved = await this.tenantSubscriptionRepository.save(subscription);
+
+        if (perUserPriceId) {
+            this.syncMeteredUsage(tenantId).catch((error) => {
+                this.logger.error(
+                    `Failed to sync metered usage after activating subscription for tenant ${tenantId}`,
+                    error instanceof Error ? error.stack : undefined,
+                );
+            });
+        }
+
+        return saved;
     }
 
     async validateUserLimit(
@@ -368,6 +409,35 @@ export class TenantSubscriptionService {
         };
     }
 
+    /**
+     * Blocks adding/reactivating users when the plan's maxUsers would be exceeded.
+     * Plans with maxUsers = null (e.g. customizado) are unlimited.
+     */
+    async assertCanAddActiveUsers(tenantId: number, additionalUsers = 1): Promise<void> {
+        const subscription = await this.findCurrentTenantSubscription(tenantId);
+        const currentUsers = await this.getCurrentUserCount(tenantId);
+
+        if (!subscription?.subscriptionPlan) {
+            throw new CustomBadRequestException({
+                code: 'no-active-subscription',
+                message: 'Não há assinatura ativa para este tenant.',
+            });
+        }
+
+        const maxUsers = subscription.subscriptionPlan.maxUsers;
+        if (maxUsers === null) {
+            return;
+        }
+
+        if (currentUsers + additionalUsers > maxUsers) {
+            throw new CustomBadRequestException({
+                code: 'user-limit-reached',
+                message: `Seu plano permite até ${maxUsers} usuários ativos. Faça upgrade do plano para adicionar mais colaboradores.`,
+                data: JSON.stringify({ currentUsers, maxUsers }),
+            });
+        }
+    }
+
     async getSubscriptionSummary(tenantId: number) {
         const subscription = await this.findCurrentTenantSubscription(tenantId);
         const userStats = await this.userService.getUserStatistics(tenantId);
@@ -388,21 +458,16 @@ export class TenantSubscriptionService {
                 const currentUsers = await this.getCurrentUserCount(tenantId);
                 const plan = subscription.subscriptionPlan;
                 const basePlanCost = Number(plan.priceMonthly);
+                const includedUsers = plan.includedUsers ?? plan.maxUsers ?? 0;
+                const perUserRate = Number(plan.pricePerUserMonthly || 0);
                 let additionalUsersCost = 0;
                 let additionalUsers = 0;
                 let totalCost = basePlanCost;
 
-                // Calculate additional user costs if exceeding plan limits
-                if (plan.maxUsers && currentUsers > plan.maxUsers) {
-                    additionalUsers = currentUsers - plan.maxUsers;
-                    const additionalPlan =
-                        await this.subscriptionPlanService.findBySlug('adicional');
-
-                    if (additionalPlan) {
-                        const additionalUserRate = Number(additionalPlan.priceMonthly); // R$ 15 per user
-                        additionalUsersCost = additionalUsers * additionalUserRate;
-                        totalCost = basePlanCost + additionalUsersCost;
-                    }
+                if (perUserRate > 0 && currentUsers > includedUsers) {
+                    additionalUsers = currentUsers - includedUsers;
+                    additionalUsersCost = additionalUsers * perUserRate;
+                    totalCost = basePlanCost + additionalUsersCost;
                 }
 
                 billingInfo = {
@@ -411,7 +476,7 @@ export class TenantSubscriptionService {
                     totalCost,
                     additionalUsers,
                     currentUsers,
-                    exceedsLimit: currentUsers > (plan.maxUsers || Infinity),
+                    exceedsLimit: plan.maxUsers != null && currentUsers > plan.maxUsers,
                 };
             } catch (error) {
                 console.error('Error calculating billing info:', error);
@@ -530,6 +595,16 @@ export class TenantSubscriptionService {
             const newSubscription = this.tenantSubscriptionRepository.create(subscriptionData);
             await this.tenantSubscriptionRepository.save(newSubscription);
             this.logger.log(`Created subscription ${newSubscription.id} from Stripe webhook`);
+        }
+
+        // After upgrade/sync to a metered plan, push current headcount immediately.
+        if (plan.stripePriceIdPerUserMonthly || plan.stripePriceIdPerUserYearly) {
+            this.syncMeteredUsage(tenantId).catch((error) => {
+                this.logger.error(
+                    `Failed to sync metered usage after Stripe sync for tenant ${tenantId}`,
+                    error instanceof Error ? error.stack : undefined,
+                );
+            });
         }
     }
 
