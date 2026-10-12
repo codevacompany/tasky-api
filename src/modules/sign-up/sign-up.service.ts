@@ -412,7 +412,6 @@ export class SignUpService {
         accessProfile.roleId = 1; // Set as superuser to create subscription
         accessProfile.tenantId = tenant.id;
 
-        // Create a 14-day trial subscription
         await this.tenantSubscriptionService.createTrialSubscription(tenant.id);
 
         const tenantAdminRole = await this.roleRepository.findOneBy({
@@ -454,7 +453,7 @@ export class SignUpService {
                 contactName: signUp.contactName,
                 customKey,
                 frontendUrl: process.env.FRONTEND_URL,
-                trialDays: 14, // Add trial period to the email
+                trialDays: TenantSubscriptionService.TRIAL_DAYS,
             }),
             to: signUp.contactEmail,
         });
